@@ -1,50 +1,63 @@
-[![npm package](https://img.shields.io/npm/v/com.3d-group.unity-package-template)](https://www.npmjs.com/package/com.3d-group.unity-package-template)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+# SIMPLE Unity Plugin
 
-# Unity package template
+`com.project-simple.unity-plugin` is a Unity Package Manager package for SIMPLE VR scenes that connect to the `simple.webplatform` middleware.
 
-This is a template repository for creating new repositories for upm (Unity Package Manager) packages.
+The runtime client connects to the webplatform headset WebSocket endpoint, not directly to GAMA Server:
 
-Generated repository will contain:
-- Basis for [Unity package](https://docs.unity3d.com/Manual/CustomPackages.html) (package.json, folder structure, assembly definitions etc.)
-- Basis for Runtime & Editor tests (can be run straight away after script has ran and package is in some Unity projects assets folder / marked as testable)
-- Sample/ExampleUnityProject - empty Unity project for running automated github tests via [unity-ci](https://unity-ci.com/docs)
-  - **Note:** Better way for doing this would be appreciated, there is an [issue about this in unity-test-runner](https://github.com/webbertakken/unity-test-runner/issues/71)
-- package.json to publish into npm
-- Automated github action workflows to run tests on push (further documentation can be found in templates/.github/workflows)
-- Automated github action [workflow to publish into npmjs](templates/.github/workflows/on-release.yml) on publish release
-  - **Note:** If your package contains a lot of images/data or size exceeds 10mbs it might better to just publish into upm package manager / other service that is meant for storing assets and other big data. It is a good practice to check npm registry guidelines before usage.
-- Example [package.json](templates/package.json) 
-- Example [README.md](templates/README.md)
-- Example [CONTRIBUTING.md](templates/CONTRIBUTING.md), based on [Contributor Covenant](https://www.contributor-covenant.org)
-- Example [License](templates/License) (MIT)
-- Example [CODEOWNERS](templates/.github/CODEOWNERS), for further details please see [github docs on CODEOWNERS](https://docs.github.com/en/free-pro-team@latest/github/creating-cloning-and-archiving-repositories/about-code-owners)
+- Unity headset runtime: `ws://<webplatform-host>:8080/`
+- Web monitor UI: `ws://<webplatform-host>:8001/`
+- GAMA Server, used by webplatform: `ws://<gama-host>:1000/`
 
-**Note:** By default this repository is meant for creating open source packages. If creating closed source it might be a good idea to change license and go through generated package.json files etc.
+## Package Contents
 
-## Usage
+- `Runtime/`: webplatform connection, simulation, serialization, localization, movement, and geometry utilities.
+- `Runtime/ThirdParty/NativeWebSocket/`: vendored NativeWebSocket transport used by the runtime client.
+- `Editor/`: package editor menu entries. Legacy geometry import/export is stubbed by default because the old implementation depended on WebSocketSharp.
+- `Samples~/`: importable Unity scenes and templates.
+- `Tests/`: basic runtime and editor test assemblies.
+- `Documentation~/`: package notes and protocol details.
 
-1. Create a new repository using this template
-2. Clone the new repository
-3. Run RUNME.sh (cautiously!) with bash at new repository root folder and follow instructions, if using windows [Git for Windows](https://gitforwindows.org/) provides bash and all necessary tools.
-4. Move all files (except folders .git/ .github/ and Samples/) inside any Unity Project Assets folder. This will generate .meta files that are required by Unity. 
-5. Move files back to the original folder
+## Installation
 
-**Notes:**
-- RUNME.sh just helps replacing all tags etc. `{{REPOSITORY_NAME}}` or `{{DESCRIPTION}}` from files, if not familiar with bash scripts this step should be done manually 
-- Brief introduction on how to develop your Unity package is included in CONTRIBUTING.md
+Use Unity Package Manager with **Add package from disk...** and select this package's `package.json`.
 
-For further details, please see
- - [Github docs on creating repository from template](https://docs.github.com/en/free-pro-team@latest/github/creating-cloning-and-archiving-repositories/creating-a-repository-from-a-template)
- - [Unity docs on creating custom packages.](https://docs.unity3d.com/Manual/CustomPackages.html)
+For local project testing, you can also add it to a Unity project's `Packages/manifest.json`:
 
-When your package is ready for publish, you can publish it into:
-- Open Source Unity Package Registry [openupm](https://openupm.com/)
-- [npmjs](https://docs.npmjs.com/cli/publish) package registry
-  - **Note:** If your package contains a lot of images/data or size exceeds 10mbs it might not be a good idea.
+```json
+{
+  "dependencies": {
+    "com.project-simple.unity-plugin": "file:../path/to/SIMPLE-Unity-Plugin"
+  }
+}
+```
+
+Do not add another copy of NativeWebSocket unless you remove the vendored copy from this package.
+
+## Runtime Usage
+
+1. Start `simple.webplatform`.
+2. Make sure the headset WebSocket port is `8080` or set `HEADSET_WS_PORT` on the webplatform side.
+3. In Unity, set `PlayerPrefs["IP"]` to the machine running webplatform and `PlayerPrefs["PORT"]` to `8080`.
+4. Add `ConnectionManager` to the startup scene before simulation managers need the connection.
+
+The runtime sends `connection`, `pong`, `expression`, `ask`, and `disconnect_properly` messages. It receives `ping`, `json_state`, and `json_output` from webplatform.
+
+## Current Status
+
+The package layout, assembly names, and runtime WebSocket dependency are now in place.
+
+Known remaining work:
+
+- Add required runtime resources for `Resources.Load` paths.
+- Decide whether legacy geometry import/export should become a separate optional package.
+- Verify import and compilation in a clean Unity 6 project.
+
+## Unity Version
+
+The source project targets Unity 6. The package manifest currently declares Unity `6000.0`.
 
 ## License
 
-MIT License
+MIT License. See `LICENSE`.
 
-Copyright © 2020 3D Group
+Third-party notices are listed in `THIRD_PARTY_NOTICES.md`.

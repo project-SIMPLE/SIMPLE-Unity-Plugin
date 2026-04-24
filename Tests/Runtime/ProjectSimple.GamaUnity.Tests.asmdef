@@ -1,0 +1,11 @@
+{
+  "name": "ProjectSimple.GamaUnity.Tests",
+  "references": [
+    "ProjectSimple.GamaUnity"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": []
+}

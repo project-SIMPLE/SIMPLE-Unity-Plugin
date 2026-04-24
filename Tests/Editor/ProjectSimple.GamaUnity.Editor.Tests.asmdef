@@ -1,0 +1,12 @@
+{
+  "name": "ProjectSimple.GamaUnity.Editor.Tests",
+  "references": [
+    "ProjectSimple.GamaUnity",
+    "ProjectSimple.GamaUnity.Editor"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": []
+}

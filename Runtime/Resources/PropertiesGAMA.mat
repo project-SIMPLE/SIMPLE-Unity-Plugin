@@ -1,0 +1,10 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  m_Name: PropertiesGAMA
+  m_Shader: {fileID: 4800000, guid: 933532a4fcc9b5b438927dcabc399230, type: 3}
+  m_SavedProperties:
+    serializedVersion: 3
+    m_Colors:
+    - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
