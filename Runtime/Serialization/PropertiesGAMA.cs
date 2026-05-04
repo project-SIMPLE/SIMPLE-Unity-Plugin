@@ -39,7 +39,9 @@ public class PropertiesGAMA
 
     public int height;
     public bool is3D;
-    // public List<int> color;
+    public List<int> color;
+    public List<float> rgb;
+    public List<float> rgba;
 
 
     public string material;
@@ -55,13 +57,14 @@ public class PropertiesGAMA
 
     public void loadPrefab(int precision)
     {
+        int safePrecision = precision <= 0 ? 1 : precision;
+        yOffsetF = (0.0f + yOffset) / safePrecision;
+        rotationCoeffF = (0.0f + rotationCoeff) / safePrecision;
+        rotationOffsetF = (0.0f + rotationOffset) / safePrecision;
+
         if (prefab != null && !prefab.Equals(""))
         {
-            prefabObj = Resources.Load(prefab) as GameObject;
-            yOffsetF = (0.0f + yOffset)/precision  ;
-            rotationCoeffF = (0.0f + rotationCoeff) / precision;
-            rotationOffsetF = (0.0f + rotationOffset) / precision;
-
+            prefabObj = GamaVisualUtility.ResolvePrefab(prefab);
         }
     }
 
