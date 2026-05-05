@@ -1,21 +1,127 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.InputSystem;
 using UnityEngine.XR.Interaction.Toolkit.Inputs.Simulation;
 
-[RequireComponent(typeof(GamaAgentSceneSettings))]
-[RequireComponent(typeof(GamaPrefabSceneSettings))]
+/// <summary>
+/// Ordre &gt; <see cref="ConnectionManager"/> pour que l’instance websocket existe déjà en <c>Awake</c>/<c>OnEnable</c>.
+/// </summary>
+[DefaultExecutionOrder(10)]
 public class SimulationManager : MonoBehaviour
 {
+    [Serializable]
+    private class ManualPrefabOverride
+    {
+        public string label = "Override";
+        public bool enabled = true;
+        public string propertyIdEquals;
+        public string propertyIdContains;
+        public string tagContains;
+        public string nameContains;
+        public GameObject prefab;
+
+        public bool Matches(PropertiesGAMA prop, string objectName)
+        {
+            if (!enabled || prop == null || prefab == null)
+            {
+                return false;
+            }
+
+            string propId = prop.id ?? string.Empty;
+            string tag = prop.tag ?? string.Empty;
+            string name = objectName ?? string.Empty;
+
+            if (!string.IsNullOrEmpty(propertyIdEquals) &&
+                !propId.Equals(propertyIdEquals, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrEmpty(propertyIdContains) &&
+                propId.IndexOf(propertyIdContains, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrEmpty(tagContains) &&
+                tag.IndexOf(tagContains, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrEmpty(nameContains) &&
+                name.IndexOf(nameContains, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return false;
+            }
+
+            return !string.IsNullOrEmpty(propertyIdEquals) ||
+                   !string.IsNullOrEmpty(propertyIdContains) ||
+                   !string.IsNullOrEmpty(tagContains) ||
+                   !string.IsNullOrEmpty(nameContains);
+        }
+    }
+
+    [Serializable]
+    private class SpeciesVisualOverride
+    {
+        public string label = "Species override";
+        public bool enabled = true;
+        [Tooltip("Id d'espece/propriete GAMA (ex: people, car, bus).")]
+        public string speciesId;
+        [Tooltip("Prefab optionnel pour ecraser le prefab lu depuis GAMA (ou quand il n'y en a pas).")]
+        public GameObject prefabOverride;
+        [Range(0.01f, 20f)]
+        public float scaleMultiplier = 1f;
+        public bool overrideColor = false;
+        public Color colorOverride = Color.white;
+
+        public bool Matches(PropertiesGAMA prop)
+        {
+            if (!enabled || prop == null || string.IsNullOrWhiteSpace(speciesId))
+            {
+                return false;
+            }
+
+            return string.Equals(prop.id ?? string.Empty, speciesId, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Serializable]
+    private class SpeciesVisualOverrideCache
+    {
+        public string signature;
+        public List<SpeciesVisualOverride> entries = new List<SpeciesVisualOverride>();
+    }
+
+    [Header("Debug logs")]
+    [SerializeField] private bool verboseMessageLogs = false;
+    [SerializeField, Tooltip("Intervalle minimal entre deux logs de traitement pointsLoc (secondes).")]
+    private float pointsLocProcessingLogIntervalSeconds = 2f;
+    private float _nextPointsLocProcessingLogAt;
+    [SerializeField, Tooltip("Active des logs diagnostics sur l'origine des couleurs GAMA.")]
+    private bool debugColorMessages = false;
+    [SerializeField, Tooltip("Nombre maximum de logs couleur avant arrêt automatique (anti-spam).")]
+    private int debugColorMessagesMax = 40;
+    private int debugColorMessagesCount = 0;
     [SerializeField] protected InputActionReference primaryRightHandButton = null;
 
-    [Header("GAMA defaults and Unity overrides")]
-    [SerializeField] protected GamaAgentSceneSettings agentSceneSettings;
-    [SerializeField] protected GamaPrefabSceneSettings prefabSceneSettings;
+    [Header("Teinte prefab (optionnel, par scène Unity)")]
+    [Tooltip("Désactivé par défaut : chaque experiment doit fournir la couleur via GAMA (attributes / properties avec RGB). N’active ceci que dans une scene donnée où le JSON n’a pas de couleur prefab mais tu acceptes une teinte fixe (ex. Traffic).")]
+    [SerializeField] bool applyInspectorTintWhenPrefabHasNoGamaColor = false;
+    [SerializeField] Color prefabTintWhenGamaOmitsRgb = new Color32(180, 180, 180, 255);
+
+    [Header("Prefab overrides manuels (Inspector Unity)")]
+    [Tooltip("Permet de forcer un prefab Unity pour certains agents/propriétés reçus de GAMA. Le premier override qui matche est utilisé.")]
+    [SerializeField] private List<ManualPrefabOverride> manualPrefabOverrides = new List<ManualPrefabOverride>();
+    [Header("Overrides visuels par espece (Inspector Unity)")]
+    [Tooltip("Configuration par espece GAMA: prefab optionnel, multiplicateur d'echelle, couleur d'override.")]
+    [SerializeField] private List<SpeciesVisualOverride> speciesVisualOverrides = new List<SpeciesVisualOverride>();
   
     [Header("Base GameObjects")]
     [SerializeField] protected GameObject player;
@@ -110,6 +216,8 @@ public class SimulationManager : MonoBehaviour
 
     bool hasSimulator ;
     private ConnectionManager subscribedConnectionManager;
+    private static bool warnedMissingConnectionManager;
+    [SerializeField, HideInInspector] private string cachedSpeciesSignature = string.Empty;
 
     // ############################################ UNITY FUNCTIONS ############################################
     void Awake()
@@ -117,7 +225,6 @@ public class SimulationManager : MonoBehaviour
         ProjectSimple.GamaUnity.Runtime.GamaInitializer.InitializeGama();
         ProjectSimple.GamaUnity.Runtime.GamaInitializer.SetupPlayer(this, true);
         ProjectSimple.GamaUnity.Runtime.GamaInitializer.SetupGround(this, true);
-        EnsureRuntimeSceneSettings();
 
         hasSimulator = UnityEngine.Object.FindFirstObjectByType<XRDeviceSimulator>() != null;
         connectionID["id"] = ConnectionManager.Instance != null ? ConnectionManager.Instance.GetConnectionId() : StaticInformation.getId();
@@ -150,33 +257,57 @@ public class SimulationManager : MonoBehaviour
         playerMovement(false);
         toFollow = new List<GameObject>();
 
-       
+        geometryMap = new Dictionary<string, List<object>>();
     }
 
 
     void OnEnable()
+    {
+        LoadSpeciesOverridesFromCache();
+        TrySubscribeConnectionManager();
+    }
+
+    void TrySubscribeConnectionManager()
     {
         if (subscribedConnectionManager != null)
         {
             return;
         }
 
-        if (ConnectionManager.Instance == null)
+        ConnectionManager cm = ConnectionManager.Instance;
+        if (cm == null)
         {
-            Debug.Log("No connection manager");
+            ConnectionManager[] found = UnityEngine.Object.FindObjectsByType<ConnectionManager>(
+                UnityEngine.FindObjectsInactive.Include,
+                UnityEngine.FindObjectsSortMode.None);
+            if (found != null && found.Length > 0)
+            {
+                cm = found[0];
+            }
+        }
+
+        if (cm == null)
+        {
+            if (!warnedMissingConnectionManager)
+            {
+                warnedMissingConnectionManager = true;
+                Debug.LogWarning("[GAMA] Aucun ConnectionManager actif (Instance null). "
+                    + "Vérifie la scène : composant présent sur le même GameObject que le middleware "
+                    + "et absence de « Missing (Mono Script) ». Relance après réassignation du script.");
+            }
+
             return;
         }
 
-        subscribedConnectionManager = ConnectionManager.Instance;
+        warnedMissingConnectionManager = false;
+        subscribedConnectionManager = cm;
         subscribedConnectionManager.OnServerMessageReceived += HandleServerMessageReceived;
         subscribedConnectionManager.OnConnectionAttempted += HandleConnectionAttempted;
         subscribedConnectionManager.OnConnectionStateChanged += HandleConnectionStateChanged;
-        Debug.Log("SimulationManager: OnEnable");
     }
 
     void OnDisable()
     {
-        Debug.Log("SimulationManager: OnDisable");
         if (subscribedConnectionManager == null)
         {
             return;
@@ -193,13 +324,163 @@ public class SimulationManager : MonoBehaviour
         Debug.Log("SimulationManager: OnDestroy");
     }
 
+    void OnValidate()
+    {
+        if (!Application.isPlaying)
+        {
+            SaveSpeciesOverridesToCache();
+        }
+    }
+
     void Start()
     {
-        geometryMap = new Dictionary<string, List<object>>();
+        if (geometryMap == null)
+        {
+            geometryMap = new Dictionary<string, List<object>>();
+        }
+
         handleGeometriesRequested = false;
         // handlePlayerParametersRequested = false;
         handleGroundParametersRequested = false;
         OnEnable();
+        TrySubscribeConnectionManager();
+    }
+
+    private string GetSpeciesCacheKey()
+    {
+        Scene s = gameObject.scene;
+        string sceneKey = !string.IsNullOrEmpty(s.path) ? s.path : s.name;
+        return "GAMA_SPECIES_OVERRIDES::" + GetType().FullName + "::" + sceneKey + "::" + gameObject.name;
+    }
+
+    private void SaveSpeciesOverridesToCache()
+    {
+        SpeciesVisualOverrideCache cache = new SpeciesVisualOverrideCache
+        {
+            signature = cachedSpeciesSignature,
+            entries = speciesVisualOverrides ?? new List<SpeciesVisualOverride>()
+        };
+
+        string json = JsonUtility.ToJson(cache);
+        PlayerPrefs.SetString(GetSpeciesCacheKey(), json);
+        PlayerPrefs.Save();
+    }
+
+    private void LoadSpeciesOverridesFromCache()
+    {
+        string key = GetSpeciesCacheKey();
+        if (!PlayerPrefs.HasKey(key))
+        {
+            return;
+        }
+
+        string json = PlayerPrefs.GetString(key);
+        if (string.IsNullOrEmpty(json))
+        {
+            return;
+        }
+
+        SpeciesVisualOverrideCache cache = JsonUtility.FromJson<SpeciesVisualOverrideCache>(json);
+        if (cache == null)
+        {
+            return;
+        }
+
+        cachedSpeciesSignature = cache.signature ?? string.Empty;
+        speciesVisualOverrides = cache.entries ?? new List<SpeciesVisualOverride>();
+    }
+
+    private static string BuildSpeciesSignature(List<PropertiesGAMA> properties)
+    {
+        if (properties == null || properties.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        HashSet<string> ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < properties.Count; i++)
+        {
+            PropertiesGAMA p = properties[i];
+            if (p == null || string.IsNullOrWhiteSpace(p.id))
+            {
+                continue;
+            }
+
+            ids.Add(p.id.Trim());
+        }
+
+        if (ids.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        List<string> ordered = ids.ToList();
+        ordered.Sort(StringComparer.OrdinalIgnoreCase);
+        return string.Join("|", ordered);
+    }
+
+    private void SyncSpeciesOverridesFromProperties(List<PropertiesGAMA> properties)
+    {
+        if (properties == null || properties.Count == 0)
+        {
+            return;
+        }
+
+        string newSignature = BuildSpeciesSignature(properties);
+        if (string.IsNullOrEmpty(newSignature))
+        {
+            return;
+        }
+
+        bool isNewExperiment = !string.IsNullOrEmpty(cachedSpeciesSignature) &&
+                               !string.Equals(cachedSpeciesSignature, newSignature, StringComparison.Ordinal);
+
+        if (string.Equals(cachedSpeciesSignature, newSignature, StringComparison.Ordinal) &&
+            speciesVisualOverrides != null &&
+            speciesVisualOverrides.Count > 0)
+        {
+            return;
+        }
+
+        HashSet<string> speciesIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < properties.Count; i++)
+        {
+            PropertiesGAMA p = properties[i];
+            if (p != null && !string.IsNullOrWhiteSpace(p.id))
+            {
+                speciesIds.Add(p.id.Trim());
+            }
+        }
+
+        List<string> ordered = speciesIds.ToList();
+        ordered.Sort(StringComparer.OrdinalIgnoreCase);
+
+        speciesVisualOverrides = new List<SpeciesVisualOverride>();
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            speciesVisualOverrides.Add(new SpeciesVisualOverride
+            {
+                label = ordered[i],
+                enabled = true,
+                speciesId = ordered[i],
+                prefabOverride = null,
+                scaleMultiplier = 1f,
+                overrideColor = false,
+                colorOverride = Color.white
+            });
+        }
+
+        cachedSpeciesSignature = newSignature;
+        SaveSpeciesOverridesToCache();
+
+        if (isNewExperiment)
+        {
+            Debug.Log("[GAMA] Nouvel experiment detecte: reset des overrides par espece.");
+        }
+        else
+        {
+            Debug.Log("[GAMA] Especes detectees automatiquement: " + ordered.Count + ".");
+        }
     }
 
 
@@ -271,6 +552,7 @@ public class SimulationManager : MonoBehaviour
             {
                 TimerSendInit = TimeSendInit;
                 ConnectionManager.Instance.SendExecutableAsk("send_init_data", connectionID);
+                Debug.Log("[GAMA] Sending send_init_data (retry)...");
             }
         }
 
@@ -581,7 +863,10 @@ public class SimulationManager : MonoBehaviour
 
     void GenerateGeometries(bool initGame, HashSet<string> toRemove)
     {
-
+        if (geometryMap == null)
+        {
+            geometryMap = new Dictionary<string, List<object>>();
+        }
 
         if (infoWorld.position != null && infoWorld.position.Count > 1 && (initGame || !sendMessageToReactivatePositionSent))
         {
@@ -605,25 +890,21 @@ public class SimulationManager : MonoBehaviour
             string propId = infoWorld.propertyID[i];
            
             PropertiesGAMA prop = propertyMap[propId];
-            Attributes attributes = infoWorld.GetAttributesAt(i);
-            GamaAgentVisualState visualState = ResolveAgentVisualState(name, prop, attributes);
 
             GameObject obj = null;
          
             if (prop.hasPrefab)
             {
-                string desiredPrefabSignature = ResolvePrefabSignature(prop, attributes);
                 if (initGame || !geometryMap.ContainsKey(name))
                 {
-                    obj = instantiatePrefab(name, prop, attributes, desiredPrefabSignature, initGame);
-         
+                    obj = instantiatePrefab(name, prop, initGame);
                 }
                 else
                 {
                     List<object> o = geometryMap[name];
                     GameObject obj2 = (GameObject)o[0];
                     PropertiesGAMA p = (PropertiesGAMA)o[1];
-                    if (p == prop && !NeedsPrefabRebuild(obj2, desiredPrefabSignature))
+                    if (p == prop)
                     {
                         obj = obj2;
                     }
@@ -636,19 +917,18 @@ public class SimulationManager : MonoBehaviour
                             toFollow.Remove(obj2);
 
                         GameObject.Destroy(obj2);
-                        obj = instantiatePrefab(name, prop, attributes, desiredPrefabSignature, initGame);
+                        obj = instantiatePrefab(name, prop, initGame);
 
                     }
 
                 }
+                Vector3 unityPosBeforeApply = obj.transform.position;
                 List<int> pt = infoWorld.pointsLoc[cptPrefab].c;
                 Vector3 pos = converter.fromGAMACRS(pt[0], pt[1], pt[2]);
                 pos.y += prop.yOffsetF;
-                pos += visualState.PositionOffset;
-                float rot = prop.rotationCoeffF * ((0.0f + pt[3]) / parameters.precision) + prop.rotationOffsetF;
-                Quaternion rotation = Quaternion.AngleAxis(rot, Vector3.up) * Quaternion.Euler(visualState.RotationOffsetEuler);
-                obj.transform.SetPositionAndRotation(pos, rotation);
-                ApplyAgentVisualState(obj, prop, visualState, true, Vector3.zero);
+                Quaternion orientation =
+                    ResolvePrefabOrientation(unityPosBeforeApply, pos, pt, prop, skipVelocityInference: initGame, obj);
+                obj.transform.SetPositionAndRotation(pos, orientation);
                 //obj.SetActive(true);
                 if(toRemove != null) toRemove.Remove(name);
                 cptPrefab++;
@@ -665,11 +945,11 @@ public class SimulationManager : MonoBehaviour
 
                 int[] pt = infoWorld.pointsGeom[cptGeom].c.ToArray();
                 float yOffset = (0.0f + infoWorld.offsetYGeom[cptGeom]) / (0.0f + parameters.precision);
-                Vector3 polygonBasePosition = new Vector3(0f, yOffset, 0f);
 
                 if(initGame || !geometryMap.ContainsKey(name))
                 {
                     obj = polyGen.GeneratePolygons(false, name, pt, prop, parameters.precision);
+                    obj.transform.position = new Vector3(obj.transform.position.x, obj.transform.position.y + yOffset, obj.transform.position.z);
                    if(prop.hasCollider)
                     {
                         MeshCollider mc = obj.AddComponent<MeshCollider>();
@@ -693,11 +973,12 @@ public class SimulationManager : MonoBehaviour
                     }
                 }
                 
-                ApplyAgentVisualState(obj, prop, visualState, false, polygonBasePosition);
                 if(toRemove != null) toRemove.Remove(name);
                 cptGeom++;
             }
 
+            ApplyVisualAttributes(i, obj);
+            ApplyPrefabInspectorTintIfNeeded(prop, obj, i);
 
         }
 
@@ -833,19 +1114,44 @@ public class SimulationManager : MonoBehaviour
     // ############################################ UPDATERS ############################################
     private void UpdatePlayerPosition()
     {
-        Vector2 vF = new Vector2(Camera.main.transform.forward.x, Camera.main.transform.forward.z);
+        if (converter == null || parameters == null || XROrigin == null ||
+            ConnectionManager.Instance == null)
+        {
+            return;
+        }
+
+        Camera playCamera = Camera.main;
+        if (playCamera == null && player != null)
+        {
+            playCamera = player.GetComponentInChildren<Camera>();
+        }
+
         Vector2 vR = new Vector2(transform.forward.x, transform.forward.z);
-        vF.Normalize();
         vR.Normalize();
-        float c = vF.x * vR.x + vF.y * vR.y;
-        float s = vF.x * vR.y - vF.y * vR.x;
-        int angle = (int)(((s > 0) ? -1.0 : 1.0) * (180 / Math.PI) * Math.Acos(c) * parameters.precision);
+        int angle = 0;
 
+        if (playCamera != null)
+        {
+            Vector2 vF = new Vector2(playCamera.transform.forward.x, playCamera.transform.forward.z);
+            vF.Normalize();
+            float c = vF.x * vR.x + vF.y * vR.y;
+            float s = vF.x * vR.y - vF.y * vR.x;
+            angle = (int)(((s > 0) ? -1.0 : 1.0) * (180 / Math.PI) * Math.Acos(Mathf.Clamp(c, -1f, 1f)) *
+                    parameters.precision);
+        }
 
-
-      //  Vector3 v = new Vector3(Camera.main.transform.position.x, Camera.main.transform.position.y - yOffsetCamera, Camera.main.transform.position.z);
-        Vector3 v = hasSimulator ? new Vector3(Camera.main.transform.localPosition.x + XROrigin.localPosition.x, Camera.main.transform.localPosition.y + XROrigin.localPosition.y,Camera.main.transform.localPosition.z + XROrigin.localPosition.z)
- : new Vector3(XROrigin.localPosition.x, XROrigin.localPosition.y, XROrigin.localPosition.z);
+        Vector3 v;
+        if (hasSimulator && playCamera != null)
+        {
+            v = new Vector3(
+                playCamera.transform.localPosition.x + XROrigin.localPosition.x,
+                playCamera.transform.localPosition.y + XROrigin.localPosition.y,
+                playCamera.transform.localPosition.z + XROrigin.localPosition.z);
+        }
+        else
+        {
+            v = new Vector3(XROrigin.localPosition.x, XROrigin.localPosition.y, XROrigin.localPosition.z);
+        }
 
         List<int> p = converter.toGAMACRS3D(v);
         Dictionary<string, string> args = new Dictionary<string, string> {
@@ -932,259 +1238,135 @@ public class SimulationManager : MonoBehaviour
 
 
 
-    private GameObject instantiatePrefab(
-        string name,
-        PropertiesGAMA prop,
-        Attributes attributes,
-        string prefabSignature,
-        bool initGame)
+    private GameObject instantiatePrefab(String name, PropertiesGAMA prop, bool initGame)
     {
-        GameObject sourcePrefab;
-        string resolvedSignature;
-        bool hasPrefab = TryResolvePrefabAsset(prop, attributes, out sourcePrefab, out resolvedSignature);
+        prop.loadPrefab(parameters.precision);
+        GameObject speciesPrefab = ResolveSpeciesPrefabOverride(prop);
+        GameObject manualPrefab = speciesPrefab != null ? speciesPrefab : ResolveManualPrefabOverride(prop, name);
+        GameObject obj = GamaVisualUtility.InstantiateVisual(name, prop, parameters.precision, manualPrefab);
 
-        if (!string.IsNullOrWhiteSpace(prefabSignature))
+        if (prop.hasCollider)
         {
-            resolvedSignature = prefabSignature;
+            if (obj.TryGetComponent<LODGroup>(out var lod))
+            {
+                foreach (LOD l in lod.GetLODs())
+                {
+                    GameObject b = l.renderers[0].gameObject;
+                    Collider c = b.GetComponent<Collider>();
+                    if (c != null && c.bounds.extents.x == 0) 
+                        c = null;
+                
+                    if (c == null)
+                    {
+                        BoxCollider bc = b.AddComponent<BoxCollider>();
+                    }
+                    // b.tag = obj.tag;
+                    // b.name = obj.name;
+                    //bc.isTrigger = prop.isTrigger;
+                }
+            }
+            else
+            {
+                Collider c = obj.GetComponent<Collider>();
+                if (c != null && c.bounds.extents.x == 0) 
+                    c = null;
+                if (c == null)
+                {
+                    BoxCollider bc = obj.AddComponent<BoxCollider>();
+                }
+                // bc.isTrigger = prop.isTrigger;
+            }
         }
-
-        GameObject obj;
-        if (!hasPrefab || sourcePrefab == null)
-        {
-            Debug.LogWarning($"[GAMA] Prefab '{prop.prefab}' not found for agent '{name}'. Using placeholder cube.");
-            obj = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            obj.name = name + " (Placeholder)";
-            GamaSceneUtility.TrySetTag(obj, prop.tag);
-
-            float pScale = (float)prop.size / Mathf.Max(parameters != null ? parameters.precision : 1, 1);
-            obj.transform.localScale = new Vector3(pScale, pScale, pScale);
-            resolvedSignature = string.IsNullOrWhiteSpace(resolvedSignature)
-                ? "placeholder:" + GamaPrefabSceneSettings.NormalizeKey(prop.prefab)
-                : resolvedSignature;
-        }
-        else
-        {
-            obj = Instantiate(sourcePrefab);
-            obj.name = name;
-            float scale = (float)prop.size / Mathf.Max(parameters != null ? parameters.precision : 1, 1);
-            obj.transform.localScale = new Vector3(scale, scale, scale);
-            obj.SetActive(true);
-        }
-
-        EnsureColliderSetup(obj, prop);
-        SetPrefabSignature(obj, resolvedSignature);
-
-        List<object> pL = new List<object> { obj, prop };
-        if (!initGame)
-        {
-            geometryMap.Add(name, pL);
-        }
-
+        List<object> pL = new List<object>();
+        pL.Add(obj); pL.Add(prop);
+        if (!initGame) geometryMap.Add(name, pL);
         instantiateGO(obj, name, prop);
+        ApplySpeciesScaleOverride(obj, prop);
+
         return obj;
     }
 
-    private void EnsureColliderSetup(GameObject obj, PropertiesGAMA prop)
+    private SpeciesVisualOverride ResolveSpeciesVisualOverride(PropertiesGAMA prop)
     {
-        if (!prop.hasCollider || obj == null)
+        if (speciesVisualOverrides == null || speciesVisualOverrides.Count == 0 || prop == null)
         {
-            return;
+            return null;
         }
 
-        if (obj.TryGetComponent<LODGroup>(out var lod))
+        for (int i = 0; i < speciesVisualOverrides.Count; i++)
         {
-            foreach (LOD l in lod.GetLODs())
+            SpeciesVisualOverride o = speciesVisualOverrides[i];
+            if (o != null && o.Matches(prop))
             {
-                if (l.renderers == null || l.renderers.Length == 0 || l.renderers[0] == null)
-                {
-                    continue;
-                }
-
-                GameObject child = l.renderers[0].gameObject;
-                Collider childCollider = child.GetComponent<Collider>();
-                if (childCollider != null && childCollider.bounds.extents.x == 0)
-                {
-                    childCollider = null;
-                }
-
-                if (childCollider == null)
-                {
-                    child.AddComponent<BoxCollider>();
-                }
+                return o;
             }
-
-            return;
         }
 
-        Collider collider = obj.GetComponent<Collider>();
-        if (collider != null && collider.bounds.extents.x == 0)
-        {
-            collider = null;
-        }
-
-        if (collider == null)
-        {
-            obj.AddComponent<BoxCollider>();
-        }
+        return null;
     }
 
-    private bool TryResolvePrefabAsset(
-        PropertiesGAMA prop,
-        Attributes attributes,
-        out GameObject prefab,
-        out string signature)
+    private GameObject ResolveSpeciesPrefabOverride(PropertiesGAMA prop)
     {
-        prefab = null;
-        signature = string.Empty;
-        if (prop == null || !prop.hasPrefab)
-        {
-            return false;
-        }
-
-        if (prefabSceneSettings != null &&
-            prefabSceneSettings.TryResolvePrefab(prop, attributes, out prefab, out signature))
-        {
-            return prefab != null;
-        }
-
-        if (prop.prefabObj == null)
-        {
-            prop.loadPrefab(parameters != null ? parameters.precision : 1);
-        }
-
-        if (prop.prefabObj != null)
-        {
-            prefab = prop.prefabObj;
-            signature = "legacy:" + GamaPrefabSceneSettings.NormalizeKey(prop.prefab);
-            return true;
-        }
-
-        signature = "placeholder:" + GamaPrefabSceneSettings.NormalizeKey(prop.prefab);
-        return false;
+        SpeciesVisualOverride o = ResolveSpeciesVisualOverride(prop);
+        return o != null ? o.prefabOverride : null;
     }
 
-    private string ResolvePrefabSignature(PropertiesGAMA prop, Attributes attributes)
+    private void ApplySpeciesScaleOverride(GameObject obj, PropertiesGAMA prop)
     {
-        GameObject resolvedPrefab;
-        string signature;
-        TryResolvePrefabAsset(prop, attributes, out resolvedPrefab, out signature);
-        return signature;
-    }
-
-    private static bool NeedsPrefabRebuild(GameObject instance, string desiredSignature)
-    {
-        string currentSignature = GetPrefabSignature(instance);
-        return !string.Equals(currentSignature, desiredSignature, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static void SetPrefabSignature(GameObject instance, string signature)
-    {
-        if (instance == null)
+        if (obj == null || prop == null)
         {
             return;
         }
 
-        GamaRuntimePrefabSignature marker = instance.GetComponent<GamaRuntimePrefabSignature>();
-        if (marker == null)
-        {
-            marker = instance.AddComponent<GamaRuntimePrefabSignature>();
-        }
-
-        marker.signature = signature ?? string.Empty;
-    }
-
-    private static string GetPrefabSignature(GameObject instance)
-    {
-        if (instance == null)
-        {
-            return string.Empty;
-        }
-
-        GamaRuntimePrefabSignature marker = instance.GetComponent<GamaRuntimePrefabSignature>();
-        return marker != null ? marker.signature : string.Empty;
-    }
-
-    private void EnsureRuntimeSceneSettings()
-    {
-        if (agentSceneSettings == null)
-        {
-            agentSceneSettings = GetComponent<GamaAgentSceneSettings>();
-        }
-
-        if (agentSceneSettings == null)
-        {
-            agentSceneSettings = gameObject.AddComponent<GamaAgentSceneSettings>();
-        }
-
-        if (prefabSceneSettings == null)
-        {
-            prefabSceneSettings = GetComponent<GamaPrefabSceneSettings>();
-        }
-
-        if (prefabSceneSettings == null)
-        {
-            prefabSceneSettings = gameObject.AddComponent<GamaPrefabSceneSettings>();
-        }
-    }
-
-    private GamaAgentVisualState ResolveAgentVisualState(string agentName, PropertiesGAMA prop, Attributes attributes)
-    {
-        int precision = parameters != null ? parameters.precision : 1;
-        if (agentSceneSettings == null)
-        {
-            return GamaAgentSceneSettings.CreateDefaultVisualState(prop, attributes, precision);
-        }
-
-        return agentSceneSettings.ResolveVisualState(agentName, prop, attributes, precision);
-    }
-
-    private void ApplyAgentVisualState(
-        GameObject obj,
-        PropertiesGAMA prop,
-        GamaAgentVisualState visualState,
-        bool prefabAgent,
-        Vector3 basePosition)
-    {
-        if (obj == null)
+        SpeciesVisualOverride o = ResolveSpeciesVisualOverride(prop);
+        if (o == null)
         {
             return;
         }
 
-        int precision = parameters != null ? parameters.precision : 1;
-        float baseScale = prefabAgent && prop != null ? prop.GetUnityScale(precision) : 1f;
-        float scale = Mathf.Max(0f, baseScale * visualState.ScaleMultiplier);
-        obj.transform.localScale = new Vector3(scale, scale, scale);
-
-        if (!prefabAgent)
-        {
-            obj.transform.position = basePosition + visualState.PositionOffset;
-            obj.transform.rotation = Quaternion.Euler(visualState.RotationOffsetEuler);
-        }
-
-        if (visualState.HasColor)
-        {
-            ChangeColor(obj, visualState.Color);
-        }
-
-        SetRenderersEnabled(obj, visualState.Visible);
+        float scale = Mathf.Max(0.01f, o.scaleMultiplier);
+        obj.transform.localScale *= scale;
     }
 
-    private static void SetRenderersEnabled(GameObject obj, bool visible)
+    private GameObject ResolveManualPrefabOverride(PropertiesGAMA prop, string objectName)
     {
-        Renderer[] renderers = obj.GetComponentsInChildren<Renderer>(true);
-        for (int i = 0; i < renderers.Length; i++)
+        if (manualPrefabOverrides == null || manualPrefabOverrides.Count == 0 || prop == null)
         {
-            renderers[i].enabled = visible;
+            return null;
         }
+
+        for (int i = 0; i < manualPrefabOverrides.Count; i++)
+        {
+            ManualPrefabOverride o = manualPrefabOverrides[i];
+            if (o != null && o.Matches(prop, objectName))
+            {
+                return o.prefab;
+            }
+        }
+
+        return null;
     }
 
 
 
     private void UpdateAgentsList()
     {
+        if (geometryMap == null || infoWorld == null)
+        {
+            return;
+        }
 
+        if (converter == null || propertyMap == null || parameters == null)
+        {
+            return;
+        }
 
         ManageOtherInformation();
+        if (toRemove == null)
+        {
+            return;
+        }
+
         toRemove.Clear();
         toRemove.UnionWith(geometryMap.Keys);
 
@@ -1208,9 +1390,224 @@ public class SimulationManager : MonoBehaviour
         }
     }
 
+    Quaternion ResolvePrefabOrientation(Vector3 unityPosBeforeApply, Vector3 targetUnityWorld,
+        List<int> pointRow, PropertiesGAMA prop, bool skipVelocityInference, GameObject obj)
+    {
+        Quaternion visualOffset = GetPrefabVisualOffset(prop);
+        Quaternion prefabBaseRotation = GetPrefabBaseRotation(prop);
+
+        Quaternion headingYaw = HeadingYawFromGamaDegrees(parameters, prop, pointRow, obj);
+        Quaternion gamaRotation = headingYaw * visualOffset * prefabBaseRotation;
+
+        Vector3 deltaWorld = targetUnityWorld - unityPosBeforeApply;
+        deltaWorld.y = 0f;
+
+        float moveSq = Mathf.Max(MinMovementSquaredForPrefabOrientation(parameters), 1e-10f);
+        bool preferMovementOrientation = IsVehicleLikePrefab(prop);
+        bool movementValid =
+            !skipVelocityInference &&
+            deltaWorld.sqrMagnitude >= moveSq &&
+            (preferMovementOrientation || LooksLikePrefabStepRatherThanTeleport(deltaWorld));
+
+        Quaternion movementRotation = movementValid
+            ? Quaternion.LookRotation(deltaWorld.normalized, Vector3.up) * visualOffset * prefabBaseRotation
+            : gamaRotation;
+
+        return movementValid ? movementRotation : gamaRotation;
+    }
+
+    static Quaternion GetPrefabVisualOffset(PropertiesGAMA prop)
+    {
+        if (prop == null || prop.prefabObj == null)
+        {
+            return Quaternion.identity;
+        }
+
+        return Quaternion.Euler(0f, prop.rotationOffsetF, 0f);
+    }
+
+    static Quaternion GetPrefabBaseRotation(PropertiesGAMA prop)
+    {
+        return prop != null && prop.prefabObj != null
+            ? prop.prefabObj.transform.rotation
+            : Quaternion.identity;
+    }
+
+    static bool IsVehicleLikePrefab(PropertiesGAMA prop)
+    {
+        if (prop == null)
+        {
+            return false;
+        }
+
+        string descriptor =
+            ((prop.prefab ?? string.Empty) + " " +
+             (prop.tag ?? string.Empty) + " " +
+             (prop.id ?? string.Empty)).ToLowerInvariant();
+
+        return descriptor.Contains("vehicle") ||
+               descriptor.Contains("car") ||
+               descriptor.Contains("bus") ||
+               descriptor.Contains("truck") ||
+               descriptor.Contains("van") ||
+               descriptor.Contains("taxi") ||
+               descriptor.Contains("bike") ||
+               descriptor.Contains("bicycle") ||
+               descriptor.Contains("scooter") ||
+               descriptor.Contains("moto") ||
+               descriptor.Contains("motorcycle") ||
+               descriptor.Contains("tram");
+    }
+
+    bool LooksLikePrefabStepRatherThanTeleport(Vector3 deltaXZ)
+    {
+        if (parameters == null || parameters.precision <= 0 || converter == null)
+        {
+            return deltaXZ.sqrMagnitude < 500f * 500f;
+        }
+
+        float worldApprox = Mathf.Max(
+            Mathf.Abs(converter.GamaCRSCoefX),
+            Mathf.Abs(converter.GamaCRSCoefY),
+            Mathf.Abs(converter.GamaCRSCoefZ),
+            Mathf.Max(2f / (parameters.precision + 1f), 1e-6f));
+
+        float maxStep = Mathf.Max(worldApprox * (parameters.precision * 12f), 80f);
+
+        return deltaXZ.sqrMagnitude <= maxStep * maxStep;
+    }
+
+    Quaternion HeadingYawFromGamaDegrees(ConnectionParameter parameters, PropertiesGAMA prop, List<int> pointRow, GameObject obj)
+    {
+        int prec = parameters != null && parameters.precision > 0 ? parameters.precision : 1;
+
+        if (pointRow == null || pointRow.Count < 4)
+        {
+            return Quaternion.identity;
+        }
+
+        float rawHeadingDegrees = pointRow[3] / (float)prec;
+        float coeff = Mathf.Abs(prop.rotationCoeffF) > 1e-6f ? prop.rotationCoeffF : 1f;
+
+        float yawDegrees = coeff * rawHeadingDegrees;
+        return Quaternion.AngleAxis(yawDegrees, Vector3.up);
+    }
+
+    static float MinMovementSquaredForPrefabOrientation(ConnectionParameter parameters)
+    {
+        if (parameters == null || parameters.precision <= 0)
+        {
+            return 1e-9f;
+        }
+
+        float worldUnit = Mathf.Max(2f / (parameters.precision + 1f), 1e-6f);
+        float delta = Mathf.Max(worldUnit * 0.25f, 0.0005f);
+
+        return delta * delta;
+    }
+
+    void ApplyPrefabInspectorTintIfNeeded(PropertiesGAMA prop, GameObject obj, int rowIndex)
+    {
+        if (!applyInspectorTintWhenPrefabHasNoGamaColor ||
+            obj == null ||
+            prop == null ||
+            infoWorld == null ||
+            !prop.hasPrefab)
+        {
+            return;
+        }
+
+        if (GamaVisualUtility.PropertiesMessageIncludesExplicitTint(prop))
+        {
+            return;
+        }
+
+        if (infoWorld.attributes != null && rowIndex < infoWorld.attributes.Count)
+        {
+            Attributes attrRow = infoWorld.attributes[rowIndex];
+            if (attrRow.TryGetColor(out _))
+            {
+                return;
+            }
+        }
+
+        GamaVisualUtility.ApplyColor(obj, prefabTintWhenGamaOmitsRgb);
+    }
+
     protected virtual void ManageAttributes(List<Attributes> attributes)
     {
 
+    }
+
+    private void ApplyVisualAttributes(int attributeIndex, GameObject obj)
+    {
+        if (obj == null || infoWorld == null || attributeIndex < 0)
+        {
+            return;
+        }
+
+        bool hasAttrRow = infoWorld.attributes != null && attributeIndex < infoWorld.attributes.Count;
+        string propId = null;
+        PropertiesGAMA propForDebug = null;
+        if (propertyMap != null && infoWorld.propertyID != null &&
+            attributeIndex < infoWorld.propertyID.Count)
+        {
+            propId = infoWorld.propertyID[attributeIndex];
+            propertyMap.TryGetValue(propId, out propForDebug);
+        }
+
+        SpeciesVisualOverride speciesOverride = ResolveSpeciesVisualOverride(propForDebug);
+        if (speciesOverride != null && speciesOverride.overrideColor)
+        {
+            Color32 c = (Color32)speciesOverride.colorOverride;
+            GamaVisualUtility.ApplyColor(obj, c);
+            LogColorDebug("species-override", obj, propId, propForDebug,
+                "Applied from species override: rgba(" + c.r + "," + c.g + "," + c.b + "," + c.a + ").");
+            return;
+        }
+
+        Color32 color;
+        if (hasAttrRow && infoWorld.attributes[attributeIndex] != null &&
+            infoWorld.attributes[attributeIndex].TryGetColor(out color))
+        {
+            GamaVisualUtility.ApplyColor(obj, color);
+            LogColorDebug("attributes", obj, propId, propForDebug,
+                "Applied from attributes: rgba(" + color.r + "," + color.g + "," + color.b + "," + color.a + ").");
+            return;
+        }
+
+        if (propForDebug != null && GamaVisualUtility.PropertiesMessageIncludesExplicitTint(propForDebug))
+        {
+            Color32 propColor = GamaVisualUtility.GetColor(propForDebug);
+            GamaVisualUtility.ApplyColor(obj, propColor);
+            LogColorDebug("properties", obj, propId, propForDebug,
+                "Applied from properties: rgba(" + propColor.r + "," + propColor.g + "," + propColor.b + "," + propColor.a + ").");
+            return;
+        }
+
+        Attributes attr = hasAttrRow ? infoWorld.attributes[attributeIndex] : null;
+        string keys = attr != null ? attr.DebugKeysPreview() : "(null attributes)";
+        string pref = propForDebug != null ? (propForDebug.prefab ?? "(no prefab path)") : "(no property)";
+        LogColorDebug("missing", obj, propId, propForDebug,
+            "No color found in attributes/properties. attr keys: [" + keys + "], prefab: " + pref);
+    }
+
+    private void LogColorDebug(string source, GameObject obj, string propId, PropertiesGAMA prop, string details)
+    {
+        if (!debugColorMessages || debugColorMessagesCount >= Mathf.Max(1, debugColorMessagesMax))
+        {
+            return;
+        }
+
+        debugColorMessagesCount++;
+        string objName = obj != null ? obj.name : "(null obj)";
+        string pid = !string.IsNullOrEmpty(propId) ? propId : (prop != null ? prop.id : "(null propId)");
+        Debug.Log("[GAMA][ColorDebug][" + source + "] obj=" + objName + " propId=" + pid + " -> " + details);
+
+        if (debugColorMessagesCount == debugColorMessagesMax)
+        {
+            Debug.Log("[GAMA][ColorDebug] Max debug color logs reached (" + debugColorMessagesMax + ").");
+        }
     }
 
     protected virtual void ManageOtherInformation()
@@ -1227,6 +1624,13 @@ public class SimulationManager : MonoBehaviour
         {
             Debug.Log("SimulationManager: Player added to simulation, waiting for initial parameters");
             UpdateGameState(GameState.LOADING_DATA);
+        }
+        else if (state == ConnectionState.DISCONNECTED)
+        {
+            // Stop runtime update loops that keep trying to send messages while offline.
+            readyToSendPosition = false;
+            readyToSendPositionInit = false;
+            UpdateGameState(GameState.MENU);
         }
     }
 
@@ -1289,56 +1693,23 @@ public class SimulationManager : MonoBehaviour
     }
 
 
-    private static readonly int[] colorPropertyIds =
-    {
-        Shader.PropertyToID("_BaseColor"),
-        Shader.PropertyToID("_Color"),
-        Shader.PropertyToID("_MainColor"),
-        Shader.PropertyToID("Color"),
-        Shader.PropertyToID("BaseColor")
-    };
-
-    private static readonly MaterialPropertyBlock sharedColorPropertyBlock = new MaterialPropertyBlock();
+    private static readonly string[] colorNames = { "_BaseColor", "_Color", "_MainColor", "Color", "BaseColor" };
     static public void ChangeColor(GameObject obj, Color color)
     {
         Renderer[] renderers = obj.gameObject.GetComponentsInChildren<Renderer>();
         for (int i = 0; i < renderers.Length; i++)
         {
-            Renderer renderer = renderers[i];
-            bool applied = false;
-            for (int c = 0; c < colorPropertyIds.Length; c++)
-            {
-                int propId = colorPropertyIds[c];
-                Material[] sharedMaterials = renderer.sharedMaterials;
-                for (int m = 0; m < sharedMaterials.Length; m++)
+            Material mat = renderers[i].material;
+           
+            foreach (string prop in colorNames)
+            { 
+                if (mat.HasProperty(prop))
                 {
-                    Material sharedMat = sharedMaterials[m];
-                    if (sharedMat == null || !sharedMat.HasProperty(propId))
-                    {
-                        continue;
-                    }
-
-                    renderer.GetPropertyBlock(sharedColorPropertyBlock);
-                    sharedColorPropertyBlock.SetColor(propId, color);
-                    renderer.SetPropertyBlock(sharedColorPropertyBlock);
-                    sharedColorPropertyBlock.Clear();
-                    applied = true;
+                    mat.SetColor(prop, color);
                     break; 
                 }
-
-                if (applied)
-                {
-                    break;
-                }
             }
-
-            if (!applied)
-            {
-                renderer.GetPropertyBlock(sharedColorPropertyBlock);
-                sharedColorPropertyBlock.SetColor(colorPropertyIds[1], color);
-                renderer.SetPropertyBlock(sharedColorPropertyBlock);
-                sharedColorPropertyBlock.Clear();
-            }
+           
         }
     }
     protected virtual void AdditionalInitAfterGeomLoading()
@@ -1352,7 +1723,8 @@ public class SimulationManager : MonoBehaviour
 
     private void HandleServerMessageReceived(String firstKey, String content)
     {
-
+        try
+        {
         if (content == null || content.Equals("{}")) return;
         if (firstKey == null)
         {
@@ -1391,20 +1763,17 @@ public class SimulationManager : MonoBehaviour
         }
 
 
+        if (ShouldLogProcessingMessage(firstKey))
+        {
+            Debug.Log("[GAMA] Processing message: " + firstKey + " (state=" + currentState + ")");
+        }
+
         switch (firstKey)
         {
             // handle general informations about the simulation
             case "precision":
                 parameters = ConnectionParameter.CreateFromJSON(content);
                 converter = new CoordinateConverter(parameters.precision, GamaCRSCoefX, GamaCRSCoefY, GamaCRSCoefY, GamaCRSOffsetX, GamaCRSOffsetY, GamaCRSOffsetZ);
-                if (agentSceneSettings != null && propertiesGAMA != null)
-                {
-                    agentSceneSettings.ImportProperties(propertiesGAMA.properties, parameters.precision);
-                }
-                if (prefabSceneSettings != null && propertiesGAMA != null)
-                {
-                    prefabSceneSettings.ImportProperties(propertiesGAMA.properties);
-                }
                 TimeSendPosition = (0.0f + parameters.minPlayerUpdateDuration) / (parameters.precision + 0.0f);
                 GameObject loc = (locomotion != null && locomotion.Count > 0) ? locomotion[0] : null;
                 if (loc != null)
@@ -1460,17 +1829,9 @@ public class SimulationManager : MonoBehaviour
                 propertyMap = new Dictionary<string, PropertiesGAMA>();
                 foreach (PropertiesGAMA p in propertiesGAMA.properties)
                 {
-                    p.PrepareRuntime(parameters != null ? parameters.precision : 1);
                     propertyMap.Add(p.id, p);
                 }
-                if (agentSceneSettings != null)
-                {
-                    agentSceneSettings.ImportProperties(propertiesGAMA.properties, parameters != null ? parameters.precision : 1);
-                }
-                if (prefabSceneSettings != null)
-                {
-                    prefabSceneSettings.ImportProperties(propertiesGAMA.properties);
-                }
+                SyncSpeciesOverridesFromProperties(propertiesGAMA.properties);
                 break;
 
             // handle agents while simulation is running
@@ -1507,7 +1868,32 @@ public class SimulationManager : MonoBehaviour
                 ManageOtherMessages(content);
                 break;
         }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError("[GAMA] Error in HandleServerMessageReceived (key=" + firstKey + "): " + ex.Message + "\n" + ex.StackTrace);
+        }
+    }
 
+    private bool ShouldLogProcessingMessage(string firstKey)
+    {
+        if (verboseMessageLogs)
+        {
+            return true;
+        }
+
+        if (string.Equals(firstKey, "pointsLoc", StringComparison.Ordinal))
+        {
+            if (Time.unscaledTime < _nextPointsLocProcessingLogAt)
+            {
+                return false;
+            }
+
+            _nextPointsLocProcessingLogAt = Time.unscaledTime + Mathf.Max(0.1f, pointsLocProcessingLogIntervalSeconds);
+            return true;
+        }
+
+        return true;
     }
 
     private void HandleConnectionAttempted(bool success)
@@ -1558,12 +1944,6 @@ public class SimulationManager : MonoBehaviour
     }
 
 
-}
-
-[DisallowMultipleComponent]
-public class GamaRuntimePrefabSignature : MonoBehaviour
-{
-    public string signature;
 }
 
 

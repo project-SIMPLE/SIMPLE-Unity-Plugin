@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using Newtonsoft.Json.Linq;
 
 
 [System.Serializable]
@@ -9,13 +10,74 @@ public class AllProperties
 
     public static AllProperties CreateFromJSON(string jsonString)
     {
-       return JsonUtility.FromJson<AllProperties>(jsonString);
+       AllProperties parsed = JsonUtility.FromJson<AllProperties>(jsonString);
+       if (parsed == null || parsed.properties == null)
+       {
+           return parsed;
+       }
+
+       // JsonUtility is strict and can ignore color fields when they are not
+       // encoded as the expected static type. We parse again with Newtonsoft
+       // to recover dynamic color formats (hex, named colors, nested objects, etc.).
+       try
+       {
+           JObject root = JObject.Parse(jsonString);
+           JArray propsArray = root["properties"] as JArray;
+           if (propsArray == null)
+           {
+               return parsed;
+           }
+
+           int count = Mathf.Min(parsed.properties.Count, propsArray.Count);
+           for (int i = 0; i < count; i++)
+           {
+               PropertiesGAMA p = parsed.properties[i];
+               if (p == null)
+               {
+                   continue;
+               }
+
+               Attributes a = Attributes.FromToken(propsArray[i]);
+               Color32 c;
+               if (a != null && a.TryGetColor(out c))
+               {
+                   p.hasDynamicColor = true;
+                   p.dynamicRed = c.r;
+                   p.dynamicGreen = c.g;
+                   p.dynamicBlue = c.b;
+                   p.dynamicAlpha = c.a;
+               }
+           }
+       }
+       catch
+       {
+           // Keep default parsing path if dynamic color extraction fails.
+       }
+
+       return parsed;
     }
 }
 
 [System.Serializable]
 public class PropertiesGAMA
 {
+    [System.Serializable]
+    public class VisualRecipe
+    {
+        public string kind;
+        public List<VisualPart> parts;
+    }
+
+    [System.Serializable]
+    public class VisualPart
+    {
+        public string primitive;
+        public List<float> size;
+        public List<float> offset;
+        public List<float> rotation;
+        public bool scaleWithPrecision = true;
+    }
+
     public string id;
     public bool hasCollider;
     public string tag;
@@ -51,6 +113,14 @@ public class PropertiesGAMA
 
     public bool toFollow;
     public GameObject prefabObj = null;
+    public VisualRecipe visual;
+
+    // Filled from dynamic Newtonsoft parsing in AllProperties.CreateFromJSON.
+    public bool hasDynamicColor = false;
+    public int dynamicRed = -1;
+    public int dynamicGreen = -1;
+    public int dynamicBlue = -1;
+    public int dynamicAlpha = -1;
 
 
     public void loadPrefab(int precision)

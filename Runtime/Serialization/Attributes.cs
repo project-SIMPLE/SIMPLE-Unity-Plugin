@@ -1,17 +1,17 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 
-
 [System.Serializable]
 public class Attributes
 {
     public int type;
 
-    [NonSerialized] private Dictionary<string, JToken> values;
+    private readonly Dictionary<string, JToken> values =
+        new Dictionary<string, JToken>(StringComparer.OrdinalIgnoreCase);
 
     public static List<Attributes> FromJsonArray(JArray array)
     {
@@ -38,11 +38,9 @@ public class Attributes
             return attributes;
         }
 
-        attributes.EnsureValues();
         foreach (JProperty property in obj.Properties())
         {
             attributes.values[property.Name] = property.Value;
-
             if (property.Name.Equals("type", StringComparison.OrdinalIgnoreCase))
             {
                 int parsedType;
@@ -58,79 +56,60 @@ public class Attributes
 
     public bool TryGetValue(string key, out JToken value)
     {
-        EnsureValues();
         return values.TryGetValue(key, out value);
     }
 
-    public bool TryGetFloat(out float value, params string[] keys)
+    /// <summary>
+    /// Vrai si l'objet d'attributes GAMA contient au moins une clé autre que <c>type</c>.
+    /// Sert à ne pas écraser des agents avec une teinte inspector unique alors que GAMA a envoyé du contexte par ligne.
+    /// </summary>
+    public bool HasKeysOtherThanType()
     {
-        EnsureValues();
-        for (int i = 0; i < keys.Length; i++)
+        foreach (string key in values.Keys)
         {
-            JToken token;
-            double number;
-            if (values.TryGetValue(keys[i], out token) && TryReadDouble(token, out number))
+            if (!string.Equals(key, "type", StringComparison.OrdinalIgnoreCase))
             {
-                value = (float)number;
                 return true;
             }
         }
 
-        value = 0f;
         return false;
     }
 
-    public bool TryGetBool(out bool value, params string[] keys)
+    public string DebugKeysPreview(int maxKeys = 8)
     {
-        EnsureValues();
-        for (int i = 0; i < keys.Length; i++)
+        if (values == null || values.Count == 0)
         {
-            JToken token;
-            if (values.TryGetValue(keys[i], out token) && TryReadBool(token, out value))
+            return "(no keys)";
+        }
+
+        int shown = 0;
+        System.Text.StringBuilder sb = new System.Text.StringBuilder();
+        foreach (string key in values.Keys)
+        {
+            if (shown > 0)
             {
-                return true;
+                sb.Append(", ");
+            }
+
+            sb.Append(key);
+            shown++;
+            if (shown >= maxKeys)
+            {
+                break;
             }
         }
 
-        value = false;
-        return false;
-    }
-
-    public bool TryGetString(out string value, params string[] keys)
-    {
-        EnsureValues();
-        for (int i = 0; i < keys.Length; i++)
+        if (values.Count > shown)
         {
-            JToken token;
-            if (values.TryGetValue(keys[i], out token) && TryReadString(token, out value))
-            {
-                return true;
-            }
+            sb.Append(", ...");
         }
 
-        value = string.Empty;
-        return false;
-    }
-
-    public bool TryGetVector3(out Vector3 value, params string[] keys)
-    {
-        EnsureValues();
-        for (int i = 0; i < keys.Length; i++)
-        {
-            JToken token;
-            if (values.TryGetValue(keys[i], out token) && TryReadVector3(token, out value))
-            {
-                return true;
-            }
-        }
-
-        value = Vector3.zero;
-        return false;
+        return sb.ToString();
     }
 
     public bool TryGetColor(out Color32 color)
     {
-        EnsureValues();
         string[] colorKeys =
         {
             "color",
@@ -139,6 +118,7 @@ public class Attributes
             "rgba",
             "shade",
             "tint",
+            "hue",
             "fill",
             "fillColor",
             "materialColor",
@@ -151,7 +131,7 @@ public class Attributes
         for (int i = 0; i < colorKeys.Length; i++)
         {
             JToken token;
-            if (values.TryGetValue(colorKeys[i], out token) && TryReadColor(token, out color))
+            if (TryGetValue(colorKeys[i], out token) && TryReadColor(token, out color))
             {
                 return true;
             }
@@ -163,51 +143,63 @@ public class Attributes
             return true;
         }
 
+        foreach (KeyValuePair<string, JToken> pair in values)
+        {
+            if (!LooksLikeColorAttributeKey(pair.Key))
+            {
+                continue;
+            }
+
+            if (TryReadColor(pair.Value, out color))
+            {
+                return true;
+            }
+        }
+
         color = default(Color32);
         return false;
     }
 
-    private void EnsureValues()
+    static bool LooksLikeColorAttributeKey(string key)
     {
-        if (values == null)
-        {
-            values = new Dictionary<string, JToken>(StringComparer.OrdinalIgnoreCase);
-        }
-    }
-
-    private bool TryReadColorChannels(string redKey, string greenKey, string blueKey, string alphaKey, out Color32 color)
-    {
-        color = default(Color32);
-
-        JToken redToken;
-        JToken greenToken;
-        JToken blueToken;
-        if (!values.TryGetValue(redKey, out redToken) ||
-            !values.TryGetValue(greenKey, out greenToken) ||
-            !values.TryGetValue(blueKey, out blueToken))
+        if (string.IsNullOrEmpty(key))
         {
             return false;
         }
 
-        double red;
-        double green;
-        double blue;
-        if (!TryReadDouble(redToken, out red) ||
-            !TryReadDouble(greenToken, out green) ||
-            !TryReadDouble(blueToken, out blue))
+        string k = key.ToLowerInvariant();
+
+        if (k.Equals("type") ||
+            k.Equals("id") ||
+            k.Equals("name") ||
+            k.Equals("location") ||
+            k.Equals("position") ||
+            k.Equals("point") ||
+            k.Equals("target") ||
+            k.Equals("heading") ||
+            k.Equals("speed") ||
+            k.Equals("direction") ||
+            k.Equals("velocity") ||
+            k.Equals("size") ||
+            k.Equals("area") ||
+            k.Equals("perimeter"))
         {
             return false;
         }
 
-        double alpha = 255;
-        JToken alphaToken;
-        if (values.TryGetValue(alphaKey, out alphaToken))
+        if (k.Contains("colour") ||
+            k.Contains("color") ||
+            k.Equals("rgb") ||
+            k.Equals("rgba") ||
+            k.Contains("tint") ||
+            k.Contains("shade") ||
+            k.Contains("hue") ||
+            k.Contains("pigment"))
         {
-            TryReadDouble(alphaToken, out alpha);
+            return true;
         }
 
-        color = ToColor(red, green, blue, alpha);
-        return true;
+        return false;
     }
 
     private static bool TryReadColor(JToken token, out Color32 color)
@@ -235,7 +227,44 @@ public class Attributes
             return TryReadColorString(token.Value<string>(), out color);
         }
 
+        if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
+        {
+            long packed = token.Value<long>();
+            return TryReadPackedColor(packed, out color);
+        }
+
         return false;
+    }
+
+    private static bool TryReadPackedColor(long rawValue, out Color32 color)
+    {
+        color = default(Color32);
+
+        // GAMA / middleware can encode colors as signed ints.
+        // Normalize to unsigned representation first.
+        uint packed = unchecked((uint)rawValue);
+        if (rawValue >= 0 && rawValue <= int.MaxValue)
+        {
+            packed = (uint)rawValue;
+        }
+
+        // 0xRRGGBB
+        if ((packed & 0xFF000000u) == 0u)
+        {
+            byte r = (byte)((packed >> 16) & 0xFF);
+            byte g = (byte)((packed >> 8) & 0xFF);
+            byte b = (byte)(packed & 0xFF);
+            color = new Color32(r, g, b, 255);
+            return true;
+        }
+
+        // 0xAARRGGBB
+        byte aA = (byte)((packed >> 24) & 0xFF);
+        byte aR = (byte)((packed >> 16) & 0xFF);
+        byte aG = (byte)((packed >> 8) & 0xFF);
+        byte aB = (byte)(packed & 0xFF);
+        color = new Color32(aR, aG, aB, aA == 0 ? (byte)255 : aA);
+        return true;
     }
 
     private static bool TryReadColorArray(JArray array, out Color32 color)
@@ -284,6 +313,41 @@ public class Attributes
                 TryReadObjectValue(obj, "hex", out nested) ||
                 TryReadObjectValue(obj, "value", out nested)) &&
                TryReadColor(nested, out color);
+    }
+
+    private bool TryReadColorChannels(string redKey, string greenKey, string blueKey, string alphaKey, out Color32 color)
+    {
+        color = default(Color32);
+
+        JToken redToken;
+        JToken greenToken;
+        JToken blueToken;
+        if (!TryGetValue(redKey, out redToken) ||
+            !TryGetValue(greenKey, out greenToken) ||
+            !TryGetValue(blueKey, out blueToken))
+        {
+            return false;
+        }
+
+        double red;
+        double green;
+        double blue;
+        if (!TryReadDouble(redToken, out red) ||
+            !TryReadDouble(greenToken, out green) ||
+            !TryReadDouble(blueToken, out blue))
+        {
+            return false;
+        }
+
+        double alpha = 255;
+        JToken alphaToken;
+        if (TryGetValue(alphaKey, out alphaToken))
+        {
+            TryReadDouble(alphaToken, out alpha);
+        }
+
+        color = ToColor(red, green, blue, alpha);
+        return true;
     }
 
     private static bool TryReadObjectChannels(
@@ -338,7 +402,15 @@ public class Attributes
         string normalized = value.Trim();
         if (normalized.StartsWith("#", StringComparison.Ordinal))
         {
-            return TryReadHexColor(normalized, out color);
+            if (TryReadHexColor(normalized, out color))
+            {
+                return true;
+            }
+
+            if (TryReadNamedColor(normalized.Substring(1), out color))
+            {
+                return true;
+            }
         }
 
         if (TryReadNamedColor(normalized, out color))
@@ -370,138 +442,6 @@ public class Attributes
 
         color = ToColor(red, green, blue, alpha);
         return true;
-    }
-
-    private static bool TryReadVector3(JToken token, out Vector3 value)
-    {
-        value = Vector3.zero;
-        if (token == null || token.Type == JTokenType.Null)
-        {
-            return false;
-        }
-
-        JArray array = token as JArray;
-        if (array != null)
-        {
-            if (array.Count < 3)
-            {
-                return false;
-            }
-
-            double x;
-            double y;
-            double z;
-            if (!TryReadDouble(array[0], out x) ||
-                !TryReadDouble(array[1], out y) ||
-                !TryReadDouble(array[2], out z))
-            {
-                return false;
-            }
-
-            value = new Vector3((float)x, (float)y, (float)z);
-            return true;
-        }
-
-        JObject obj = token as JObject;
-        if (obj != null)
-        {
-            JToken xToken;
-            JToken yToken;
-            JToken zToken;
-            double x;
-            double y;
-            double z;
-            if ((TryReadObjectValue(obj, "x", out xToken) || TryReadObjectValue(obj, "X", out xToken)) &&
-                (TryReadObjectValue(obj, "y", out yToken) || TryReadObjectValue(obj, "Y", out yToken)) &&
-                (TryReadObjectValue(obj, "z", out zToken) || TryReadObjectValue(obj, "Z", out zToken)) &&
-                TryReadDouble(xToken, out x) &&
-                TryReadDouble(yToken, out y) &&
-                TryReadDouble(zToken, out z))
-            {
-                value = new Vector3((float)x, (float)y, (float)z);
-                return true;
-            }
-        }
-
-        if (token.Type != JTokenType.String)
-        {
-            return false;
-        }
-
-        MatchCollection matches = Regex.Matches(token.Value<string>(), @"-?\d+(?:[.,]\d+)?");
-        if (matches.Count < 3)
-        {
-            return false;
-        }
-
-        double sx;
-        double sy;
-        double sz;
-        if (!TryReadDouble(matches[0].Value, out sx) ||
-            !TryReadDouble(matches[1].Value, out sy) ||
-            !TryReadDouble(matches[2].Value, out sz))
-        {
-            return false;
-        }
-
-        value = new Vector3((float)sx, (float)sy, (float)sz);
-        return true;
-    }
-
-    private static bool TryReadString(JToken token, out string value)
-    {
-        value = string.Empty;
-        if (token == null || token.Type == JTokenType.Null)
-        {
-            return false;
-        }
-
-        if (token.Type == JTokenType.String)
-        {
-            value = token.Value<string>().Trim();
-            return !string.IsNullOrEmpty(value);
-        }
-
-        if (token.Type == JTokenType.Integer ||
-            token.Type == JTokenType.Float ||
-            token.Type == JTokenType.Boolean)
-        {
-            value = token.ToString().Trim();
-            return !string.IsNullOrEmpty(value);
-        }
-
-        JArray array = token as JArray;
-        if (array != null)
-        {
-            for (int i = 0; i < array.Count; i++)
-            {
-                if (TryReadString(array[i], out value))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        JObject obj = token as JObject;
-        if (obj != null)
-        {
-            JToken nested;
-            if ((TryReadObjectValue(obj, "prefab", out nested) ||
-                 TryReadObjectValue(obj, "model", out nested) ||
-                 TryReadObjectValue(obj, "mesh", out nested) ||
-                 TryReadObjectValue(obj, "asset", out nested) ||
-                 TryReadObjectValue(obj, "path", out nested) ||
-                 TryReadObjectValue(obj, "name", out nested) ||
-                 TryReadObjectValue(obj, "value", out nested)) &&
-                TryReadString(nested, out value))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static bool TryReadHexColor(string value, out Color32 color)
@@ -553,11 +493,11 @@ public class Attributes
             case "red":
                 color = new Color32(255, 0, 0, 255);
                 return true;
-            case "green":
-                color = new Color32(0, 255, 0, 255);
-                return true;
             case "blue":
                 color = new Color32(0, 0, 255, 255);
+                return true;
+            case "green":
+                color = new Color32(0, 255, 0, 255);
                 return true;
             case "yellow":
                 color = new Color32(255, 255, 0, 255);
@@ -575,14 +515,32 @@ public class Attributes
             case "orange":
                 color = new Color32(255, 165, 0, 255);
                 return true;
-            case "purple":
-                color = new Color32(128, 0, 128, 255);
-                return true;
             case "cyan":
                 color = new Color32(0, 255, 255, 255);
                 return true;
             case "magenta":
                 color = new Color32(255, 0, 255, 255);
+                return true;
+            case "purple":
+                color = new Color32(128, 0, 128, 255);
+                return true;
+            case "dodgerblue":
+                color = new Color32(30, 144, 255, 255);
+                return true;
+            case "darkgray":
+            case "darkgrey":
+                color = new Color32(169, 169, 169, 255);
+                return true;
+            case "lightgray":
+            case "lightgrey":
+                color = new Color32(211, 211, 211, 255);
+                return true;
+            case "slategray":
+            case "slategrey":
+                color = new Color32(112, 128, 144, 255);
+                return true;
+            case "steelblue":
+                color = new Color32(70, 130, 180, 255);
                 return true;
             default:
                 return false;
@@ -591,6 +549,7 @@ public class Attributes
 
     private static bool TryReadObjectValue(JObject obj, string key, out JToken value)
     {
+        value = null;
         foreach (JProperty property in obj.Properties())
         {
             if (property.Name.Equals(key, StringComparison.OrdinalIgnoreCase))
@@ -600,28 +559,31 @@ public class Attributes
             }
         }
 
-        value = null;
         return false;
     }
 
     private static bool TryReadInt(JToken token, out int value)
     {
-        double number;
-        if (TryReadDouble(token, out number))
+        value = 0;
+        if (token == null)
         {
-            value = (int)number;
+            return false;
+        }
+
+        if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
+        {
+            value = Mathf.RoundToInt(token.Value<float>());
             return true;
         }
 
-        value = 0;
-        return false;
+        return int.TryParse(token.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
     }
 
     private static bool TryReadDouble(JToken token, out double value)
     {
+        value = 0;
         if (token == null)
         {
-            value = 0;
             return false;
         }
 
@@ -631,81 +593,24 @@ public class Attributes
             return true;
         }
 
-        if (token.Type == JTokenType.String)
-        {
-            return TryReadDouble(token.Value<string>(), out value);
-        }
-
-        value = 0;
-        return false;
-    }
-
-    private static bool TryReadBool(JToken token, out bool value)
-    {
-        value = false;
-        if (token == null || token.Type == JTokenType.Null)
-        {
-            return false;
-        }
-
-        if (token.Type == JTokenType.Boolean)
-        {
-            value = token.Value<bool>();
-            return true;
-        }
-
-        if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
-        {
-            value = Math.Abs(token.Value<double>()) > double.Epsilon;
-            return true;
-        }
-
-        if (token.Type != JTokenType.String)
-        {
-            return false;
-        }
-
-        string normalized = token.Value<string>().Trim().ToLowerInvariant();
-        switch (normalized)
-        {
-            case "true":
-            case "yes":
-            case "on":
-            case "1":
-                value = true;
-                return true;
-            case "false":
-            case "no":
-            case "off":
-            case "0":
-                value = false;
-                return true;
-            default:
-                return false;
-        }
+        return TryReadDouble(token.ToString(), out value);
     }
 
     private static bool TryReadDouble(string raw, out double value)
     {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            value = 0;
-            return false;
-        }
-
         return double.TryParse(raw.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
     }
 
     private static Color32 ToColor(double red, double green, double blue, double alpha)
     {
-        return new Color32(ToByte(red), ToByte(green), ToByte(blue), ToByte(alpha));
+        return new Color32(ToColorByte(red), ToColorByte(green), ToColorByte(blue), ToColorByte(alpha));
     }
 
-    private static byte ToByte(double value)
+    private static byte ToColorByte(double value)
     {
-        if (value >= 0d && value <= 1d)
+        if (value >= 0 && value <= 1)
         {
-            value *= 255d;
+            value *= 255;
         }
 
         return (byte)Mathf.Clamp(Mathf.RoundToInt((float)value), 0, 255);

@@ -5,8 +5,21 @@ using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 using System.Linq;
 
+/// <summary>
+/// S’exécute avant <see cref="SimulationManager"/> pour garantir que <see cref="ConnectionManager.Instance"/> est initialisé lors de leurs <c>OnEnable</c>.
+/// </summary>
+[DefaultExecutionOrder(-100)]
 public class ConnectionManager : WebSocketConnector
 {
+    [Header("Debug logs")]
+    [SerializeField] private bool verboseMessageLogs = false;
+    [SerializeField, Tooltip("Intervalle minimal entre deux logs pointsLoc (secondes).")]
+    private float pointsLocLogIntervalSeconds = 2f;
+    [SerializeField, Tooltip("Intervalle minimal entre deux warnings quand un envoi est bloqué (secondes).")]
+    private float blockedSendLogIntervalSeconds = 2f;
+
+    private float _nextPointsLocLogAt;
+    private float _nextBlockedSendLogAt;
      
     private ConnectionState currentState;
     private bool connectionRequested; 
@@ -28,7 +41,7 @@ public class ConnectionManager : WebSocketConnector
     //use to seperate messages in the case where the middleware is not used
     protected String MessageSeparator  = "|||";
 
-private String AgentToSendInfo = "simulation[0].unity_linker[0]";
+    private String AgentToSendInfo = "simulation[0].unity_linker[0]";
      
     
     // ############################################# UNITY FUNCTIONS #############################################
@@ -92,62 +105,67 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
 
     protected override void ManageMessage(string message)
     {
-
-            
+        try
+        {
             JObject jsonObj = JObject.Parse(message);
             string type = (string)jsonObj["type"];
-           
-        
+
             switch (type)
-                {
-                    case "ping":
-                        var jsonId = new Dictionary<string, string> {{"type", "pong"}};
-                        string jsonStringId = JsonConvert.SerializeObject(jsonId);
-                        SendMessageToServer(jsonStringId);
-                        break;
-                    case "json_state":
-                        OnConnectionStateReceived?.Invoke(jsonObj);
-                        bool authenticated = (bool)jsonObj["in_game"];
-                        bool connected = (bool)jsonObj["connected"];
+            {
+                case "ping":
+                    var jsonId = new Dictionary<string, string> {{"type", "pong"}};
+                    string jsonStringId = JsonConvert.SerializeObject(jsonId);
+                    SendMessageToServer(jsonStringId);
+                    break;
+                case "json_state":
+                    OnConnectionStateReceived?.Invoke(jsonObj);
+                    bool authenticated = (bool)jsonObj["in_game"];
+                    bool connected = (bool)jsonObj["connected"];
 
-                        if (authenticated && connected)
+                    if (authenticated && connected)
+                    {
+                        if (!IsConnectionState(ConnectionState.AUTHENTICATED))
                         {
-                            if (!IsConnectionState(ConnectionState.AUTHENTICATED))
-                            {
-                                Debug.Log("ConnectionManager: Player successfully authenticated");
-                                UpdateConnectionState(ConnectionState.AUTHENTICATED);
-                            }
-
+                            Debug.Log("ConnectionManager: Player successfully authenticated");
+                            UpdateConnectionState(ConnectionState.AUTHENTICATED);
                         }
-                        else if (connected && !authenticated)
+
+                    }
+                    else if (connected && !authenticated)
+                    {
+                        if (!IsConnectionState(ConnectionState.CONNECTED))
                         {
-                            if (!IsConnectionState(ConnectionState.CONNECTED))
-                            {
-                                connectionRequested = false;
-                                Debug.Log("ConnectionManager: Successfully connected, waiting for authentication...");
-                                UpdateConnectionState(ConnectionState.CONNECTED);
-                                OnConnectionAttempted?.Invoke(true);
-                            }
-                            else
-                            {
-                                Debug.LogWarning("ConnectionManager: Already connected, waiting for authentication...");
-                            }
+                            connectionRequested = false;
+                            Debug.Log("ConnectionManager: Successfully connected, waiting for authentication...");
+                            UpdateConnectionState(ConnectionState.CONNECTED);
+                            OnConnectionAttempted?.Invoke(true);
+                        }
+                        else
+                        {
+                            Debug.LogWarning("ConnectionManager: Already connected, waiting for authentication...");
+                        }
 
-                        }  
-                        break;  
+                    }  
+                    break;  
 
-                    case "json_output":
-                        JObject content = (JObject)jsonObj["contents"];
-                        String firstKey = content.Properties().Select(pp => pp.Name).FirstOrDefault();
-                        OnServerMessageReceived?.Invoke(firstKey, content.ToString());
-                        break;
+                case "json_output":
+                    JObject content = (JObject)jsonObj["contents"];
+                    String firstKey = content.Properties().Select(pp => pp.Name).FirstOrDefault();
+                    if (ShouldLogIncomingMessageKey(firstKey))
+                    {
+                        Debug.Log("[GAMA] Received message key: " + (firstKey ?? "(null)"));
+                    }
+                    OnServerMessageReceived?.Invoke(firstKey, content.ToString());
+                    break;
 
-                    default:
-                        break;
-                }
-            
-            
-        
+                default:
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError("[GAMA] Error processing incoming message: " + ex.Message + "\n" + ex.StackTrace);
+        }
     }
 
     protected override void HandleConnectionClosed() {
@@ -192,6 +210,11 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
     }
 
     public void SendExecutableExpression(string expression) {
+        if (!CanSendExecutableMessage())
+        {
+            return;
+        }
+
         Dictionary<string, string> jsonExpression = null;
         jsonExpression = new Dictionary<string, string> {
             {"type", "expression"},
@@ -220,6 +243,11 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
 
     public void SendExecutableAsk(string action, Dictionary<string,string> arguments)
     {
+        if (!CanSendExecutableMessage())
+        {
+            return;
+        }
+
         string argsJSON = JsonConvert.SerializeObject(arguments);
         Dictionary<string, string> jsonExpression = null;
         jsonExpression = new Dictionary<string, string> {
@@ -271,6 +299,47 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
         Debug.Log("Reconnect");
         currentState = ConnectionState.DISCONNECTED;
         TryConnectionToServer();
+    }
+
+    private bool ShouldLogIncomingMessageKey(string firstKey)
+    {
+        if (verboseMessageLogs)
+        {
+            return true;
+        }
+
+        // pointsLoc arrives every frame/tick and floods the console.
+        if (string.Equals(firstKey, "pointsLoc", StringComparison.Ordinal))
+        {
+            if (Time.unscaledTime < _nextPointsLocLogAt)
+            {
+                return false;
+            }
+
+            _nextPointsLocLogAt = Time.unscaledTime + Mathf.Max(0.1f, pointsLocLogIntervalSeconds);
+            return true;
+        }
+
+        // Keep other keys visible by default.
+        return true;
+    }
+
+    private bool CanSendExecutableMessage()
+    {
+        // Allow sends only when the middleware connection is active.
+        if (currentState == ConnectionState.CONNECTED || currentState == ConnectionState.AUTHENTICATED)
+        {
+            return true;
+        }
+
+        if (Time.unscaledTime < _nextBlockedSendLogAt)
+        {
+            return false;
+        }
+
+        _nextBlockedSendLogAt = Time.unscaledTime + Mathf.Max(0.1f, blockedSendLogIntervalSeconds);
+        Debug.LogWarning("ConnectionManager: blocked send because middleware is disconnected.");
+        return false;
     }
 
 
