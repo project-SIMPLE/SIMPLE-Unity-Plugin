@@ -55,16 +55,35 @@ public class PropertiesGAMA
 
     public void loadPrefab(int precision)
     {
-        if (prefab != null && !prefab.Equals(""))
+        PrepareRuntime(precision);
+    }
+
+    public void PrepareRuntime(int precision)
+    {
+        int safePrecision = Mathf.Max(precision, 1);
+        yOffsetF = (0.0f + yOffset) / safePrecision;
+        rotationCoeffF = (0.0f + rotationCoeff) / safePrecision;
+        rotationOffsetF = (0.0f + rotationOffset) / safePrecision;
+
+        if (prefabObj == null && prefab != null && !prefab.Equals(""))
         {
             prefabObj = Resources.Load(prefab) as GameObject;
-            yOffsetF = (0.0f + yOffset)/precision  ;
-            rotationCoeffF = (0.0f + rotationCoeff) / precision;
-            rotationOffsetF = (0.0f + rotationOffset) / precision;
-
         }
     }
 
-    
+    public float GetUnityScale(int precision)
+    {
+        return (0.0f + size) / Mathf.Max(precision, 1);
+    }
+
+    public Color32 GetUnityColor()
+    {
+        return new Color32(ToByte(red), ToByte(green), ToByte(blue), ToByte(alpha));
+    }
+
+    private static byte ToByte(int value)
+    {
+        return (byte)Mathf.Clamp(value, 0, 255);
+    }
 
 }

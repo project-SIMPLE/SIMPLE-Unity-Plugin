@@ -7,9 +7,15 @@ using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.InputSystem;
 using UnityEngine.XR.Interaction.Toolkit.Inputs.Simulation;
 
+[RequireComponent(typeof(GamaAgentSceneSettings))]
+[RequireComponent(typeof(GamaPrefabSceneSettings))]
 public class SimulationManager : MonoBehaviour
 {
     [SerializeField] protected InputActionReference primaryRightHandButton = null;
+
+    [Header("GAMA defaults and Unity overrides")]
+    [SerializeField] protected GamaAgentSceneSettings agentSceneSettings;
+    [SerializeField] protected GamaPrefabSceneSettings prefabSceneSettings;
   
     [Header("Base GameObjects")]
     [SerializeField] protected GameObject player;
@@ -111,6 +117,7 @@ public class SimulationManager : MonoBehaviour
         ProjectSimple.GamaUnity.Runtime.GamaInitializer.InitializeGama();
         ProjectSimple.GamaUnity.Runtime.GamaInitializer.SetupPlayer(this, true);
         ProjectSimple.GamaUnity.Runtime.GamaInitializer.SetupGround(this, true);
+        EnsureRuntimeSceneSettings();
 
         hasSimulator = UnityEngine.Object.FindFirstObjectByType<XRDeviceSimulator>() != null;
         connectionID["id"] = ConnectionManager.Instance != null ? ConnectionManager.Instance.GetConnectionId() : StaticInformation.getId();
@@ -598,14 +605,17 @@ public class SimulationManager : MonoBehaviour
             string propId = infoWorld.propertyID[i];
            
             PropertiesGAMA prop = propertyMap[propId];
+            Attributes attributes = infoWorld.GetAttributesAt(i);
+            GamaAgentVisualState visualState = ResolveAgentVisualState(name, prop, attributes);
 
             GameObject obj = null;
          
             if (prop.hasPrefab)
             {
+                string desiredPrefabSignature = ResolvePrefabSignature(prop, attributes);
                 if (initGame || !geometryMap.ContainsKey(name))
                 {
-                    obj = instantiatePrefab(name, prop, initGame);
+                    obj = instantiatePrefab(name, prop, attributes, desiredPrefabSignature, initGame);
          
                 }
                 else
@@ -613,7 +623,7 @@ public class SimulationManager : MonoBehaviour
                     List<object> o = geometryMap[name];
                     GameObject obj2 = (GameObject)o[0];
                     PropertiesGAMA p = (PropertiesGAMA)o[1];
-                    if (p == prop)
+                    if (p == prop && !NeedsPrefabRebuild(obj2, desiredPrefabSignature))
                     {
                         obj = obj2;
                     }
@@ -626,7 +636,7 @@ public class SimulationManager : MonoBehaviour
                             toFollow.Remove(obj2);
 
                         GameObject.Destroy(obj2);
-                        obj = instantiatePrefab(name, prop, initGame);
+                        obj = instantiatePrefab(name, prop, attributes, desiredPrefabSignature, initGame);
 
                     }
 
@@ -634,8 +644,11 @@ public class SimulationManager : MonoBehaviour
                 List<int> pt = infoWorld.pointsLoc[cptPrefab].c;
                 Vector3 pos = converter.fromGAMACRS(pt[0], pt[1], pt[2]);
                 pos.y += prop.yOffsetF;
+                pos += visualState.PositionOffset;
                 float rot = prop.rotationCoeffF * ((0.0f + pt[3]) / parameters.precision) + prop.rotationOffsetF;
-                obj.transform.SetPositionAndRotation(pos, Quaternion.AngleAxis(rot, Vector3.up));
+                Quaternion rotation = Quaternion.AngleAxis(rot, Vector3.up) * Quaternion.Euler(visualState.RotationOffsetEuler);
+                obj.transform.SetPositionAndRotation(pos, rotation);
+                ApplyAgentVisualState(obj, prop, visualState, true, Vector3.zero);
                 //obj.SetActive(true);
                 if(toRemove != null) toRemove.Remove(name);
                 cptPrefab++;
@@ -652,11 +665,11 @@ public class SimulationManager : MonoBehaviour
 
                 int[] pt = infoWorld.pointsGeom[cptGeom].c.ToArray();
                 float yOffset = (0.0f + infoWorld.offsetYGeom[cptGeom]) / (0.0f + parameters.precision);
+                Vector3 polygonBasePosition = new Vector3(0f, yOffset, 0f);
 
                 if(initGame || !geometryMap.ContainsKey(name))
                 {
                     obj = polyGen.GeneratePolygons(false, name, pt, prop, parameters.precision);
-                    obj.transform.position = new Vector3(obj.transform.position.x, obj.transform.position.y + yOffset, obj.transform.position.z);
                    if(prop.hasCollider)
                     {
                         MeshCollider mc = obj.AddComponent<MeshCollider>();
@@ -680,6 +693,7 @@ public class SimulationManager : MonoBehaviour
                     }
                 }
                 
+                ApplyAgentVisualState(obj, prop, visualState, false, polygonBasePosition);
                 if(toRemove != null) toRemove.Remove(name);
                 cptGeom++;
             }
@@ -918,73 +932,250 @@ public class SimulationManager : MonoBehaviour
 
 
 
-    private GameObject instantiatePrefab(String name, PropertiesGAMA prop, bool initGame)
+    private GameObject instantiatePrefab(
+        string name,
+        PropertiesGAMA prop,
+        Attributes attributes,
+        string prefabSignature,
+        bool initGame)
     {
-        GameObject obj;
+        GameObject sourcePrefab;
+        string resolvedSignature;
+        bool hasPrefab = TryResolvePrefabAsset(prop, attributes, out sourcePrefab, out resolvedSignature);
 
-        if (prop.prefabObj == null)
+        if (!string.IsNullOrWhiteSpace(prefabSignature))
         {
-            prop.loadPrefab(parameters.precision);
+            resolvedSignature = prefabSignature;
         }
 
-        if (prop.prefabObj == null)
+        GameObject obj;
+        if (!hasPrefab || sourcePrefab == null)
         {
-            Debug.LogWarning($"[GAMA] Prefab '{prop.prefab}' not found in Resources for agent '{name}'. Using placeholder cube.");
+            Debug.LogWarning($"[GAMA] Prefab '{prop.prefab}' not found for agent '{name}'. Using placeholder cube.");
             obj = GameObject.CreatePrimitive(PrimitiveType.Cube);
             obj.name = name + " (Placeholder)";
-            
-            // Set tag if defined
             GamaSceneUtility.TrySetTag(obj, prop.tag);
 
-            float pScale = ((float)prop.size) / parameters.precision;
+            float pScale = (float)prop.size / Mathf.Max(parameters != null ? parameters.precision : 1, 1);
             obj.transform.localScale = new Vector3(pScale, pScale, pScale);
+            resolvedSignature = string.IsNullOrWhiteSpace(resolvedSignature)
+                ? "placeholder:" + GamaPrefabSceneSettings.NormalizeKey(prop.prefab)
+                : resolvedSignature;
         }
         else
         {
-            obj = Instantiate(prop.prefabObj);
+            obj = Instantiate(sourcePrefab);
             obj.name = name;
-            float scale = ((float)prop.size) / parameters.precision;
+            float scale = (float)prop.size / Mathf.Max(parameters != null ? parameters.precision : 1, 1);
             obj.transform.localScale = new Vector3(scale, scale, scale);
             obj.SetActive(true);
         }
 
-        if (prop.hasCollider)
+        EnsureColliderSetup(obj, prop);
+        SetPrefabSignature(obj, resolvedSignature);
+
+        List<object> pL = new List<object> { obj, prop };
+        if (!initGame)
         {
-            if (obj.TryGetComponent<LODGroup>(out var lod))
-            {
-                foreach (LOD l in lod.GetLODs())
-                {
-                    GameObject b = l.renderers[0].gameObject;
-                    Collider c = b.GetComponent<Collider>();
-                    if (c != null && c.bounds.extents.x == 0) 
-                        c = null;
-                
-                    if (c == null)
-                    {
-                        BoxCollider bc = b.AddComponent<BoxCollider>();
-                    }
-                    // b.tag = obj.tag;
-                    // b.name = obj.name;
-                    //bc.isTrigger = prop.isTrigger;
-                }
-            }
-            else
-            {
-                Collider c = obj.GetComponent<Collider>();
-                if (c != null && c.bounds.extents.x == 0) 
-                    c = null;
-                if (c == null)
-                {
-                    BoxCollider bc = obj.AddComponent<BoxCollider>();
-                }
-                // bc.isTrigger = prop.isTrigger;
-            }
+            geometryMap.Add(name, pL);
         }
-        List<object> pL = new List<object>();
-        pL.Add(obj); pL.Add(prop);
-        if (!initGame) geometryMap.Add(name, pL);
+
         instantiateGO(obj, name, prop);
         return obj;
+    }
+
+    private void EnsureColliderSetup(GameObject obj, PropertiesGAMA prop)
+    {
+        if (!prop.hasCollider || obj == null)
+        {
+            return;
+        }
+
+        if (obj.TryGetComponent<LODGroup>(out var lod))
+        {
+            foreach (LOD l in lod.GetLODs())
+            {
+                if (l.renderers == null || l.renderers.Length == 0 || l.renderers[0] == null)
+                {
+                    continue;
+                }
+
+                GameObject child = l.renderers[0].gameObject;
+                Collider childCollider = child.GetComponent<Collider>();
+                if (childCollider != null && childCollider.bounds.extents.x == 0)
+                {
+                    childCollider = null;
+                }
+
+                if (childCollider == null)
+                {
+                    child.AddComponent<BoxCollider>();
+                }
+            }
+
+            return;
+        }
+
+        Collider collider = obj.GetComponent<Collider>();
+        if (collider != null && collider.bounds.extents.x == 0)
+        {
+            collider = null;
+        }
+
+        if (collider == null)
+        {
+            obj.AddComponent<BoxCollider>();
+        }
+    }
+
+    private bool TryResolvePrefabAsset(
+        PropertiesGAMA prop,
+        Attributes attributes,
+        out GameObject prefab,
+        out string signature)
+    {
+        prefab = null;
+        signature = string.Empty;
+        if (prop == null || !prop.hasPrefab)
+        {
+            return false;
+        }
+
+        if (prefabSceneSettings != null &&
+            prefabSceneSettings.TryResolvePrefab(prop, attributes, out prefab, out signature))
+        {
+            return prefab != null;
+        }
+
+        if (prop.prefabObj == null)
+        {
+            prop.loadPrefab(parameters != null ? parameters.precision : 1);
+        }
+
+        if (prop.prefabObj != null)
+        {
+            prefab = prop.prefabObj;
+            signature = "legacy:" + GamaPrefabSceneSettings.NormalizeKey(prop.prefab);
+            return true;
+        }
+
+        signature = "placeholder:" + GamaPrefabSceneSettings.NormalizeKey(prop.prefab);
+        return false;
+    }
+
+    private string ResolvePrefabSignature(PropertiesGAMA prop, Attributes attributes)
+    {
+        GameObject resolvedPrefab;
+        string signature;
+        TryResolvePrefabAsset(prop, attributes, out resolvedPrefab, out signature);
+        return signature;
+    }
+
+    private static bool NeedsPrefabRebuild(GameObject instance, string desiredSignature)
+    {
+        string currentSignature = GetPrefabSignature(instance);
+        return !string.Equals(currentSignature, desiredSignature, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void SetPrefabSignature(GameObject instance, string signature)
+    {
+        if (instance == null)
+        {
+            return;
+        }
+
+        GamaRuntimePrefabSignature marker = instance.GetComponent<GamaRuntimePrefabSignature>();
+        if (marker == null)
+        {
+            marker = instance.AddComponent<GamaRuntimePrefabSignature>();
+        }
+
+        marker.signature = signature ?? string.Empty;
+    }
+
+    private static string GetPrefabSignature(GameObject instance)
+    {
+        if (instance == null)
+        {
+            return string.Empty;
+        }
+
+        GamaRuntimePrefabSignature marker = instance.GetComponent<GamaRuntimePrefabSignature>();
+        return marker != null ? marker.signature : string.Empty;
+    }
+
+    private void EnsureRuntimeSceneSettings()
+    {
+        if (agentSceneSettings == null)
+        {
+            agentSceneSettings = GetComponent<GamaAgentSceneSettings>();
+        }
+
+        if (agentSceneSettings == null)
+        {
+            agentSceneSettings = gameObject.AddComponent<GamaAgentSceneSettings>();
+        }
+
+        if (prefabSceneSettings == null)
+        {
+            prefabSceneSettings = GetComponent<GamaPrefabSceneSettings>();
+        }
+
+        if (prefabSceneSettings == null)
+        {
+            prefabSceneSettings = gameObject.AddComponent<GamaPrefabSceneSettings>();
+        }
+    }
+
+    private GamaAgentVisualState ResolveAgentVisualState(string agentName, PropertiesGAMA prop, Attributes attributes)
+    {
+        int precision = parameters != null ? parameters.precision : 1;
+        if (agentSceneSettings == null)
+        {
+            return GamaAgentSceneSettings.CreateDefaultVisualState(prop, attributes, precision);
+        }
+
+        return agentSceneSettings.ResolveVisualState(agentName, prop, attributes, precision);
+    }
+
+    private void ApplyAgentVisualState(
+        GameObject obj,
+        PropertiesGAMA prop,
+        GamaAgentVisualState visualState,
+        bool prefabAgent,
+        Vector3 basePosition)
+    {
+        if (obj == null)
+        {
+            return;
+        }
+
+        int precision = parameters != null ? parameters.precision : 1;
+        float baseScale = prefabAgent && prop != null ? prop.GetUnityScale(precision) : 1f;
+        float scale = Mathf.Max(0f, baseScale * visualState.ScaleMultiplier);
+        obj.transform.localScale = new Vector3(scale, scale, scale);
+
+        if (!prefabAgent)
+        {
+            obj.transform.position = basePosition + visualState.PositionOffset;
+            obj.transform.rotation = Quaternion.Euler(visualState.RotationOffsetEuler);
+        }
+
+        if (visualState.HasColor)
+        {
+            ChangeColor(obj, visualState.Color);
+        }
+
+        SetRenderersEnabled(obj, visualState.Visible);
+    }
+
+    private static void SetRenderersEnabled(GameObject obj, bool visible)
+    {
+        Renderer[] renderers = obj.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            renderers[i].enabled = visible;
+        }
     }
 
 
@@ -1098,23 +1289,56 @@ public class SimulationManager : MonoBehaviour
     }
 
 
-    private static readonly string[] colorNames = { "_BaseColor", "_Color", "_MainColor", "Color", "BaseColor" };
+    private static readonly int[] colorPropertyIds =
+    {
+        Shader.PropertyToID("_BaseColor"),
+        Shader.PropertyToID("_Color"),
+        Shader.PropertyToID("_MainColor"),
+        Shader.PropertyToID("Color"),
+        Shader.PropertyToID("BaseColor")
+    };
+
+    private static readonly MaterialPropertyBlock sharedColorPropertyBlock = new MaterialPropertyBlock();
     static public void ChangeColor(GameObject obj, Color color)
     {
         Renderer[] renderers = obj.gameObject.GetComponentsInChildren<Renderer>();
         for (int i = 0; i < renderers.Length; i++)
         {
-            Material mat = renderers[i].material;
-           
-            foreach (string prop in colorNames)
-            { 
-                if (mat.HasProperty(prop))
+            Renderer renderer = renderers[i];
+            bool applied = false;
+            for (int c = 0; c < colorPropertyIds.Length; c++)
+            {
+                int propId = colorPropertyIds[c];
+                Material[] sharedMaterials = renderer.sharedMaterials;
+                for (int m = 0; m < sharedMaterials.Length; m++)
                 {
-                    mat.SetColor(prop, color);
+                    Material sharedMat = sharedMaterials[m];
+                    if (sharedMat == null || !sharedMat.HasProperty(propId))
+                    {
+                        continue;
+                    }
+
+                    renderer.GetPropertyBlock(sharedColorPropertyBlock);
+                    sharedColorPropertyBlock.SetColor(propId, color);
+                    renderer.SetPropertyBlock(sharedColorPropertyBlock);
+                    sharedColorPropertyBlock.Clear();
+                    applied = true;
                     break; 
                 }
+
+                if (applied)
+                {
+                    break;
+                }
             }
-           
+
+            if (!applied)
+            {
+                renderer.GetPropertyBlock(sharedColorPropertyBlock);
+                sharedColorPropertyBlock.SetColor(colorPropertyIds[1], color);
+                renderer.SetPropertyBlock(sharedColorPropertyBlock);
+                sharedColorPropertyBlock.Clear();
+            }
         }
     }
     protected virtual void AdditionalInitAfterGeomLoading()
@@ -1173,6 +1397,14 @@ public class SimulationManager : MonoBehaviour
             case "precision":
                 parameters = ConnectionParameter.CreateFromJSON(content);
                 converter = new CoordinateConverter(parameters.precision, GamaCRSCoefX, GamaCRSCoefY, GamaCRSCoefY, GamaCRSOffsetX, GamaCRSOffsetY, GamaCRSOffsetZ);
+                if (agentSceneSettings != null && propertiesGAMA != null)
+                {
+                    agentSceneSettings.ImportProperties(propertiesGAMA.properties, parameters.precision);
+                }
+                if (prefabSceneSettings != null && propertiesGAMA != null)
+                {
+                    prefabSceneSettings.ImportProperties(propertiesGAMA.properties);
+                }
                 TimeSendPosition = (0.0f + parameters.minPlayerUpdateDuration) / (parameters.precision + 0.0f);
                 GameObject loc = (locomotion != null && locomotion.Count > 0) ? locomotion[0] : null;
                 if (loc != null)
@@ -1228,7 +1460,16 @@ public class SimulationManager : MonoBehaviour
                 propertyMap = new Dictionary<string, PropertiesGAMA>();
                 foreach (PropertiesGAMA p in propertiesGAMA.properties)
                 {
+                    p.PrepareRuntime(parameters != null ? parameters.precision : 1);
                     propertyMap.Add(p.id, p);
+                }
+                if (agentSceneSettings != null)
+                {
+                    agentSceneSettings.ImportProperties(propertiesGAMA.properties, parameters != null ? parameters.precision : 1);
+                }
+                if (prefabSceneSettings != null)
+                {
+                    prefabSceneSettings.ImportProperties(propertiesGAMA.properties);
                 }
                 break;
 
@@ -1317,6 +1558,12 @@ public class SimulationManager : MonoBehaviour
     }
 
 
+}
+
+[DisallowMultipleComponent]
+public class GamaRuntimePrefabSignature : MonoBehaviour
+{
+    public string signature;
 }
 
 

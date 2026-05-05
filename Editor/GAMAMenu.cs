@@ -30,9 +30,29 @@ public class GAMAMenu : ScriptableObject
     {
         EnsureRequiredTags();
         ProjectSimple.GamaUnity.Runtime.GamaInitializer.InitializeGama();
+        EnsureAgentSceneSettings();
         EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
         AssetDatabase.SaveAssets();
         Debug.Log("[GAMA] Scene setup complete.");
+    }
+
+    private static void EnsureAgentSceneSettings()
+    {
+        SimulationManager[] managers = Object.FindObjectsByType<SimulationManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (SimulationManager manager in managers)
+        {
+            if (manager.GetComponent<GamaAgentSceneSettings>() == null)
+            {
+                Undo.AddComponent<GamaAgentSceneSettings>(manager.gameObject);
+                EditorUtility.SetDirty(manager.gameObject);
+            }
+
+            if (manager.GetComponent<GamaPrefabSceneSettings>() == null)
+            {
+                Undo.AddComponent<GamaPrefabSceneSettings>(manager.gameObject);
+                EditorUtility.SetDirty(manager.gameObject);
+            }
+        }
     }
 
     private static void EnsureRequiredTags()

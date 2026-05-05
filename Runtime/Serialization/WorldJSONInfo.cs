@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 
@@ -26,12 +27,42 @@ public class WorldJSONInfo
 
     public static WorldJSONInfo CreateFromJSON(string jsonString)
     {
-        return JsonUtility.FromJson<WorldJSONInfo>(jsonString);
+        WorldJSONInfo info = JsonUtility.FromJson<WorldJSONInfo>(jsonString);
+        if (info == null)
+        {
+            return null;
+        }
+
+        try
+        {
+            JObject root = JObject.Parse(jsonString);
+            JArray attributesArray = root["attributes"] as JArray;
+            if (attributesArray != null)
+            {
+                info.attributes = Attributes.FromJsonArray(attributesArray);
+            }
+        }
+        catch
+        {
+            // Keep the JsonUtility result when the optional dynamic attributes cannot be parsed.
+        }
+
+        return info;
     }
 
     public object getAttributeValue(string name, string attribute)
     {
         return attributes[names.IndexOf(name)];
+    }
+
+    public Attributes GetAttributesAt(int index)
+    {
+        if (attributes == null || index < 0 || index >= attributes.Count)
+        {
+            return null;
+        }
+
+        return attributes[index];
     }
 
 } 
@@ -42,5 +73,4 @@ public class GAMAPoint
 {
     public List<int> c;
 }
-
 
