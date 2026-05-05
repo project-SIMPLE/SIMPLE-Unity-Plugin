@@ -7,23 +7,9 @@ using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.InputSystem;
 using UnityEngine.XR.Interaction.Toolkit.Inputs.Simulation;
 
-/// <summary>
-/// Ordre &gt; <see cref="ConnectionManager"/> pour que l’instance websocket existe déjà en <c>Awake</c>/<c>OnEnable</c>.
-/// </summary>
-[DefaultExecutionOrder(10)]
-[RequireComponent(typeof(GamaAgentTuner))]
 public class SimulationManager : MonoBehaviour
 {
     [SerializeField] protected InputActionReference primaryRightHandButton = null;
-
-    [Header("Teinte prefab (optionnel, par scène Unity)")]
-    [Tooltip("Désactivé par défaut : chaque experiment doit fournir la couleur via GAMA (attributes / properties avec RGB). N’active ceci que dans une scene donnée où le JSON n’a pas de couleur prefab mais tu acceptes une teinte fixe (ex. Traffic).")]
-    [SerializeField] bool applyInspectorTintWhenPrefabHasNoGamaColor = false;
-    [SerializeField] Color prefabTintWhenGamaOmitsRgb = new Color32(180, 180, 180, 255);
-
-    [Header("Tuner runtime (optionnel)")]
-    [Tooltip("Composant GamaAgentTuner permettant d'ajuster la taille / rotation / couleur des agents reçus de GAMA depuis l'Inspector ou un overlay debug. Si null, recherche automatique sur ce GameObject.")]
-    [SerializeField] GamaAgentTuner agentTuner;
   
     [Header("Base GameObjects")]
     [SerializeField] protected GameObject player;
@@ -118,7 +104,6 @@ public class SimulationManager : MonoBehaviour
 
     bool hasSimulator ;
     private ConnectionManager subscribedConnectionManager;
-    private static bool warnedMissingConnectionManager;
 
     // ############################################ UNITY FUNCTIONS ############################################
     void Awake()
@@ -158,61 +143,33 @@ public class SimulationManager : MonoBehaviour
         playerMovement(false);
         toFollow = new List<GameObject>();
 
-        geometryMap = new Dictionary<string, List<object>>();
-
-        if (agentTuner == null)
-        {
-            agentTuner = GetComponent<GamaAgentTuner>();
-        }
+       
     }
 
 
     void OnEnable()
-    {
-        TrySubscribeConnectionManager();
-    }
-
-    void TrySubscribeConnectionManager()
     {
         if (subscribedConnectionManager != null)
         {
             return;
         }
 
-        ConnectionManager cm = ConnectionManager.Instance;
-        if (cm == null)
+        if (ConnectionManager.Instance == null)
         {
-            ConnectionManager[] found = UnityEngine.Object.FindObjectsByType<ConnectionManager>(
-                UnityEngine.FindObjectsInactive.Include,
-                UnityEngine.FindObjectsSortMode.None);
-            if (found != null && found.Length > 0)
-            {
-                cm = found[0];
-            }
-        }
-
-        if (cm == null)
-        {
-            if (!warnedMissingConnectionManager)
-            {
-                warnedMissingConnectionManager = true;
-                Debug.LogWarning("[GAMA] Aucun ConnectionManager actif (Instance null). "
-                    + "Vérifie la scène : composant présent sur le même GameObject que le middleware "
-                    + "et absence de « Missing (Mono Script) ». Relance après réassignation du script.");
-            }
-
+            Debug.Log("No connection manager");
             return;
         }
 
-        warnedMissingConnectionManager = false;
-        subscribedConnectionManager = cm;
+        subscribedConnectionManager = ConnectionManager.Instance;
         subscribedConnectionManager.OnServerMessageReceived += HandleServerMessageReceived;
         subscribedConnectionManager.OnConnectionAttempted += HandleConnectionAttempted;
         subscribedConnectionManager.OnConnectionStateChanged += HandleConnectionStateChanged;
+        Debug.Log("SimulationManager: OnEnable");
     }
 
     void OnDisable()
     {
+        Debug.Log("SimulationManager: OnDisable");
         if (subscribedConnectionManager == null)
         {
             return;
@@ -231,16 +188,11 @@ public class SimulationManager : MonoBehaviour
 
     void Start()
     {
-        if (geometryMap == null)
-        {
-            geometryMap = new Dictionary<string, List<object>>();
-        }
-
+        geometryMap = new Dictionary<string, List<object>>();
         handleGeometriesRequested = false;
         // handlePlayerParametersRequested = false;
         handleGroundParametersRequested = false;
         OnEnable();
-        TrySubscribeConnectionManager();
     }
 
 
@@ -312,7 +264,6 @@ public class SimulationManager : MonoBehaviour
             {
                 TimerSendInit = TimeSendInit;
                 ConnectionManager.Instance.SendExecutableAsk("send_init_data", connectionID);
-                Debug.Log("[GAMA] Sending send_init_data (retry)...");
             }
         }
 
@@ -623,10 +574,7 @@ public class SimulationManager : MonoBehaviour
 
     void GenerateGeometries(bool initGame, HashSet<string> toRemove)
     {
-        if (geometryMap == null)
-        {
-            geometryMap = new Dictionary<string, List<object>>();
-        }
+
 
         if (infoWorld.position != null && infoWorld.position.Count > 1 && (initGame || !sendMessageToReactivatePositionSent))
         {
@@ -658,6 +606,7 @@ public class SimulationManager : MonoBehaviour
                 if (initGame || !geometryMap.ContainsKey(name))
                 {
                     obj = instantiatePrefab(name, prop, initGame);
+         
                 }
                 else
                 {
@@ -682,13 +631,11 @@ public class SimulationManager : MonoBehaviour
                     }
 
                 }
-                Vector3 unityPosBeforeApply = obj.transform.position;
                 List<int> pt = infoWorld.pointsLoc[cptPrefab].c;
                 Vector3 pos = converter.fromGAMACRS(pt[0], pt[1], pt[2]);
                 pos.y += prop.yOffsetF;
-                Quaternion orientation =
-                    ResolvePrefabOrientation(unityPosBeforeApply, pos, pt, prop, skipVelocityInference: initGame, obj);
-                obj.transform.SetPositionAndRotation(pos, orientation);
+                float rot = prop.rotationCoeffF * ((0.0f + pt[3]) / parameters.precision) + prop.rotationOffsetF;
+                obj.transform.SetPositionAndRotation(pos, Quaternion.AngleAxis(rot, Vector3.up));
                 //obj.SetActive(true);
                 if(toRemove != null) toRemove.Remove(name);
                 cptPrefab++;
@@ -737,8 +684,6 @@ public class SimulationManager : MonoBehaviour
                 cptGeom++;
             }
 
-            ApplyVisualAttributes(i, obj);
-            ApplyPrefabInspectorTintIfNeeded(prop, obj, i);
 
         }
 
@@ -874,44 +819,19 @@ public class SimulationManager : MonoBehaviour
     // ############################################ UPDATERS ############################################
     private void UpdatePlayerPosition()
     {
-        if (converter == null || parameters == null || XROrigin == null ||
-            ConnectionManager.Instance == null)
-        {
-            return;
-        }
-
-        Camera playCamera = Camera.main;
-        if (playCamera == null && player != null)
-        {
-            playCamera = player.GetComponentInChildren<Camera>();
-        }
-
+        Vector2 vF = new Vector2(Camera.main.transform.forward.x, Camera.main.transform.forward.z);
         Vector2 vR = new Vector2(transform.forward.x, transform.forward.z);
+        vF.Normalize();
         vR.Normalize();
-        int angle = 0;
+        float c = vF.x * vR.x + vF.y * vR.y;
+        float s = vF.x * vR.y - vF.y * vR.x;
+        int angle = (int)(((s > 0) ? -1.0 : 1.0) * (180 / Math.PI) * Math.Acos(c) * parameters.precision);
 
-        if (playCamera != null)
-        {
-            Vector2 vF = new Vector2(playCamera.transform.forward.x, playCamera.transform.forward.z);
-            vF.Normalize();
-            float c = vF.x * vR.x + vF.y * vR.y;
-            float s = vF.x * vR.y - vF.y * vR.x;
-            angle = (int)(((s > 0) ? -1.0 : 1.0) * (180 / Math.PI) * Math.Acos(Mathf.Clamp(c, -1f, 1f)) *
-                    parameters.precision);
-        }
 
-        Vector3 v;
-        if (hasSimulator && playCamera != null)
-        {
-            v = new Vector3(
-                playCamera.transform.localPosition.x + XROrigin.localPosition.x,
-                playCamera.transform.localPosition.y + XROrigin.localPosition.y,
-                playCamera.transform.localPosition.z + XROrigin.localPosition.z);
-        }
-        else
-        {
-            v = new Vector3(XROrigin.localPosition.x, XROrigin.localPosition.y, XROrigin.localPosition.z);
-        }
+
+      //  Vector3 v = new Vector3(Camera.main.transform.position.x, Camera.main.transform.position.y - yOffsetCamera, Camera.main.transform.position.z);
+        Vector3 v = hasSimulator ? new Vector3(Camera.main.transform.localPosition.x + XROrigin.localPosition.x, Camera.main.transform.localPosition.y + XROrigin.localPosition.y,Camera.main.transform.localPosition.z + XROrigin.localPosition.z)
+ : new Vector3(XROrigin.localPosition.x, XROrigin.localPosition.y, XROrigin.localPosition.z);
 
         List<int> p = converter.toGAMACRS3D(v);
         Dictionary<string, string> args = new Dictionary<string, string> {
@@ -1000,8 +920,33 @@ public class SimulationManager : MonoBehaviour
 
     private GameObject instantiatePrefab(String name, PropertiesGAMA prop, bool initGame)
     {
-        prop.loadPrefab(parameters.precision);
-        GameObject obj = GamaVisualUtility.InstantiateVisual(name, prop, parameters.precision);
+        GameObject obj;
+
+        if (prop.prefabObj == null)
+        {
+            prop.loadPrefab(parameters.precision);
+        }
+
+        if (prop.prefabObj == null)
+        {
+            Debug.LogWarning($"[GAMA] Prefab '{prop.prefab}' not found in Resources for agent '{name}'. Using placeholder cube.");
+            obj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            obj.name = name + " (Placeholder)";
+            
+            // Set tag if defined
+            GamaSceneUtility.TrySetTag(obj, prop.tag);
+
+            float pScale = ((float)prop.size) / parameters.precision;
+            obj.transform.localScale = new Vector3(pScale, pScale, pScale);
+        }
+        else
+        {
+            obj = Instantiate(prop.prefabObj);
+            obj.name = name;
+            float scale = ((float)prop.size) / parameters.precision;
+            obj.transform.localScale = new Vector3(scale, scale, scale);
+            obj.SetActive(true);
+        }
 
         if (prop.hasCollider)
         {
@@ -1039,12 +984,6 @@ public class SimulationManager : MonoBehaviour
         pL.Add(obj); pL.Add(prop);
         if (!initGame) geometryMap.Add(name, pL);
         instantiateGO(obj, name, prop);
-
-        if (agentTuner != null)
-        {
-            agentTuner.ApplyOnInstantiate(obj, prop);
-        }
-
         return obj;
     }
 
@@ -1052,22 +991,9 @@ public class SimulationManager : MonoBehaviour
 
     private void UpdateAgentsList()
     {
-        if (geometryMap == null || infoWorld == null)
-        {
-            return;
-        }
 
-        if (converter == null || propertyMap == null || parameters == null)
-        {
-            return;
-        }
 
         ManageOtherInformation();
-        if (toRemove == null)
-        {
-            return;
-        }
-
         toRemove.Clear();
         toRemove.UnionWith(geometryMap.Keys);
 
@@ -1091,208 +1017,9 @@ public class SimulationManager : MonoBehaviour
         }
     }
 
-    Quaternion ResolvePrefabOrientation(Vector3 unityPosBeforeApply, Vector3 targetUnityWorld,
-        List<int> pointRow, PropertiesGAMA prop, bool skipVelocityInference, GameObject obj)
-    {
-        Quaternion visualOffset = GetPrefabVisualOffset(prop);
-        Quaternion prefabBaseRotation = GetPrefabBaseRotation(prop);
-
-        Quaternion headingYaw = HeadingYawFromGamaDegrees(parameters, prop, pointRow, obj);
-        Quaternion gamaRotation = headingYaw * visualOffset * prefabBaseRotation;
-
-        Vector3 deltaWorld = targetUnityWorld - unityPosBeforeApply;
-        deltaWorld.y = 0f;
-
-        float moveSq = Mathf.Max(MinMovementSquaredForPrefabOrientation(parameters), 1e-10f);
-        bool preferMovementOrientation = IsVehicleLikePrefab(prop);
-        bool movementValid =
-            !skipVelocityInference &&
-            deltaWorld.sqrMagnitude >= moveSq &&
-            (preferMovementOrientation || LooksLikePrefabStepRatherThanTeleport(deltaWorld));
-
-        Quaternion movementRotation = movementValid
-            ? Quaternion.LookRotation(deltaWorld.normalized, Vector3.up) * visualOffset * prefabBaseRotation
-            : gamaRotation;
-
-        if (agentTuner != null)
-        {
-            return agentTuner.ResolveOrientation(
-                gamaRotation,
-                movementRotation,
-                movementValid,
-                skipVelocityInference,
-                prop,
-                obj);
-        }
-
-        return movementValid ? movementRotation : gamaRotation;
-    }
-
-    static Quaternion GetPrefabVisualOffset(PropertiesGAMA prop)
-    {
-        if (prop == null || prop.prefabObj == null)
-        {
-            return Quaternion.identity;
-        }
-
-        return Quaternion.Euler(0f, prop.rotationOffsetF, 0f);
-    }
-
-    static Quaternion GetPrefabBaseRotation(PropertiesGAMA prop)
-    {
-        return prop != null && prop.prefabObj != null
-            ? prop.prefabObj.transform.rotation
-            : Quaternion.identity;
-    }
-
-    static bool IsVehicleLikePrefab(PropertiesGAMA prop)
-    {
-        if (prop == null)
-        {
-            return false;
-        }
-
-        string descriptor =
-            ((prop.prefab ?? string.Empty) + " " +
-             (prop.tag ?? string.Empty) + " " +
-             (prop.id ?? string.Empty)).ToLowerInvariant();
-
-        return descriptor.Contains("vehicle") ||
-               descriptor.Contains("car") ||
-               descriptor.Contains("bus") ||
-               descriptor.Contains("truck") ||
-               descriptor.Contains("van") ||
-               descriptor.Contains("taxi") ||
-               descriptor.Contains("bike") ||
-               descriptor.Contains("bicycle") ||
-               descriptor.Contains("scooter") ||
-               descriptor.Contains("moto") ||
-               descriptor.Contains("motorcycle") ||
-               descriptor.Contains("tram");
-    }
-
-    bool LooksLikePrefabStepRatherThanTeleport(Vector3 deltaXZ)
-    {
-        if (parameters == null || parameters.precision <= 0 || converter == null)
-        {
-            return deltaXZ.sqrMagnitude < 500f * 500f;
-        }
-
-        float worldApprox = Mathf.Max(
-            Mathf.Abs(converter.GamaCRSCoefX),
-            Mathf.Abs(converter.GamaCRSCoefY),
-            Mathf.Abs(converter.GamaCRSCoefZ),
-            Mathf.Max(2f / (parameters.precision + 1f), 1e-6f));
-
-        float maxStep = Mathf.Max(worldApprox * (parameters.precision * 12f), 80f);
-
-        return deltaXZ.sqrMagnitude <= maxStep * maxStep;
-    }
-
-    Quaternion HeadingYawFromGamaDegrees(ConnectionParameter parameters, PropertiesGAMA prop, List<int> pointRow, GameObject obj)
-    {
-        int prec = parameters != null && parameters.precision > 0 ? parameters.precision : 1;
-
-        if (pointRow == null || pointRow.Count < 4)
-        {
-            return Quaternion.identity;
-        }
-
-        float rawHeadingDegrees = pointRow[3] / (float)prec;
-        float coeff = Mathf.Abs(prop.rotationCoeffF) > 1e-6f ? prop.rotationCoeffF : 1f;
-
-        float tunerMultiplier = 1f;
-        bool invert = false;
-        if (agentTuner != null &&
-            agentTuner.TryGetHeadingCoeffMultiplier(prop, obj != null ? obj.name : null, out tunerMultiplier, out invert))
-        {
-            coeff *= tunerMultiplier;
-            if (invert)
-            {
-                coeff = -coeff;
-            }
-        }
-
-        float yawDegrees = coeff * rawHeadingDegrees;
-        return Quaternion.AngleAxis(yawDegrees, Vector3.up);
-    }
-
-    static float MinMovementSquaredForPrefabOrientation(ConnectionParameter parameters)
-    {
-        if (parameters == null || parameters.precision <= 0)
-        {
-            return 1e-9f;
-        }
-
-        float worldUnit = Mathf.Max(2f / (parameters.precision + 1f), 1e-6f);
-        float delta = Mathf.Max(worldUnit * 0.25f, 0.0005f);
-
-        return delta * delta;
-    }
-
-    void ApplyPrefabInspectorTintIfNeeded(PropertiesGAMA prop, GameObject obj, int rowIndex)
-    {
-        if (!applyInspectorTintWhenPrefabHasNoGamaColor ||
-            obj == null ||
-            prop == null ||
-            infoWorld == null ||
-            !prop.hasPrefab)
-        {
-            return;
-        }
-
-        if (agentTuner != null && agentTuner.ShouldSkipInspectorTint(prop, obj.name))
-        {
-            return;
-        }
-
-        if (GamaVisualUtility.PropertiesMessageIncludesExplicitTint(prop))
-        {
-            return;
-        }
-
-        if (infoWorld.attributes != null && rowIndex < infoWorld.attributes.Count)
-        {
-            Attributes attrRow = infoWorld.attributes[rowIndex];
-            if (attrRow.TryGetColor(out _))
-            {
-                return;
-            }
-        }
-
-        GamaVisualUtility.ApplyColor(obj, prefabTintWhenGamaOmitsRgb);
-    }
-
     protected virtual void ManageAttributes(List<Attributes> attributes)
     {
 
-    }
-
-    private void ApplyVisualAttributes(int attributeIndex, GameObject obj)
-    {
-        if (obj == null || infoWorld == null || infoWorld.attributes == null ||
-            attributeIndex < 0 || attributeIndex >= infoWorld.attributes.Count)
-        {
-            return;
-        }
-
-        if (agentTuner != null && propertyMap != null && infoWorld.propertyID != null &&
-            attributeIndex < infoWorld.propertyID.Count)
-        {
-            string propId = infoWorld.propertyID[attributeIndex];
-            PropertiesGAMA prop;
-            if (propertyMap.TryGetValue(propId, out prop) &&
-                agentTuner.TryApplyColorOverride(obj, prop))
-            {
-                return;
-            }
-        }
-
-        Color32 color;
-        if (infoWorld.attributes[attributeIndex].TryGetColor(out color))
-        {
-            GamaVisualUtility.ApplyColor(obj, color);
-        }
     }
 
     protected virtual void ManageOtherInformation()
@@ -1401,8 +1128,7 @@ public class SimulationManager : MonoBehaviour
 
     private void HandleServerMessageReceived(String firstKey, String content)
     {
-        try
-        {
+
         if (content == null || content.Equals("{}")) return;
         if (firstKey == null)
         {
@@ -1440,8 +1166,6 @@ public class SimulationManager : MonoBehaviour
 
         }
 
-
-        Debug.Log("[GAMA] Processing message: " + firstKey + " (state=" + currentState + ")");
 
         switch (firstKey)
         {
@@ -1542,11 +1266,7 @@ public class SimulationManager : MonoBehaviour
                 ManageOtherMessages(content);
                 break;
         }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError("[GAMA] Error in HandleServerMessageReceived (key=" + firstKey + "): " + ex.Message + "\n" + ex.StackTrace);
-        }
+
     }
 
     private void HandleConnectionAttempted(bool success)

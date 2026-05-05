@@ -1,6 +1,6 @@
 # SIMPLE Unity Plugin
 
-`com.project-simple.gama-unity` is a Unity Package Manager package for SIMPLE VR scenes that connect to the `simple.webplatform` middleware.
+`com.project-simple.unity-plugin` is a Unity Package Manager package for SIMPLE VR scenes that connect to the `simple.webplatform` middleware.
 
 The runtime client connects to the webplatform headset WebSocket endpoint, not directly to GAMA Server:
 
@@ -26,7 +26,7 @@ For local project testing, you can also add it to a Unity project's `Packages/ma
 ```json
 {
   "dependencies": {
-    "com.project-simple.gama-unity": "file:../path/to/SIMPLE-Unity-Plugin"
+    "com.project-simple.unity-plugin": "file:../path/to/SIMPLE-Unity-Plugin"
   }
 }
 ```
@@ -45,12 +45,6 @@ The runtime sends `connection`, `pong`, `expression`, `ask`, and `disconnect_pro
 ## Current Status
 
 The package layout, assembly names, and runtime WebSocket dependency are now in place.
-
-### New in this release
-
-- **Dynamic agent tuning during simulation**: a new `GamaAgentTuner` component is auto-attached to the `SimulationManager` GameObject and exposes runtime sliders (size, rotation offset, color, materials, prefab visibility, etc.) directly inside the Inspector of the manager. Settings can be changed live, in Play mode, with optional per-agent overrides matched by `propertyId`, prefab path, tag, or name regex. An on-screen overlay (default key `F8`) lets you tweak the master sliders during play.
-- **Real prefab import**: agents are no longer rendered as plain default cubes. The runtime now resolves prefabs by path through `Resources` and the Unity AssetDatabase, instantiates the actual visual asset, and only falls back to a procedural mesh (vehicle, character, or box) when the prefab cannot be found.
-- **Automatic GAMA-driven coloring**: per-agent and per-property colors sent by GAMA (in `properties` and `attributes`: `rgb`, `rgba`, `color`, `shade`, `tint`, named CSS colors, hex strings, etc.) are detected automatically and applied to the imported prefab materials. The previous uniform "fallback grey/blue" behavior is now opt-in.
 
 Known remaining work:
 

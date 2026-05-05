@@ -1,3 +1,4 @@
+using System;
 using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
@@ -76,11 +77,27 @@ public class PolygonGenerator
     /// </summary>
     public GameObject GeneratePolygons(bool editMode, string name, Vector2[] meshDataPoints, PropertiesGAMA prop, int precision)
     {
-        Color32 col = GamaVisualUtility.GetColor(prop);
-        Material mat = prop.visible ? GamaVisualUtility.ResolveMaterial(prop.material) : null;
+        // Prepare color from GAMA properties.
+        Color32 col = Color.black;
+        if (prop.visible)
+        {
+            col = new Color32(
+                BitConverter.GetBytes(prop.red)[0],
+                BitConverter.GetBytes(prop.green)[0],
+                BitConverter.GetBytes(prop.blue)[0],
+                BitConverter.GetBytes(prop.alpha)[0]);
+        }
+
+        // Load a custom material if specified.
+        Material mat = null;
+        if (prop.visible && !string.IsNullOrEmpty(prop.material))
+        {
+            // e.g. "Assets/Materials/MyMaterial" (without extension) if placed in the Resources folder.
+            mat = Resources.Load<Material>(prop.material);
+        }
 
         // Calculate the extrusion height.
-        float extrHeight = GamaVisualUtility.GetScaledValue(prop.height, precision, 0.001f);
+        float extrHeight = (float)prop.height / precision;
 
         // Create the extruded polygon object.
         GameObject obj = GeneratePolygon(name, meshDataPoints, extrHeight, col, mat);
@@ -124,10 +141,6 @@ public class PolygonGenerator
             mat
         );
 
-        surroundMesh = polyExtruderLight.surroundMesh;
-        bottomMesh = polyExtruderLight.bottomMesh;
-        topMesh = polyExtruderLight.topMesh;
-
         return polyExtruderGO;
     }
 
@@ -167,9 +180,6 @@ public class PolygonGenerator
         if (polyExtruderGO != null)
         {
             polyExtruderGO.updatePrism(meshFilter, pts);
-            surroundMesh = polyExtruderGO.surroundMesh;
-            bottomMesh = polyExtruderGO.bottomMesh;
-            topMesh = polyExtruderGO.topMesh;
         }
     }
 

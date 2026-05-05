@@ -1,5 +1,5 @@
 {
-  "name": "com.project-simple.gama-unity",
+  "name": "com.project-simple.unity-plugin",
   "version": "1.0.0",
   "displayName": "SIMPLE Unity Plugin",
   "description": "Unity runtime tools for SIMPLE VR scenes connected through the simple.webplatform middleware.",

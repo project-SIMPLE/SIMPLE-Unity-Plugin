@@ -5,10 +5,6 @@ using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 using System.Linq;
 
-/// <summary>
-/// S’exécute avant <see cref="SimulationManager"/> pour garantir que <see cref="ConnectionManager.Instance"/> est initialisé lors de leurs <c>OnEnable</c>.
-/// </summary>
-[DefaultExecutionOrder(-100)]
 public class ConnectionManager : WebSocketConnector
 {
      
@@ -32,7 +28,7 @@ public class ConnectionManager : WebSocketConnector
     //use to seperate messages in the case where the middleware is not used
     protected String MessageSeparator  = "|||";
 
-    private String AgentToSendInfo = "simulation[0].unity_linker[0]";
+private String AgentToSendInfo = "simulation[0].unity_linker[0]";
      
     
     // ############################################# UNITY FUNCTIONS #############################################
@@ -96,64 +92,62 @@ public class ConnectionManager : WebSocketConnector
 
     protected override void ManageMessage(string message)
     {
-        try
-        {
+
+            
             JObject jsonObj = JObject.Parse(message);
             string type = (string)jsonObj["type"];
-
+           
+        
             switch (type)
-            {
-                case "ping":
-                    var jsonId = new Dictionary<string, string> {{"type", "pong"}};
-                    string jsonStringId = JsonConvert.SerializeObject(jsonId);
-                    SendMessageToServer(jsonStringId);
-                    break;
-                case "json_state":
-                    OnConnectionStateReceived?.Invoke(jsonObj);
-                    bool authenticated = (bool)jsonObj["in_game"];
-                    bool connected = (bool)jsonObj["connected"];
+                {
+                    case "ping":
+                        var jsonId = new Dictionary<string, string> {{"type", "pong"}};
+                        string jsonStringId = JsonConvert.SerializeObject(jsonId);
+                        SendMessageToServer(jsonStringId);
+                        break;
+                    case "json_state":
+                        OnConnectionStateReceived?.Invoke(jsonObj);
+                        bool authenticated = (bool)jsonObj["in_game"];
+                        bool connected = (bool)jsonObj["connected"];
 
-                    if (authenticated && connected)
-                    {
-                        if (!IsConnectionState(ConnectionState.AUTHENTICATED))
+                        if (authenticated && connected)
                         {
-                            Debug.Log("ConnectionManager: Player successfully authenticated");
-                            UpdateConnectionState(ConnectionState.AUTHENTICATED);
-                        }
+                            if (!IsConnectionState(ConnectionState.AUTHENTICATED))
+                            {
+                                Debug.Log("ConnectionManager: Player successfully authenticated");
+                                UpdateConnectionState(ConnectionState.AUTHENTICATED);
+                            }
 
-                    }
-                    else if (connected && !authenticated)
-                    {
-                        if (!IsConnectionState(ConnectionState.CONNECTED))
+                        }
+                        else if (connected && !authenticated)
                         {
-                            connectionRequested = false;
-                            Debug.Log("ConnectionManager: Successfully connected, waiting for authentication...");
-                            UpdateConnectionState(ConnectionState.CONNECTED);
-                            OnConnectionAttempted?.Invoke(true);
-                        }
-                        else
-                        {
-                            Debug.LogWarning("ConnectionManager: Already connected, waiting for authentication...");
-                        }
+                            if (!IsConnectionState(ConnectionState.CONNECTED))
+                            {
+                                connectionRequested = false;
+                                Debug.Log("ConnectionManager: Successfully connected, waiting for authentication...");
+                                UpdateConnectionState(ConnectionState.CONNECTED);
+                                OnConnectionAttempted?.Invoke(true);
+                            }
+                            else
+                            {
+                                Debug.LogWarning("ConnectionManager: Already connected, waiting for authentication...");
+                            }
 
-                    }  
-                    break;  
+                        }  
+                        break;  
 
-                case "json_output":
-                    JObject content = (JObject)jsonObj["contents"];
-                    String firstKey = content.Properties().Select(pp => pp.Name).FirstOrDefault();
-                    Debug.Log("[GAMA] Received message key: " + (firstKey ?? "(null)"));
-                    OnServerMessageReceived?.Invoke(firstKey, content.ToString());
-                    break;
+                    case "json_output":
+                        JObject content = (JObject)jsonObj["contents"];
+                        String firstKey = content.Properties().Select(pp => pp.Name).FirstOrDefault();
+                        OnServerMessageReceived?.Invoke(firstKey, content.ToString());
+                        break;
 
-                default:
-                    break;
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError("[GAMA] Error processing incoming message: " + ex.Message + "\n" + ex.StackTrace);
-        }
+                    default:
+                        break;
+                }
+            
+            
+        
     }
 
     protected override void HandleConnectionClosed() {
