@@ -224,7 +224,12 @@ public class Attributes
 
         if (token.Type == JTokenType.String)
         {
-            return TryReadColorString(token.Value<string>(), out color);
+            return GamaColorUtility.TryParseString(token.Value<string>(), out color);
+        }
+
+        if (token.Type == JTokenType.Integer)
+        {
+            return GamaColorUtility.TryFromPackedInt(token.Value<int>(), out color);
         }
 
         if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
@@ -393,6 +398,7 @@ public class Attributes
 
     private static bool TryReadColorString(string value, out Color32 color)
     {
+<<<<<<< HEAD
         color = default(Color32);
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -442,6 +448,9 @@ public class Attributes
 
         color = ToColor(red, green, blue, alpha);
         return true;
+=======
+        return GamaColorUtility.TryParseString(value, out color);
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
     }
 
     private static bool TryReadHexColor(string value, out Color32 color)
@@ -487,6 +496,7 @@ public class Attributes
 
     private static bool TryReadNamedColor(string value, out Color32 color)
     {
+<<<<<<< HEAD
         color = default(Color32);
         switch (value.Trim().ToLowerInvariant())
         {
@@ -545,6 +555,9 @@ public class Attributes
             default:
                 return false;
         }
+=======
+        return GamaColorUtility.TryParseNamedColor(value, out color);
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
     }
 
     private static bool TryReadObjectValue(JObject obj, string key, out JToken value)
@@ -603,7 +616,11 @@ public class Attributes
 
     private static Color32 ToColor(double red, double green, double blue, double alpha)
     {
+<<<<<<< HEAD
         return new Color32(ToColorByte(red), ToColorByte(green), ToColorByte(blue), ToColorByte(alpha));
+=======
+        return GamaColorUtility.FromChannels(red, green, blue, alpha);
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
     }
 
     private static byte ToColorByte(double value)

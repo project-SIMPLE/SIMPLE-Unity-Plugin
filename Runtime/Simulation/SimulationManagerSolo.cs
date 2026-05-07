@@ -93,7 +93,8 @@ public class SimulationManagerSolo : SimulationManager
                 Dictionary<string, string> args = new Dictionary<string, string> {
                          {"id", grabbedObject.name }
                     };
-                ConnectionManager.Instance.SendExecutableAsk("update_hotspot", args);
+                if (ConnectionManager.Instance != null)
+                    ConnectionManager.Instance.SendExecutableAsk("update_hotspot", args);
                 bool newSelection = !SelectedObjects.Contains(grabbedObject);
                 if (newSelection)
                     SelectedObjects.Add(grabbedObject);
@@ -108,7 +109,8 @@ public class SimulationManagerSolo : SimulationManager
                 Dictionary<string, string> args = new Dictionary<string, string> {
                          {"id", grabbedObject.name }
                     };
-                ConnectionManager.Instance.SendExecutableAsk("remove_vehicle", args);
+                if (ConnectionManager.Instance != null)
+                    ConnectionManager.Instance.SendExecutableAsk("remove_vehicle", args);
                 grabbedObject.SetActive(false);
                 //toDelete.Add(grabbedObject);
 

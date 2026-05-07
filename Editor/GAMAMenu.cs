@@ -28,32 +28,52 @@ public class GAMAMenu : ScriptableObject
     [MenuItem("GAMA/Setup Scene")]
     public static void SetupScene()
     {
+        RemoveMissingScriptsFromScene();
         EnsureRequiredTags();
+        EnsureResourcesFolder();
         ProjectSimple.GamaUnity.Runtime.GamaInitializer.InitializeGama();
-        EnsureAgentSceneSettings();
+        RemoveMissingScriptsFromScene();
+
         EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
         AssetDatabase.SaveAssets();
         Debug.Log("[GAMA] Scene setup complete.");
     }
 
-    private static void EnsureAgentSceneSettings()
+    private static void EnsureResourcesFolder()
     {
-        SimulationManager[] managers = Object.FindObjectsByType<SimulationManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-        foreach (SimulationManager manager in managers)
+        if (!AssetDatabase.IsValidFolder("Assets/Resources"))
         {
-            if (manager.GetComponent<GamaAgentSceneSettings>() == null)
-            {
-                Undo.AddComponent<GamaAgentSceneSettings>(manager.gameObject);
-                EditorUtility.SetDirty(manager.gameObject);
-            }
-
-            if (manager.GetComponent<GamaPrefabSceneSettings>() == null)
-            {
-                Undo.AddComponent<GamaPrefabSceneSettings>(manager.gameObject);
-                EditorUtility.SetDirty(manager.gameObject);
-            }
+            AssetDatabase.CreateFolder("Assets", "Resources");
+            Debug.Log("[GAMA] Created 'Assets/Resources' directory.");
         }
     }
+
+    private static void RemoveMissingScriptsFromScene()
+    {
+        Scene scene = SceneManager.GetActiveScene();
+        if (!scene.IsValid())
+        {
+            return;
+        }
+
+        int removed = 0;
+        GameObject[] roots = scene.GetRootGameObjects();
+        for (int i = 0; i < roots.Length; i++)
+        {
+            Transform[] transforms = roots[i].GetComponentsInChildren<Transform>(true);
+            for (int j = 0; j < transforms.Length; j++)
+            {
+                removed += GameObjectUtility.RemoveMonoBehavioursWithMissingScript(transforms[j].gameObject);
+            }
+        }
+
+        if (removed > 0)
+        {
+            Debug.Log("[GAMA] Removed " + removed + " obsolete missing script component(s) from the scene.");
+        }
+    }
+
+
 
     private static void EnsureRequiredTags()
     {

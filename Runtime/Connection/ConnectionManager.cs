@@ -46,11 +46,7 @@ public class ConnectionManager : WebSocketConnector
     
     // ############################################# UNITY FUNCTIONS #############################################
     void Awake() {
-        Debug.Log("ConnectionManager Awake host: " + PlayerPrefs.GetString("IP") + " PORT: " + PlayerPrefs.GetString("PORT"));
-
         Instance = this;
-
-        Debug.Log("START");
         UpdateConnectionState(ConnectionState.DISCONNECTED);
     }
 
@@ -66,17 +62,14 @@ public class ConnectionManager : WebSocketConnector
         
         switch (newState) {
             case ConnectionState.PENDING:
-                Debug.Log("ConnectionManager: UpdateConnectionState -> PENDING");
                 break;
             case ConnectionState.CONNECTED:
-                Debug.Log("ConnectionManager: UpdateConnectionState -> CONNECTED");
+                Debug.Log("[GAMA] WebSocket connected");
                 break;
             case ConnectionState.AUTHENTICATED:
-                Debug.Log("ConnectionManager: UpdateConnectionState -> AUTHENTICATED");
+                Debug.Log("[GAMA] Player authenticated");
                 break;
             case ConnectionState.DISCONNECTED:
-                Debug.Log("ConnectionManager: UpdateConnectionState -> DISCONNECTED");
-              //  TryConnectionToServer();
                 break;
             default:
                 break;
@@ -98,7 +91,6 @@ public class ConnectionManager : WebSocketConnector
             }; 
             string jsonStringId = JsonConvert.SerializeObject(jsonId);
             SendMessageToServer(jsonStringId);
-            Debug.Log("ConnectionManager: Connection opened");
         
        
     }
@@ -109,7 +101,10 @@ public class ConnectionManager : WebSocketConnector
         {
             JObject jsonObj = JObject.Parse(message);
             string type = (string)jsonObj["type"];
+<<<<<<< HEAD
 
+=======
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
             switch (type)
             {
                 case "ping":
@@ -126,8 +121,16 @@ public class ConnectionManager : WebSocketConnector
                     {
                         if (!IsConnectionState(ConnectionState.AUTHENTICATED))
                         {
+<<<<<<< HEAD
                             Debug.Log("ConnectionManager: Player successfully authenticated");
                             UpdateConnectionState(ConnectionState.AUTHENTICATED);
+=======
+                            if (!IsConnectionState(ConnectionState.AUTHENTICATED))
+                            {
+                                UpdateConnectionState(ConnectionState.AUTHENTICATED);
+                            }
+
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
                         }
 
                     }
@@ -135,6 +138,7 @@ public class ConnectionManager : WebSocketConnector
                     {
                         if (!IsConnectionState(ConnectionState.CONNECTED))
                         {
+<<<<<<< HEAD
                             connectionRequested = false;
                             Debug.Log("ConnectionManager: Successfully connected, waiting for authentication...");
                             UpdateConnectionState(ConnectionState.CONNECTED);
@@ -144,6 +148,17 @@ public class ConnectionManager : WebSocketConnector
                         {
                             Debug.LogWarning("ConnectionManager: Already connected, waiting for authentication...");
                         }
+=======
+                            if (!IsConnectionState(ConnectionState.CONNECTED))
+                            {
+                                connectionRequested = false;
+                                UpdateConnectionState(ConnectionState.CONNECTED);
+                                OnConnectionAttempted?.Invoke(true);
+                            }
+                            else
+                            {
+                            }
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
 
                     }  
                     break;  
@@ -158,6 +173,7 @@ public class ConnectionManager : WebSocketConnector
                     OnServerMessageReceived?.Invoke(firstKey, content.ToString());
                     break;
 
+<<<<<<< HEAD
                 default:
                     break;
             }
@@ -165,16 +181,22 @@ public class ConnectionManager : WebSocketConnector
         catch (Exception ex)
         {
             Debug.LogError("[GAMA] Error processing incoming message: " + ex.Message + "\n" + ex.StackTrace);
+=======
+                    default:
+                        break;
+                }
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning("[GAMA] Error parsing message: " + ex.Message);
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
         }
     }
 
     protected override void HandleConnectionClosed() {
-        // checks if the connection was closed just after a connection request
-        Debug.Log("ConnectionManager: HandleConnectionClosed");
         if (connectionRequested) {
             connectionRequested = false;
             OnConnectionAttempted?.Invoke(false);
-            Debug.Log("ConnectionManager: Failed to connect to server");
         } 
         UpdateConnectionState(ConnectionState.DISCONNECTED);
     }
@@ -182,7 +204,6 @@ public class ConnectionManager : WebSocketConnector
     // ############################################# UTILITY FUNCTIONS #############################################
     public async void TryConnectionToServer() {
         if(IsConnectionState(ConnectionState.DISCONNECTED)) {
-            Debug.Log("ConnectionManager: Attempting to connect to middleware - ws://" + host + ":" + port + "/");
             connectionRequested = true;
             UpdateConnectionState(ConnectionState.PENDING);
 
@@ -190,18 +211,15 @@ public class ConnectionManager : WebSocketConnector
              
            
         } else {
-            Debug.LogWarning("ConnectionManager: Already connected to middleware: " + this.currentState);
         }
         
     }
      
     public async void DisconnectFromServer() {
         if(!IsConnectionState(ConnectionState.DISCONNECTED)) {
-            Debug.Log("ConnectionManager: Disconnecting from middleware...");
             await CloseSocketAsync();
             UpdateConnectionState(ConnectionState.DISCONNECTED);
         } else {
-            Debug.LogWarning("ConnectionManager: Already disconnected from middleware");
         }
     }
 
@@ -296,7 +314,7 @@ public class ConnectionManager : WebSocketConnector
 
     public void Reconnect()
     {
-        Debug.Log("Reconnect");
+
         currentState = ConnectionState.DISCONNECTED;
         TryConnectionToServer();
     }

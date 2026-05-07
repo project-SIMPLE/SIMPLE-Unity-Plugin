@@ -54,13 +54,12 @@ public abstract class WebSocketConnector : MonoBehaviour
                 port = DefaultPort;
             }
         }
-        Debug.Log("WebSocketConnector host: " + host + " PORT: " + port);
+
 
         socket = new WebSocket("ws://" + host + ":" + port + "/");
 
         socket.OnOpen += () =>
         {
-            Debug.Log("WS connected!");
             HandleConnectionOpen();
         };
 
@@ -82,7 +81,6 @@ public abstract class WebSocketConnector : MonoBehaviour
         socket.OnClose += (WebSocketCloseCode code) =>
         {
             HandleConnectionClosed();
-            Debug.Log("WS closed with code: " + code.ToString());
         };
 
         // Connect to the server 

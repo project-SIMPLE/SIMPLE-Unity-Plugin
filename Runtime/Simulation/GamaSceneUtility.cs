@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 public static class GamaSceneUtility
 {
@@ -49,12 +52,13 @@ public static class GamaSceneUtility
             return false;
         }
 
+        string normalizedTag = tag.Trim();
 #if UNITY_EDITOR
-        if (!IsDefinedTag(tag))
+        if (!IsDefinedTag(normalizedTag) && !TryCreateTag(normalizedTag))
         {
-            if (MissingTagsLogged.Add(tag))
+            if (MissingTagsLogged.Add(normalizedTag))
             {
-                Debug.LogWarning("[GAMA] Tag '" + tag + "' is not defined in TagManager. Run GAMA/Setup Scene to create required tags.");
+                Debug.LogWarning("[GAMA] Tag '" + normalizedTag + "' is not defined and could not be created automatically.");
             }
 
             return false;
@@ -63,15 +67,11 @@ public static class GamaSceneUtility
 
         try
         {
-            // Even if IsDefinedTag returns true (or we're not in editor), 
-            // the tag might still be missing at runtime.
-            gameObject.tag = tag;
+            gameObject.tag = normalizedTag;
             return true;
         }
         catch (Exception)
         {
-            // Unity logs an error internally when set_tag fails, 
-            // so we try to avoid this by using IsDefinedTag above.
             return false;
         }
     }
@@ -160,6 +160,53 @@ public static class GamaSceneUtility
     }
 
 #if UNITY_EDITOR
+    public static bool TryCreateTag(string tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag) || IsDefinedTag(tag))
+        {
+            return true;
+        }
+
+        try
+        {
+            UnityEngine.Object[] assets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset");
+            if (assets == null || assets.Length == 0)
+            {
+                return false;
+            }
+
+            SerializedObject tagManager = new SerializedObject(assets[0]);
+            SerializedProperty tags = tagManager.FindProperty("tags");
+            if (tags == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < tags.arraySize; i++)
+            {
+                if (tags.GetArrayElementAtIndex(i).stringValue == tag)
+                {
+                    return true;
+                }
+            }
+
+            tags.InsertArrayElementAtIndex(tags.arraySize);
+            tags.GetArrayElementAtIndex(tags.arraySize - 1).stringValue = tag;
+            tagManager.ApplyModifiedPropertiesWithoutUndo();
+            AssetDatabase.SaveAssets();
+            return true;
+        }
+        catch (Exception exception)
+        {
+            if (MissingTagsLogged.Add(tag))
+            {
+                Debug.LogWarning("[GAMA] Could not create Unity tag '" + tag + "': " + exception.Message);
+            }
+
+            return false;
+        }
+    }
+
     private static bool IsDefinedTag(string tag)
     {
         // Built-in tags that are always present

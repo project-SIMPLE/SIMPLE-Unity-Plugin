@@ -101,10 +101,23 @@ public class PropertiesGAMA
 
     public int height;
     public bool is3D;
-    // public List<int> color;
-
+    public List<int> color;
+    public List<int> rgb;
+    public List<int> rgba;
+    public List<float> colorFloat;
+    public List<float> rgbFloat;
+    public List<float> rgbaFloat;
 
     public string material;
+    public string hexColor;
+    public string colorHex;
+    public string colorString;
+    public string colorName;
+    public string colour;
+    public int packedColor;
+    public int colorInt;
+    public int rgbInt;
+    public int rgbaInt;
 
     public int red;
     public int green;
@@ -148,12 +161,38 @@ public class PropertiesGAMA
 
     public Color32 GetUnityColor()
     {
-        return new Color32(ToByte(red), ToByte(green), ToByte(blue), ToByte(alpha));
+        Color32 colorValue;
+        return TryGetUnityColor(out colorValue) ? colorValue : GamaColorUtility.DefaultVisibleColor;
     }
 
-    private static byte ToByte(int value)
+    public bool TryGetUnityColor(out Color32 colorValue)
     {
-        return (byte)Mathf.Clamp(value, 0, 255);
-    }
+        if (GamaColorUtility.TryFromIntList(rgba, out colorValue) ||
+            GamaColorUtility.TryFromIntList(rgb, out colorValue) ||
+            GamaColorUtility.TryFromIntList(color, out colorValue) ||
+            GamaColorUtility.TryFromFloatList(rgbaFloat, out colorValue) ||
+            GamaColorUtility.TryFromFloatList(rgbFloat, out colorValue) ||
+            GamaColorUtility.TryFromFloatList(colorFloat, out colorValue) ||
+            GamaColorUtility.TryParseString(hexColor, out colorValue) ||
+            GamaColorUtility.TryParseString(colorHex, out colorValue) ||
+            GamaColorUtility.TryParseString(colorString, out colorValue) ||
+            GamaColorUtility.TryParseString(colorName, out colorValue) ||
+            GamaColorUtility.TryParseString(colour, out colorValue) ||
+            GamaColorUtility.TryFromPackedInt(packedColor, out colorValue) ||
+            GamaColorUtility.TryFromPackedInt(colorInt, out colorValue) ||
+            GamaColorUtility.TryFromPackedInt(rgbInt, out colorValue) ||
+            GamaColorUtility.TryFromPackedInt(rgbaInt, out colorValue))
+        {
+            return true;
+        }
 
+        if (red == 0 && green == 0 && blue == 0 && alpha == 0)
+        {
+            colorValue = default(Color32);
+            return false;
+        }
+
+        colorValue = GamaColorUtility.FromChannels(red, green, blue, alpha);
+        return true;
+    }
 }

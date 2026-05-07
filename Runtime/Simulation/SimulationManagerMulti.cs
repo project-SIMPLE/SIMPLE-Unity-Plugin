@@ -18,7 +18,7 @@ public class SimulationManagerMulti : SimulationManager
 
     protected override void ManageOtherInformation()
     {
-        string id =  ConnectionManager.Instance.GetConnectionId() ;
+        string id = ConnectionManager.Instance != null ? ConnectionManager.Instance.GetConnectionId() : StaticInformation.getId();
          int index  = infoWorld.players.IndexOf(id);
         ranking = infoWorld.ranking[index];
         numTokens = infoWorld.numTokens;
@@ -78,13 +78,14 @@ public class SimulationManagerMulti : SimulationManager
         {
             GameObject grabbedObject = ev.interactableObject.transform.gameObject;
 
-            string id = ConnectionManager.Instance.GetConnectionId() ;
+            string id = ConnectionManager.Instance != null ? ConnectionManager.Instance.GetConnectionId() : StaticInformation.getId();
 
             Dictionary<string, string> args = new Dictionary<string, string> {
                          {"id", grabbedObject.name },
                          {"player", id }
                     };
-                ConnectionManager.Instance.SendExecutableAsk("remove_token", args);
+                if (ConnectionManager.Instance != null)
+                    ConnectionManager.Instance.SendExecutableAsk("remove_token", args);
                 grabbedObject.SetActive(false);
                 score = score + 1;
                 updateHUD();

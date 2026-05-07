@@ -67,7 +67,7 @@ public class LocalizationManager : MonoBehaviour
             }
         }
 
-        Debug.Log("Localization data loaded.");
+
     }
 
     public void SetLanguage(string languageName)
@@ -76,7 +76,7 @@ public class LocalizationManager : MonoBehaviour
         {
             currentLanguage = languageName;
             OnLanguageChanged?.Invoke();
-            Debug.Log($"Language changed to: {currentLanguage}");
+
         }
         else
         {

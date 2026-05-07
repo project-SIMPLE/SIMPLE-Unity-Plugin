@@ -38,7 +38,6 @@ public class UnityGeometry
             {
                 for (int i = 0; i < mesh.GetTriangles(index).Length; i++)
                 {
-                    Debug.Log("Triangles: " + i);
                     names.Add(obj.name);
                     heights.Add((int)mesh.bounds.size.y);
 

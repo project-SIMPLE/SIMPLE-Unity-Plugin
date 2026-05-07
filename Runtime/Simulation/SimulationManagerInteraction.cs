@@ -14,10 +14,8 @@ public class SimulationManagerInteraction : SimulationManager
     protected override void HoverEnterInteraction(HoverEnterEventArgs ev)
     {
          GameObject obj = ev.interactableObject.transform.gameObject;
-        Debug.Log("HoverEnterInteraction : " + obj);
         if (obj.tag.Equals("pedestrian"))
         {
-             Debug.Log("HoverEnterInteraction : " + obj);
              SimulationManagerSolo.ChangeColor(obj, Color.blue);
         } 
         
@@ -42,14 +40,14 @@ public class SimulationManagerInteraction : SimulationManager
         if (remainingTime <= 0.0)
         {
             GameObject grabbedObject = ev.interactableObject.transform.gameObject;
- Debug.Log("grabbedObject : " + grabbedObject);
        
             if (grabbedObject.tag.Equals("pedestrian") )
             {
                 Dictionary<string, string> args = new Dictionary<string, string> {
                          {"id", grabbedObject.name }
                     };
-                ConnectionManager.Instance.SendExecutableAsk("remove_pedestrian", args);
+                if (ConnectionManager.Instance != null)
+                    ConnectionManager.Instance.SendExecutableAsk("remove_pedestrian", args);
 
             } 
 

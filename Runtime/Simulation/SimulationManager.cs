@@ -7,12 +7,19 @@ using UnityEngine.SceneManagement;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.InputSystem;
 using UnityEngine.XR.Interaction.Toolkit.Inputs.Simulation;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
+<<<<<<< HEAD
 /// <summary>
 /// Ordre &gt; <see cref="ConnectionManager"/> pour que l’instance websocket existe déjà en <c>Awake</c>/<c>OnEnable</c>.
 /// </summary>
 [DefaultExecutionOrder(10)]
 public class SimulationManager : MonoBehaviour
+=======
+public abstract partial class SimulationManager : MonoBehaviour
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
 {
     [Serializable]
     private class ManualPrefabOverride
@@ -111,6 +118,7 @@ public class SimulationManager : MonoBehaviour
     private int debugColorMessagesCount = 0;
     [SerializeField] protected InputActionReference primaryRightHandButton = null;
 
+<<<<<<< HEAD
     [Header("Teinte prefab (optionnel, par scène Unity)")]
     [Tooltip("Désactivé par défaut : chaque experiment doit fournir la couleur via GAMA (attributes / properties avec RGB). N’active ceci que dans une scene donnée où le JSON n’a pas de couleur prefab mais tu acceptes une teinte fixe (ex. Traffic).")]
     [SerializeField] bool applyInspectorTintWhenPrefabHasNoGamaColor = false;
@@ -123,9 +131,48 @@ public class SimulationManager : MonoBehaviour
     [Tooltip("Configuration par espece GAMA: prefab optionnel, multiplicateur d'echelle, couleur d'override.")]
     [SerializeField] private List<SpeciesVisualOverride> speciesVisualOverrides = new List<SpeciesVisualOverride>();
   
+=======
+
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
     [Header("Base GameObjects")]
     [SerializeField] protected GameObject player;
     [SerializeField] protected GameObject Ground;
+
+    [Header("Prefab viewport streaming")]
+    [SerializeField] protected bool streamPrefabsByCameraView = true;
+    [SerializeField, Tooltip("Legacy toggle kept for backward compatibility. SceneView camera is ignored; streaming uses Game camera only.")]
+    protected bool preferSceneViewCameraInEditor = false;
+    [SerializeField] protected bool keepSelectedPrefabsLoaded = true;
+    [SerializeField, Min(0f)] protected float prefabViewPadding = 20f;
+    [SerializeField, Min(0.02f)] protected float prefabViewUpdateInterval = 0.1f;
+    [SerializeField, Tooltip("When enabled, prefabs beyond globalPrefabRenderDistance are deactivated (with hysteresis), in addition to frustum culling.")]
+    protected bool enablePrefabRenderDistance = true;
+    [SerializeField, Min(0f), Tooltip("World-space distance from camera at which streaming may disable the prefab (uses bounds closest point).")]
+    protected float globalPrefabRenderDistance = 1500f;
+    [SerializeField, Min(0f), Tooltip("Reactivation requires coming this much closer than globalPrefabRenderDistance to avoid flicker.")]
+    protected float prefabRenderDistanceHysteresis = 75f;
+    [SerializeField, Min(1), Tooltip("Max prefab agents evaluated per streaming tick (round-robin). Lower = less CPU per frame, slower convergence.")]
+    protected int prefabStreamingBudgetPerTick = 1500;
+    [SerializeField, Tooltip("Reuse released prefab instances instead of Destroy/Instantiate when signature matches.")]
+    protected bool enablePrefabPooling = true;
+    [SerializeField, Min(0), Tooltip("Cap pooled instances per prefab signature; excess are destroyed. 0 = always destroy.")]
+    protected int maxPooledPrefabsPerSignature = 128;
+    [SerializeField, Tooltip("Sets enableInstancing on shared materials once (author LOD Group on prefabs for mesh LOD).")]
+    protected bool enableGpuInstancingForPrefabMaterials = true;
+    [SerializeField] protected bool logPrefabStreamingStats = false;
+    [SerializeField, Min(0.5f)] protected float prefabStreamingStatsInterval = 3f;
+
+    [Header("Agent update throttling")]
+    [SerializeField, Tooltip("Limit how many agents are applied per tick to avoid long main-thread spikes.")]
+    protected bool limitAgentUpdatesPerTick = true;
+    [SerializeField, Min(1), Tooltip("Maximum number of agent entries processed each tick when applying world updates.")]
+    protected int maxAgentUpdatesPerTick = 1000;
+    [SerializeField] protected bool logAgentUpdateBudgetStats = false;
+    [SerializeField, Min(0.5f)] protected float agentUpdateBudgetStatsInterval = 3f;
+    [SerializeField, Tooltip("If false, non-prefab geometries (roads/buildings) are never destroyed when missing from a tick; they remain in hierarchy and only rendering is toggled by streaming.")]
+    protected bool removeMissingGeometryAgents = false;
+    [SerializeField, Min(1), Tooltip("Number of consecutive missing world ticks before an agent is culled/removed. Prevents one-frame global disappearances on partial updates.")]
+    protected int missingTicksBeforeCull = 2;
 
 
     // optional: define a scale between GAMA and Unity for the location given
@@ -157,6 +204,29 @@ public class SimulationManager : MonoBehaviour
 
     protected Dictionary<string, List<object>> geometryMap;
     protected Dictionary<string, PropertiesGAMA> propertyMap = null;
+    private static readonly HashSet<string> missingPrefabWarnings = new HashSet<string>();
+    private readonly Dictionary<string, Vector3> previousPrefabPositions = new Dictionary<string, Vector3>();
+    private readonly Dictionary<string, string> previousPrefabPropertyIds = new Dictionary<string, string>();
+    private readonly Dictionary<string, Vector3> prefabHeadingSourcePositions = new Dictionary<string, Vector3>();
+    private readonly Dictionary<string, string> prefabHeadingSourcePropertyIds = new Dictionary<string, string>();
+    private readonly HashSet<string> consumedPrefabHeadingSources = new HashSet<string>();
+    private readonly Plane[] prefabStreamingPlanes = new Plane[6];
+    private readonly List<string> prefabStreamingKeys = new List<string>();
+    private readonly Dictionary<string, Stack<GameObject>> prefabPools = new Dictionary<string, Stack<GameObject>>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Per-instance hysteresis when culling prefabs farther than render distance (key = GetInstanceID).</summary>
+    private readonly Dictionary<int, bool> prefabDistanceCulled = new Dictionary<int, bool>();
+    private readonly HashSet<int> gpuInstancingTouchedMaterials = new HashSet<int>();
+    private float prefabViewTimer;
+    private int prefabStreamingCursor;
+    private Transform prefabPoolRoot;
+    private float prefabStreamingLastDiagTime;
+    private bool pendingWorldUpdateRemovalPass;
+    private int pendingWorldAgentIndex;
+    private int pendingWorldPrefabIndex;
+    private int pendingWorldGeomIndex;
+    private float agentUpdateBudgetLastDiagTime;
+    private bool loggedMissingMainCameraForStreaming;
+    private readonly Dictionary<string, int> missingAgentTickCounts = new Dictionary<string, int>();
 
     protected List<GameObject> SelectedObjects;
 
@@ -228,7 +298,7 @@ public class SimulationManager : MonoBehaviour
 
         hasSimulator = UnityEngine.Object.FindFirstObjectByType<XRDeviceSimulator>() != null;
         connectionID["id"] = ConnectionManager.Instance != null ? ConnectionManager.Instance.GetConnectionId() : StaticInformation.getId();
-        Debug.Log("Simulation Manager");
+        Debug.Log("[GAMA] SimulationManager initialized");
         Instance = this;
         SelectedObjects = new List<GameObject>();
         // toDelete = new List<GameObject>();
@@ -277,6 +347,7 @@ public class SimulationManager : MonoBehaviour
         ConnectionManager cm = ConnectionManager.Instance;
         if (cm == null)
         {
+<<<<<<< HEAD
             ConnectionManager[] found = UnityEngine.Object.FindObjectsByType<ConnectionManager>(
                 UnityEngine.FindObjectsInactive.Include,
                 UnityEngine.FindObjectsSortMode.None);
@@ -296,6 +367,8 @@ public class SimulationManager : MonoBehaviour
                     + "et absence de « Missing (Mono Script) ». Relance après réassignation du script.");
             }
 
+=======
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
             return;
         }
 
@@ -304,10 +377,18 @@ public class SimulationManager : MonoBehaviour
         subscribedConnectionManager.OnServerMessageReceived += HandleServerMessageReceived;
         subscribedConnectionManager.OnConnectionAttempted += HandleConnectionAttempted;
         subscribedConnectionManager.OnConnectionStateChanged += HandleConnectionStateChanged;
+<<<<<<< HEAD
+=======
+
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
     }
 
     void OnDisable()
     {
+<<<<<<< HEAD
+=======
+
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
         if (subscribedConnectionManager == null)
         {
             return;
@@ -321,7 +402,7 @@ public class SimulationManager : MonoBehaviour
 
     void OnDestroy()
     {
-        Debug.Log("SimulationManager: OnDestroy");
+        DrainPrefabPools();
     }
 
     void OnValidate()
@@ -486,6 +567,10 @@ public class SimulationManager : MonoBehaviour
 
     void FixedUpdate()
     {
+        if (ConnectionManager.Instance == null)
+        {
+            return;
+        }
 
         if (sendMessageToReactivatePositionSent)
         { 
@@ -551,8 +636,13 @@ public class SimulationManager : MonoBehaviour
             if (TimerSendInit <= 0)
             {
                 TimerSendInit = TimeSendInit;
+<<<<<<< HEAD
                 ConnectionManager.Instance.SendExecutableAsk("send_init_data", connectionID);
                 Debug.Log("[GAMA] Sending send_init_data (retry)...");
+=======
+                if (ConnectionManager.Instance != null)
+                    ConnectionManager.Instance.SendExecutableAsk("send_init_data", connectionID);
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
             }
         }
 
@@ -579,9 +669,8 @@ public class SimulationManager : MonoBehaviour
         if (currentTimePing > 0)
         { 
             currentTimePing -= Time.deltaTime;
-            if (currentTimePing <= 0)
+            if (currentTimePing <= 0 && ConnectionManager.Instance != null)
             {
-                Debug.Log("Try to reconnect to the server");
                 ConnectionManager.Instance.Reconnect();
             }
         }
@@ -598,6 +687,7 @@ public class SimulationManager : MonoBehaviour
         }*/
 
         OtherUpdate();
+        UpdatePrefabViewportStreaming(Time.deltaTime);
     }
 
 
@@ -861,12 +951,17 @@ public class SimulationManager : MonoBehaviour
     }
 
 
-    void GenerateGeometries(bool initGame, HashSet<string> toRemove)
+    bool GenerateGeometries(bool initGame, HashSet<string> toRemove)
     {
+<<<<<<< HEAD
         if (geometryMap == null)
         {
             geometryMap = new Dictionary<string, List<object>>();
         }
+=======
+
+        SnapshotPrefabHeadingSources();
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
 
         if (infoWorld.position != null && infoWorld.position.Count > 1 && (initGame || !sendMessageToReactivatePositionSent))
         {
@@ -881,18 +976,39 @@ public class SimulationManager : MonoBehaviour
 
         if(toRemove != null) foreach (string n in infoWorld.keepNames) toRemove.Remove(n);
 
-        int cptPrefab = 0;
-        int cptGeom = 0;
+        Camera immediateStreamingCamera = GetPrefabStreamingCamera();
+        bool immediateFrustumEnabled = streamPrefabsByCameraView && immediateStreamingCamera != null;
+        if (immediateFrustumEnabled)
+        {
+            GeometryUtility.CalculateFrustumPlanes(immediateStreamingCamera, prefabStreamingPlanes);
+        }
+
+        bool budgetedPass = !initGame && limitAgentUpdatesPerTick && maxAgentUpdatesPerTick > 0;
+        int budget = budgetedPass ? maxAgentUpdatesPerTick : int.MaxValue;
+        int startAgentIndex = budgetedPass ? pendingWorldAgentIndex : 0;
+        int cptPrefab = budgetedPass ? pendingWorldPrefabIndex : 0;
+        int cptGeom = budgetedPass ? pendingWorldGeomIndex : 0;
+        int processedAgentCount = 0;
      
-        for (int i = 0; i < infoWorld.names.Count; i++)
+        for (int i = startAgentIndex; i < infoWorld.names.Count; i++)
         {
             string name = infoWorld.names[i];
             string propId = infoWorld.propertyID[i];
            
+<<<<<<< HEAD
             PropertiesGAMA prop = propertyMap[propId];
+=======
+            PropertiesGAMA prop = null;
+            if (propertyMap == null || !propertyMap.TryGetValue(propId, out prop) || prop == null)
+            {
+                continue;
+            }
+            Attributes attributes = infoWorld.GetAttributesAt(i);
+            GamaAgentVisualState visualState = ResolveAgentVisualState(name, prop, attributes);
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
 
             GameObject obj = null;
-         
+
             if (prop.hasPrefab)
             {
                 if (initGame || !geometryMap.ContainsKey(name))
@@ -913,11 +1029,18 @@ public class SimulationManager : MonoBehaviour
 
                         obj2.transform.position = new Vector3(0, -100, 0);
                         geometryMap.Remove(name);
+                        previousPrefabPositions.Remove(name);
+                        previousPrefabPropertyIds.Remove(name);
                         if (toFollow != null && toFollow.Contains(obj2))
                             toFollow.Remove(obj2);
 
+<<<<<<< HEAD
                         GameObject.Destroy(obj2);
                         obj = instantiatePrefab(name, prop, initGame);
+=======
+                        ReleasePrefabInstance(obj2);
+                        obj = instantiatePrefab(name, prop, attributes, desiredPrefabSignature, initGame);
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
 
                     }
 
@@ -926,9 +1049,19 @@ public class SimulationManager : MonoBehaviour
                 List<int> pt = infoWorld.pointsLoc[cptPrefab].c;
                 Vector3 pos = converter.fromGAMACRS(pt[0], pt[1], pt[2]);
                 pos.y += prop.yOffsetF;
+<<<<<<< HEAD
                 Quaternion orientation =
                     ResolvePrefabOrientation(unityPosBeforeApply, pos, pt, prop, skipVelocityInference: initGame, obj);
                 obj.transform.SetPositionAndRotation(pos, orientation);
+=======
+                pos += visualState.PositionOffset;
+                Quaternion rotation = ResolvePrefabRotation(name, prop, visualState, pt, pos, obj);
+                obj.transform.SetPositionAndRotation(pos, rotation);
+                previousPrefabPositions[name] = pos;
+                previousPrefabPropertyIds[name] = prop.id ?? string.Empty;
+                ApplyAgentVisualState(obj, prop, visualState, true, Vector3.zero);
+                ApplyImmediateStreamingState(obj, prop, immediateStreamingCamera, immediateFrustumEnabled);
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
                 //obj.SetActive(true);
                 if(toRemove != null) toRemove.Remove(name);
                 cptPrefab++;
@@ -957,7 +1090,10 @@ public class SimulationManager : MonoBehaviour
                         if (prop.isGrabable) mc.convex = true;
                     }
                     instantiateGO(obj, name, prop);
-                    if(!initGame) geometryMap.Add(name, new List<object> { obj, prop });
+                    if (geometryMap != null)
+                    {
+                        geometryMap[name] = new List<object> { obj, prop };
+                    }
                     
                 }
                 else
@@ -973,15 +1109,38 @@ public class SimulationManager : MonoBehaviour
                     }
                 }
                 
+<<<<<<< HEAD
+=======
+                ApplyAgentVisualState(obj, prop, visualState, false, polygonBasePosition);
+                ApplyImmediateStreamingState(obj, prop, immediateStreamingCamera, immediateFrustumEnabled);
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
                 if(toRemove != null) toRemove.Remove(name);
                 cptGeom++;
             }
 
+<<<<<<< HEAD
             ApplyVisualAttributes(i, obj);
             ApplyPrefabInspectorTintIfNeeded(prop, obj, i);
+=======
+            if (budgetedPass)
+            {
+                processedAgentCount++;
+                if (processedAgentCount >= budget && i + 1 < infoWorld.names.Count)
+                {
+                    pendingWorldAgentIndex = i + 1;
+                    pendingWorldPrefabIndex = cptPrefab;
+                    pendingWorldGeomIndex = cptGeom;
+                    EmitAgentUpdateBudgetDiagnostic(processedAgentCount, infoWorld.names.Count, pendingWorldAgentIndex);
+                    return false;
+                }
+            }
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
 
         }
 
+        pendingWorldAgentIndex = 0;
+        pendingWorldPrefabIndex = 0;
+        pendingWorldGeomIndex = 0;
        
         if (infoWorld.attributes != null && infoWorld.attributes.Count > 0)
             ManageAttributes(infoWorld.attributes);
@@ -991,6 +1150,7 @@ public class SimulationManager : MonoBehaviour
             AdditionalInitAfterGeomLoading();
 
         infoWorld = null;
+        return true;
     }
 
 
@@ -1004,19 +1164,16 @@ public class SimulationManager : MonoBehaviour
         {
 
             case GameState.MENU:
-                Debug.Log("SimulationManager: UpdateGameState -> MENU");
                 break;
 
             case GameState.WAITING:
-                Debug.Log("SimulationManager: UpdateGameState -> WAITING");
                 break;
 
             case GameState.LOADING_DATA:
                 if (!loadedAlready)
                 {
-                    Debug.Log("SimulationManager: UpdateGameState -> LOADING_DATA");
-                    
-                        
+                    Debug.Log("[GAMA] Loading initial data from middleware");
+                    if (ConnectionManager.Instance != null)
                         ConnectionManager.Instance.SendExecutableAsk("send_init_data", connectionID);
                     
                     TimerSendInit = TimeSendInit;
@@ -1025,24 +1182,20 @@ public class SimulationManager : MonoBehaviour
                 break;
 
             case GameState.GAME:
-                Debug.Log("SimulationManager: UpdateGameState -> GAME");
                 loadedAlready = false;
-                
-                   
+                if (ConnectionManager.Instance != null)
                     ConnectionManager.Instance.SendExecutableAsk("player_ready_to_receive_geometries", connectionID);
                 
                 break;
 
             case GameState.END:
-                Debug.Log("SimulationManager: UpdateGameState -> END");
                 break;
 
             case GameState.CRASH:
-                Debug.Log("SimulationManager: UpdateGameState -> CRASH");
+                Debug.LogWarning("[GAMA] Simulation crashed");
                 break;
 
             default:
-                Debug.Log("SimulationManager: UpdateGameState -> UNKNOWN");
                 break;
         }
 
@@ -1057,8 +1210,8 @@ public class SimulationManager : MonoBehaviour
 
     private void InitGroundParameters()
     {
-        Debug.Log("GroundParameters : Beginnig ground initialization");
-        if (Ground == null)
+
+        if (Ground == null || converter == null || parameters == null || parameters.world == null || parameters.world.Count < 2)
         {
             return;
         }
@@ -1074,15 +1227,14 @@ public class SimulationManager : MonoBehaviour
         Vector3 ps = converter.fromGAMACRS(parameters.world[0] / 2, parameters.world[1] / 2, 0);
 
         Ground.transform.position = ps;
-        Debug.Log("SimulationManager: Ground parameters initialized");
+
     }
 
 
     private void UpdateGameToFollowPosition()
     {
-        if (toFollow.Count > 0)
+        if (toFollow.Count > 0 && ConnectionManager.Instance != null && converter != null)
         {
-
 
             String names = "";
             String points = "";
@@ -1114,6 +1266,7 @@ public class SimulationManager : MonoBehaviour
     // ############################################ UPDATERS ############################################
     private void UpdatePlayerPosition()
     {
+<<<<<<< HEAD
         if (converter == null || parameters == null || XROrigin == null ||
             ConnectionManager.Instance == null)
         {
@@ -1126,6 +1279,13 @@ public class SimulationManager : MonoBehaviour
             playCamera = player.GetComponentInChildren<Camera>();
         }
 
+=======
+        if (Camera.main == null || converter == null || parameters == null || XROrigin == null)
+        {
+            return;
+        }
+        Vector2 vF = new Vector2(Camera.main.transform.forward.x, Camera.main.transform.forward.z);
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
         Vector2 vR = new Vector2(transform.forward.x, transform.forward.z);
         vR.Normalize();
         int angle = 0;
@@ -1155,14 +1315,15 @@ public class SimulationManager : MonoBehaviour
 
         List<int> p = converter.toGAMACRS3D(v);
         Dictionary<string, string> args = new Dictionary<string, string> {
-            {"id",ConnectionManager.Instance.GetConnectionId()  },
+             {"id", ConnectionManager.Instance != null ? ConnectionManager.Instance.GetConnectionId() : StaticInformation.getId() },
             {"x", "" +p[0]},
             {"y", "" +p[1]}, 
             {"z", "" +p[2]},
             {"angle", "" +angle}
         };
         
-        ConnectionManager.Instance.SendExecutableAsk("move_player_external", args);
+        if (ConnectionManager.Instance != null)
+            ConnectionManager.Instance.SendExecutableAsk("move_player_external", args);
 
         TimerSendPosition = TimeSendPosition;
     }
@@ -1277,16 +1438,86 @@ public class SimulationManager : MonoBehaviour
                 // bc.isTrigger = prop.isTrigger;
             }
         }
+<<<<<<< HEAD
         List<object> pL = new List<object>();
         pL.Add(obj); pL.Add(prop);
         if (!initGame) geometryMap.Add(name, pL);
         instantiateGO(obj, name, prop);
         ApplySpeciesScaleOverride(obj, prop);
+=======
+
+        GameObject obj = null;
+        bool pooledInstance = false;
+        if (enablePrefabPooling)
+        {
+            pooledInstance = TryGetPooledPrefab(resolvedSignature, out obj);
+        }
+        if (pooledInstance)
+        {
+            obj.name = name;
+            obj.SetActive(true);
+        }
+        else if (!hasPrefab || sourcePrefab == null)
+        {
+            WarnMissingPrefabOnce(prop, name);
+            obj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            obj.name = name + " (Placeholder)";
+            GamaSceneUtility.TrySetTag(obj, prop.tag);
+
+            float pScale = (float)prop.size / Mathf.Max(parameters != null ? parameters.precision : 1, 1);
+            obj.transform.localScale = new Vector3(pScale, pScale, pScale);
+            resolvedSignature = string.IsNullOrWhiteSpace(resolvedSignature)
+                ? "placeholder:" + SimulationManager.NormalizeKey(prop.prefab)
+                : resolvedSignature;
+        }
+        else
+        {
+            obj = Instantiate(sourcePrefab);
+            obj.name = name;
+            float scale = (float)prop.size / Mathf.Max(parameters != null ? parameters.precision : 1, 1);
+            obj.transform.localScale = new Vector3(scale, scale, scale);
+            obj.SetActive(true);
+        }
+
+        EnableGpuInstancing(obj);
+        EnsureColliderSetup(obj, prop);
+        SetPrefabSignature(obj, resolvedSignature, obj.transform.rotation);
+
+        List<object> pL = new List<object> { obj, prop };
+        if (geometryMap != null)
+        {
+            geometryMap[name] = pL;
+        }
+
+        if (!pooledInstance)
+        {
+            instantiateGO(obj, name, prop);
+        }
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
 
         return obj;
     }
 
+<<<<<<< HEAD
     private SpeciesVisualOverride ResolveSpeciesVisualOverride(PropertiesGAMA prop)
+=======
+    private static void WarnMissingPrefabOnce(PropertiesGAMA prop, string sampleAgentName)
+    {
+        string prefab = prop != null ? prop.prefab : string.Empty;
+        string propertyId = prop != null ? prop.id : string.Empty;
+        string key = propertyId + "|" + prefab;
+        if (!missingPrefabWarnings.Add(key))
+        {
+            return;
+        }
+
+        Debug.LogWarning(
+            "[GAMA] Prefab '" + prefab + "' not found for property '" + propertyId +
+            "'. Agent sample='" + sampleAgentName + "'. Using placeholder cubes.");
+    }
+
+    private void EnsureColliderSetup(GameObject obj, PropertiesGAMA prop)
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
     {
         if (speciesVisualOverrides == null || speciesVisualOverrides.Count == 0 || prop == null)
         {
@@ -1307,25 +1538,504 @@ public class SimulationManager : MonoBehaviour
 
     private GameObject ResolveSpeciesPrefabOverride(PropertiesGAMA prop)
     {
+<<<<<<< HEAD
         SpeciesVisualOverride o = ResolveSpeciesVisualOverride(prop);
         return o != null ? o.prefabOverride : null;
+=======
+        prefab = null;
+        signature = string.Empty;
+        if (prop == null || !prop.hasPrefab)
+        {
+            return false;
+        }
+
+        if (TryResolvePrefab(prop, attributes, out prefab, out signature))
+        {
+            return prefab != null;
+        }
+
+        if (prop.prefabObj == null)
+        {
+            prop.loadPrefab(parameters != null ? parameters.precision : 1);
+        }
+
+        if (prop.prefabObj != null)
+        {
+            prefab = prop.prefabObj;
+            signature = "legacy:" + SimulationManager.NormalizeKey(prop.prefab);
+            return true;
+        }
+
+        signature = "placeholder:" + SimulationManager.NormalizeKey(prop.prefab);
+        return false;
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
     }
 
     private void ApplySpeciesScaleOverride(GameObject obj, PropertiesGAMA prop)
     {
+<<<<<<< HEAD
         if (obj == null || prop == null)
+=======
+        GameObject resolvedPrefab;
+        string signature;
+        TryResolvePrefabAsset(prop, attributes, out resolvedPrefab, out signature);
+        return signature;
+    }
+
+    private static bool NeedsPrefabRebuild(GameObject instance, string desiredSignature)
+    {
+        string currentSignature = GetPrefabSignature(instance);
+        return !string.Equals(currentSignature, desiredSignature, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void SetPrefabSignature(GameObject instance, string signature, Quaternion baseRotation)
+    {
+        if (instance == null)
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
         {
             return;
         }
 
+<<<<<<< HEAD
         SpeciesVisualOverride o = ResolveSpeciesVisualOverride(prop);
         if (o == null)
+=======
+        GamaRuntimePrefabSignature marker = instance.GetComponent<GamaRuntimePrefabSignature>();
+        if (marker == null)
+        {
+            marker = instance.AddComponent<GamaRuntimePrefabSignature>();
+        }
+
+        marker.signature = signature ?? string.Empty;
+        marker.baseRotation = baseRotation;
+    }
+
+    private static string GetPrefabSignature(GameObject instance)
+    {
+        if (instance == null)
+        {
+            return string.Empty;
+        }
+
+        GamaRuntimePrefabSignature marker = instance.GetComponent<GamaRuntimePrefabSignature>();
+        return marker != null ? marker.signature : string.Empty;
+    }
+
+    private void EnsurePrefabPoolRoot()
+    {
+        if (prefabPoolRoot != null)
         {
             return;
         }
 
+        GameObject root = new GameObject("[GAMA] Prefab Pools");
+        root.hideFlags = HideFlags.HideAndDontSave;
+        prefabPoolRoot = root.transform;
+        DontDestroyOnLoad(root);
+    }
+
+    private bool TryGetPooledPrefab(string signature, out GameObject pooled)
+    {
+        pooled = null;
+        if (!enablePrefabPooling || string.IsNullOrWhiteSpace(signature))
+        {
+            return false;
+        }
+
+        string sig = signature.Trim();
+        if (sig.StartsWith("placeholder:", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        Stack<GameObject> stack;
+        if (!prefabPools.TryGetValue(sig, out stack) || stack == null || stack.Count == 0)
+        {
+            return false;
+        }
+
+        pooled = stack.Pop();
+        if (pooled == null)
+        {
+            return false;
+        }
+
+        pooled.transform.SetParent(null, worldPositionStays: false);
+        return true;
+    }
+
+    /// <summary>Return a prefab instance to the pool or destroy it.</summary>
+    private void ReleasePrefabInstance(GameObject instance)
+    {
+        if (instance == null)
+        {
+            return;
+        }
+
+        int id = instance.GetInstanceID();
+        prefabDistanceCulled.Remove(id);
+
+        if (!enablePrefabPooling)
+        {
+            UnityEngine.Object.Destroy(instance);
+            return;
+        }
+
+        string signature = GetPrefabSignature(instance);
+        if (string.IsNullOrWhiteSpace(signature) || signature.StartsWith("placeholder:", StringComparison.OrdinalIgnoreCase))
+        {
+            UnityEngine.Object.Destroy(instance);
+            return;
+        }
+
+        EnsurePrefabPoolRoot();
+        Stack<GameObject> stack;
+        if (!prefabPools.TryGetValue(signature, out stack) || stack == null)
+        {
+            stack = new Stack<GameObject>();
+            prefabPools[signature] = stack;
+        }
+
+        if (stack.Count >= maxPooledPrefabsPerSignature || maxPooledPrefabsPerSignature <= 0)
+        {
+            UnityEngine.Object.Destroy(instance);
+            return;
+        }
+
+        instance.transform.SetParent(prefabPoolRoot, worldPositionStays: false);
+        instance.transform.localPosition = Vector3.zero;
+        instance.transform.localRotation = Quaternion.identity;
+        instance.SetActive(false);
+        stack.Push(instance);
+    }
+
+    private void DrainPrefabPools()
+    {
+        foreach (KeyValuePair<string, Stack<GameObject>> kv in prefabPools)
+        {
+            Stack<GameObject> stack = kv.Value;
+            if (stack == null)
+            {
+                continue;
+            }
+
+            while (stack.Count > 0)
+            {
+                GameObject pooled = stack.Pop();
+                if (pooled != null)
+                {
+                    UnityEngine.Object.Destroy(pooled);
+                }
+            }
+        }
+
+        prefabPools.Clear();
+        gpuInstancingTouchedMaterials.Clear();
+        prefabDistanceCulled.Clear();
+        prefabStreamingKeys.Clear();
+        if (prefabPoolRoot != null)
+        {
+            UnityEngine.Object.Destroy(prefabPoolRoot.gameObject);
+            prefabPoolRoot = null;
+        }
+    }
+
+    /// <summary>Prefer enabling GPU Instancing on shared materials ahead of time; this promotes the flag once per material asset when safe.</summary>
+    private void EnableGpuInstancing(GameObject root)
+    {
+        if (!enableGpuInstancingForPrefabMaterials || root == null)
+        {
+            return;
+        }
+
+        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+        for (int r = 0; r < renderers.Length; r++)
+        {
+            Renderer renderer = renderers[r];
+            if (renderer == null)
+            {
+                continue;
+            }
+
+            Material[] shared = renderer.sharedMaterials;
+            if (shared == null)
+            {
+                continue;
+            }
+
+            for (int m = 0; m < shared.Length; m++)
+            {
+                Material mat = shared[m];
+                if (mat == null)
+                {
+                    continue;
+                }
+
+                int mid = mat.GetInstanceID();
+                if (!gpuInstancingTouchedMaterials.Add(mid))
+                {
+                    continue;
+                }
+
+                mat.enableInstancing = true;
+            }
+        }
+    }
+
+    /// <returns>Whether the agent satisfies frustum (+ optional hysteresis distance) constraints.</returns>
+    private bool PrefabPassesStreamingHeuristics(GameObject obj, Camera cam, bool applyDistance)
+    {
+        Bounds bounds = GetPrefabStreamingBounds(obj);
+        bounds.Expand(prefabViewPadding);
+
+        bool inFrustum = true;
+        if (streamPrefabsByCameraView)
+        {
+            inFrustum = GeometryUtility.TestPlanesAABB(prefabStreamingPlanes, bounds);
+            if (!inFrustum)
+            {
+                prefabDistanceCulled.Remove(obj.GetInstanceID());
+                return false;
+            }
+        }
+
+        if (!applyDistance || !enablePrefabRenderDistance || cam == null || globalPrefabRenderDistance <= Mathf.Epsilon)
+        {
+            return true;
+        }
+
+        float hysteresis = Mathf.Max(0f, prefabRenderDistanceHysteresis);
+        Vector3 camPos = cam.transform.position;
+        Vector3 closest = bounds.ClosestPoint(camPos);
+        float distance = Vector3.Distance(closest, camPos);
+
+        int id = obj.GetInstanceID();
+        bool wasCulledDistance;
+        bool hasState = prefabDistanceCulled.TryGetValue(id, out wasCulledDistance);
+
+        bool nowCulledDistance;
+        if (!hasState || !wasCulledDistance)
+        {
+            nowCulledDistance = distance > globalPrefabRenderDistance;
+        }
+        else
+        {
+            float resumeDistance = Mathf.Max(0f, globalPrefabRenderDistance - hysteresis);
+            nowCulledDistance = !(distance < resumeDistance);
+        }
+
+        prefabDistanceCulled[id] = nowCulledDistance;
+        return !nowCulledDistance;
+    }
+
+    private GamaAgentVisualState ResolveAgentVisualState(string agentName, PropertiesGAMA prop, Attributes attributes)
+    {
+        int precision = parameters != null ? parameters.precision : 1;
+        return ResolveVisualState(agentName, prop, attributes, precision);
+    }
+
+    private void SnapshotPrefabHeadingSources()
+    {
+        prefabHeadingSourcePositions.Clear();
+        prefabHeadingSourcePropertyIds.Clear();
+        consumedPrefabHeadingSources.Clear();
+
+        foreach (KeyValuePair<string, Vector3> entry in previousPrefabPositions)
+        {
+            prefabHeadingSourcePositions[entry.Key] = entry.Value;
+
+            string propertyId;
+            prefabHeadingSourcePropertyIds[entry.Key] =
+                previousPrefabPropertyIds.TryGetValue(entry.Key, out propertyId) ? propertyId ?? string.Empty : string.Empty;
+        }
+    }
+
+    private Quaternion ResolvePrefabRotation(
+        string agentName,
+        PropertiesGAMA prop,
+        GamaAgentVisualState visualState,
+        List<int> pointData,
+        Vector3 currentPosition,
+        GameObject prefabInstance)
+    {
+        int rawHeading = pointData != null && pointData.Count > 3 ? pointData[3] : 0;
+        float heading = DecodeGamaAngle(rawHeading);
+
+        if (rawHeading == 0 && TryResolveHeadingFromPreviousMovement(agentName, prop, currentPosition, out float movementHeading))
+        {
+            heading = movementHeading;
+        }
+
+        float rotation = prop.rotationCoeffF * heading + prop.rotationOffsetF;
+        return Quaternion.AngleAxis(rotation, Vector3.up) *
+               Quaternion.Euler(visualState.RotationOffsetEuler) *
+               GetPrefabBaseRotation(prefabInstance);
+    }
+
+    private bool TryResolveHeadingFromPreviousMovement(
+        string agentName,
+        PropertiesGAMA prop,
+        Vector3 currentPosition,
+        out float heading)
+    {
+        heading = 0f;
+        string propertyId = prop != null ? prop.id ?? string.Empty : string.Empty;
+
+        Vector3 previousPosition;
+        if (TryGetPreviousHeadingSource(agentName, propertyId, out previousPosition))
+        {
+            return TryComputeHeadingFromDelta(previousPosition, currentPosition, out heading);
+        }
+
+        string bestKey = null;
+        float bestSqrDistance = float.MaxValue;
+
+        foreach (KeyValuePair<string, Vector3> entry in prefabHeadingSourcePositions)
+        {
+            if (consumedPrefabHeadingSources.Contains(entry.Key))
+            {
+                continue;
+            }
+
+            string candidatePropertyId;
+            if (!prefabHeadingSourcePropertyIds.TryGetValue(entry.Key, out candidatePropertyId) ||
+                !string.Equals(candidatePropertyId, propertyId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            Vector3 delta = currentPosition - entry.Value;
+            delta.y = 0f;
+            float sqrDistance = delta.sqrMagnitude;
+            if (sqrDistance < bestSqrDistance)
+            {
+                bestSqrDistance = sqrDistance;
+                bestKey = entry.Key;
+                previousPosition = entry.Value;
+            }
+        }
+
+        if (bestKey == null)
+        {
+            return false;
+        }
+
+        consumedPrefabHeadingSources.Add(bestKey);
+        return TryComputeHeadingFromDelta(prefabHeadingSourcePositions[bestKey], currentPosition, out heading);
+    }
+
+    private bool TryGetPreviousHeadingSource(string key, string propertyId, out Vector3 previousPosition)
+    {
+        previousPosition = Vector3.zero;
+        if (string.IsNullOrEmpty(key) || consumedPrefabHeadingSources.Contains(key))
+        {
+            return false;
+        }
+
+        string sourcePropertyId;
+        if (!prefabHeadingSourcePropertyIds.TryGetValue(key, out sourcePropertyId) ||
+            !string.Equals(sourcePropertyId, propertyId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (!prefabHeadingSourcePositions.TryGetValue(key, out previousPosition))
+        {
+            return false;
+        }
+
+        consumedPrefabHeadingSources.Add(key);
+        return true;
+    }
+
+    private bool TryComputeHeadingFromDelta(Vector3 previousPosition, Vector3 currentPosition, out float heading)
+    {
+        Vector3 delta = currentPosition - previousPosition;
+        delta.y = 0f;
+        if (delta.sqrMagnitude <= 0.0001f)
+        {
+            heading = 0f;
+            return false;
+        }
+
+        float gamaDeltaX = delta.x;
+        float gamaDeltaY = delta.z;
+        if (converter != null)
+        {
+            if (Mathf.Abs(converter.GamaCRSCoefX) > 0.000001f)
+            {
+                gamaDeltaX = delta.x / converter.GamaCRSCoefX;
+            }
+
+            if (Mathf.Abs(converter.GamaCRSCoefY) > 0.000001f)
+            {
+                gamaDeltaY = delta.z / converter.GamaCRSCoefY;
+            }
+        }
+
+        heading = Mathf.Atan2(gamaDeltaY, gamaDeltaX) * Mathf.Rad2Deg;
+        return true;
+    }
+
+    private float DecodeGamaAngle(int rawAngle)
+    {
+        int precision = parameters != null ? Mathf.Max(1, parameters.precision) : 1;
+        return rawAngle / (float)precision;
+    }
+
+    private static Quaternion GetPrefabBaseRotation(GameObject prefabInstance)
+    {
+        if (prefabInstance == null)
+        {
+            return Quaternion.identity;
+        }
+
+        GamaRuntimePrefabSignature marker = prefabInstance.GetComponent<GamaRuntimePrefabSignature>();
+        return marker != null ? marker.baseRotation : Quaternion.identity;
+    }
+
+    private void ApplyAgentVisualState(
+        GameObject obj,
+        PropertiesGAMA prop,
+        GamaAgentVisualState visualState,
+        bool prefabAgent,
+        Vector3 basePosition)
+    {
+        if (obj == null)
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
+        {
+            return;
+        }
+
+<<<<<<< HEAD
         float scale = Mathf.Max(0.01f, o.scaleMultiplier);
         obj.transform.localScale *= scale;
+=======
+        int precision = parameters != null ? parameters.precision : 1;
+        float baseScale = prefabAgent && prop != null ? prop.GetUnityScale(precision) : 1f;
+        float scale = Mathf.Max(0f, baseScale * visualState.ScaleMultiplier);
+        obj.transform.localScale = new Vector3(scale, scale, scale);
+
+        if (!prefabAgent)
+        {
+            obj.transform.position = basePosition + visualState.PositionOffset;
+            obj.transform.rotation = Quaternion.Euler(visualState.RotationOffsetEuler);
+        }
+
+        if (visualState.HasColor)
+        {
+            bool isRealPrefab = prefabAgent && !GetPrefabSignature(obj).StartsWith("placeholder:");
+
+            // Only apply color if it's NOT a real prefab, OR if the user manually overrode the color
+            // OR if the color was explicitly sent via the agent's dynamic attributes (e.g. Red vs Blue in GAML)
+            if (!isRealPrefab || visualState.HasManualColorOverride || visualState.HasAttributeColor)
+            {
+                ChangeColor(obj, visualState.Color);
+            }
+        }
+
+        SetRenderersEnabled(obj, visualState.Visible);
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
     }
 
     private GameObject ResolveManualPrefabOverride(PropertiesGAMA prop, string objectName)
@@ -1347,6 +2057,262 @@ public class SimulationManager : MonoBehaviour
         return null;
     }
 
+    private void UpdatePrefabViewportStreaming(float deltaTime)
+    {
+        if (geometryMap == null || geometryMap.Count == 0)
+        {
+            return;
+        }
+
+        prefabViewTimer -= deltaTime;
+        if (prefabViewTimer > 0f)
+        {
+            return;
+        }
+
+        prefabViewTimer = Mathf.Max(0.02f, prefabViewUpdateInterval);
+
+        Camera streamingCamera = GetPrefabStreamingCamera();
+        bool needCameraForFrustum = streamPrefabsByCameraView;
+        bool needCameraForDistance = enablePrefabRenderDistance && globalPrefabRenderDistance > Mathf.Epsilon;
+        if ((needCameraForFrustum || needCameraForDistance) && streamingCamera == null)
+        {
+            // Keep current active states when camera is temporarily unavailable.
+            // Reactivating everything here causes visible pop/flicker loops.
+            return;
+        }
+
+        if (needCameraForFrustum && streamingCamera != null)
+        {
+            GeometryUtility.CalculateFrustumPlanes(streamingCamera, prefabStreamingPlanes);
+        }
+
+        bool testFrustum = streamPrefabsByCameraView && streamingCamera != null;
+        bool testDistance = enablePrefabRenderDistance && streamingCamera != null;
+        if (!testFrustum && !testDistance)
+        {
+            SetAllPrefabStreamingActive(true);
+            return;
+        }
+
+        prefabStreamingKeys.Clear();
+        foreach (KeyValuePair<string, List<object>> entry in geometryMap)
+        {
+            List<object> value = entry.Value;
+            if (value == null || value.Count < 2)
+            {
+                continue;
+            }
+
+            GameObject obj = value[0] as GameObject;
+            PropertiesGAMA prop = value[1] as PropertiesGAMA;
+            if (obj != null && prop != null)
+            {
+                prefabStreamingKeys.Add(entry.Key);
+            }
+        }
+
+        int total = prefabStreamingKeys.Count;
+        if (total == 0)
+        {
+            return;
+        }
+
+        int budget = Mathf.Clamp(prefabStreamingBudgetPerTick, 1, total);
+        int processed = 0;
+        for (int b = 0; b < budget; b++)
+        {
+            int idx = (prefabStreamingCursor + b) % total;
+            string key = prefabStreamingKeys[idx];
+            List<object> value;
+            if (!geometryMap.TryGetValue(key, out value) || value == null || value.Count < 2)
+            {
+                continue;
+            }
+
+            GameObject obj = value[0] as GameObject;
+            PropertiesGAMA prop = value[1] as PropertiesGAMA;
+            if (obj == null || prop == null)
+            {
+                continue;
+            }
+
+            bool keepLoaded = keepSelectedPrefabsLoaded && IsSelectedPrefab(obj);
+            bool applyDistance = prop.hasPrefab;
+            bool wantActive = keepLoaded || PrefabPassesStreamingHeuristics(obj, streamingCamera, applyDistance);
+            SetAgentStreamingActive(obj, prop, wantActive);
+            processed++;
+        }
+
+        prefabStreamingCursor = (prefabStreamingCursor + budget) % total;
+        EmitPrefabStreamingDiagnostic(processed, total);
+    }
+
+    private void EmitPrefabStreamingDiagnostic(int processedThisTick, int totalPrefabAgents)
+    {
+        if (!logPrefabStreamingStats)
+        {
+            return;
+        }
+
+        float now = Time.unscaledTime;
+        if (now - prefabStreamingLastDiagTime < prefabStreamingStatsInterval)
+        {
+            return;
+        }
+
+        prefabStreamingLastDiagTime = now;
+        Debug.Log(
+            "[GAMA] Prefab streaming tick: evaluated=" + processedThisTick +
+            " round_robin_total=" + totalPrefabAgents +
+            " budget=" + prefabStreamingBudgetPerTick +
+            " pooling=" + enablePrefabPooling +
+            " render_dist=" + enablePrefabRenderDistance);
+    }
+
+    private void EmitAgentUpdateBudgetDiagnostic(int processedThisTick, int totalAgents, int nextAgentIndex)
+    {
+        if (!logAgentUpdateBudgetStats)
+        {
+            return;
+        }
+
+        float now = Time.unscaledTime;
+        if (now - agentUpdateBudgetLastDiagTime < agentUpdateBudgetStatsInterval)
+        {
+            return;
+        }
+
+        agentUpdateBudgetLastDiagTime = now;
+        Debug.Log(
+            "[GAMA] Agent update budget tick: processed=" + processedThisTick +
+            " total=" + totalAgents +
+            " next_index=" + nextAgentIndex +
+            " max_per_tick=" + maxAgentUpdatesPerTick);
+    }
+
+    private void SetAllPrefabStreamingActive(bool active)
+    {
+        foreach (KeyValuePair<string, List<object>> entry in geometryMap)
+        {
+            List<object> value = entry.Value;
+            if (value == null || value.Count < 2)
+            {
+                continue;
+            }
+
+            GameObject obj = value[0] as GameObject;
+            PropertiesGAMA prop = value[1] as PropertiesGAMA;
+            if (obj != null && prop != null)
+            {
+                SetAgentStreamingActive(obj, prop, active);
+            }
+        }
+    }
+
+    private void SetAgentStreamingActive(GameObject obj, PropertiesGAMA prop, bool active)
+    {
+        if (obj == null || prop == null)
+        {
+            return;
+        }
+        
+        // Apply the same streaming strategy as cars/prefabs to every agent type.
+        SetPrefabStreamingActive(obj, active);
+    }
+
+    private void ApplyImmediateStreamingState(GameObject obj, PropertiesGAMA prop, Camera streamingCamera, bool frustumReady)
+    {
+        if (obj == null || prop == null)
+        {
+            return;
+        }
+
+        bool needFrustum = streamPrefabsByCameraView;
+        bool needDistance = prop.hasPrefab && enablePrefabRenderDistance && globalPrefabRenderDistance > Mathf.Epsilon;
+        if ((needFrustum || needDistance) && streamingCamera == null)
+        {
+            // Keep current state when no valid game camera is available.
+            return;
+        }
+
+        if (needFrustum && !frustumReady)
+        {
+            return;
+        }
+
+        bool applyDistance = prop.hasPrefab;
+        bool wantActive = PrefabPassesStreamingHeuristics(obj, streamingCamera, applyDistance);
+        SetAgentStreamingActive(obj, prop, wantActive);
+    }
+
+    private static void SetPrefabStreamingActive(GameObject obj, bool active)
+    {
+        if (obj != null && obj.activeSelf != active)
+        {
+            obj.SetActive(active);
+        }
+    }
+
+    private Camera GetPrefabStreamingCamera()
+    {
+        if (Camera.main != null)
+        {
+            loggedMissingMainCameraForStreaming = false;
+            return Camera.main;
+        }
+        if (!loggedMissingMainCameraForStreaming)
+        {
+            loggedMissingMainCameraForStreaming = true;
+            Debug.LogWarning("[GAMA] Streaming culling disabled because Camera.main is missing. Tag the runtime game camera as MainCamera.");
+        }
+
+        return null;
+    }
+
+    private static Bounds GetPrefabStreamingBounds(GameObject obj)
+    {
+        Renderer[] renderers = obj.GetComponentsInChildren<Renderer>(true);
+        bool hasBounds = false;
+        Bounds bounds = new Bounds(obj.transform.position, Vector3.one);
+
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null)
+            {
+                continue;
+            }
+
+            if (!hasBounds)
+            {
+                bounds = renderer.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        return bounds;
+    }
+
+    private bool IsSelectedPrefab(GameObject obj)
+    {
+        if (SelectedObjects != null && SelectedObjects.Contains(obj))
+        {
+            return true;
+        }
+
+#if UNITY_EDITOR
+        GameObject selected = Selection.activeGameObject;
+        return selected != null && (selected == obj || selected.transform.IsChildOf(obj.transform));
+#else
+        return false;
+#endif
+    }
+
 
 
     private void UpdateAgentsList()
@@ -1362,6 +2328,7 @@ public class SimulationManager : MonoBehaviour
         }
 
         ManageOtherInformation();
+<<<<<<< HEAD
         if (toRemove == null)
         {
             return;
@@ -1369,25 +2336,87 @@ public class SimulationManager : MonoBehaviour
 
         toRemove.Clear();
         toRemove.UnionWith(geometryMap.Keys);
+=======
+        if (!pendingWorldUpdateRemovalPass)
+        {
+            toRemove.Clear();
+            toRemove.UnionWith(geometryMap.Keys);
+            pendingWorldUpdateRemovalPass = true;
+        }
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
 
         // foreach (List<object> obj in geometryMap.Values) {
         //((GameObject) obj[0]).SetActive(false);
         //}
         // toRemove.addAll(toRemoveAfter.k);
-        GenerateGeometries(false, toRemove);
+        bool updateCompleted = GenerateGeometries(false, toRemove);
+        if (!updateCompleted)
+        {
+            return;
+        }
 
 
         // List<string> ids = new List<string>(geometryMap.Keys);
         foreach (string id in toRemove)
         {
-            List<object> o = geometryMap[id];
+            List<object> o;
+            if (!geometryMap.TryGetValue(id, out o) || o == null || o.Count < 2)
+            {
+                geometryMap.Remove(id);
+                previousPrefabPositions.Remove(id);
+                previousPrefabPropertyIds.Remove(id);
+                missingAgentTickCounts.Remove(id);
+                continue;
+            }
+
             GameObject obj = (GameObject)o[0];
+            PropertiesGAMA prop = o[1] as PropertiesGAMA;
+            if (obj == null)
+            {
+                geometryMap.Remove(id);
+                previousPrefabPositions.Remove(id);
+                previousPrefabPropertyIds.Remove(id);
+                missingAgentTickCounts.Remove(id);
+                continue;
+            }
+
+            bool shouldCullFromMissingData = prop != null && (prop.hasPrefab || removeMissingGeometryAgents);
+            if (!shouldCullFromMissingData)
+            {
+                // Roads/buildings are handled by camera streaming only; partial data ticks must not hide them.
+                missingAgentTickCounts.Remove(id);
+                continue;
+            }
+
+            int missCount = 0;
+            missingAgentTickCounts.TryGetValue(id, out missCount);
+            missCount++;
+            missingAgentTickCounts[id] = missCount;
+            if (missCount < Mathf.Max(1, missingTicksBeforeCull))
+            {
+                continue;
+            }
+
             obj.transform.position = new Vector3(0, -100, 0);
             geometryMap.Remove(id);
+            previousPrefabPositions.Remove(id);
+            previousPrefabPropertyIds.Remove(id);
+            missingAgentTickCounts.Remove(id);
             if (toFollow.Contains(obj))
                 toFollow.Remove(obj);
-            GameObject.Destroy(obj);
+            ReleasePrefabInstance(obj);
         }
+
+        foreach (string id in geometryMap.Keys)
+        {
+            if (!toRemove.Contains(id))
+            {
+                missingAgentTickCounts.Remove(id);
+            }
+        }
+
+        toRemove.Clear();
+        pendingWorldUpdateRemovalPass = false;
     }
 
     Quaternion ResolvePrefabOrientation(Vector3 unityPosBeforeApply, Vector3 targetUnityWorld,
@@ -1618,11 +2647,11 @@ public class SimulationManager : MonoBehaviour
     // ############################################# HANDLERS ########################################
     private void HandleConnectionStateChanged(ConnectionState state)
     {
-        Debug.Log("HandleConnectionStateChanged: " + state);
+
         // player has been added to the simulation by the middleware
         if (state == ConnectionState.AUTHENTICATED)
         {
-            Debug.Log("SimulationManager: Player added to simulation, waiting for initial parameters");
+            Debug.Log("[GAMA] Authenticated, loading simulation data");
             UpdateGameState(GameState.LOADING_DATA);
         }
         else if (state == ConnectionState.DISCONNECTED)
@@ -1643,7 +2672,7 @@ public class SimulationManager : MonoBehaviour
 
         if (ConnectionManager.Instance == null)
         {
-            Debug.Log("No connection manager");
+
             return;
         }
 
@@ -1651,7 +2680,7 @@ public class SimulationManager : MonoBehaviour
         subscribedConnectionManager.OnServerMessageReceived += HandleServerMessageReceived;
         subscribedConnectionManager.OnConnectionAttempted += HandleConnectionAttempted;
         subscribedConnectionManager.OnConnectionStateChanged += HandleConnectionStateChanged;
-        Debug.Log("SimulationManager: OnEnable");
+
     }
 
     private void UnsubscribeConnectionEvents()
@@ -1693,12 +2722,59 @@ public class SimulationManager : MonoBehaviour
     }
 
 
+<<<<<<< HEAD
     private static readonly string[] colorNames = { "_BaseColor", "_Color", "_MainColor", "Color", "BaseColor" };
+=======
+    private static readonly string[] colorPropertyNames =
+    {
+        "_BaseColor",
+        "_Color",
+        "_MainColor",
+        "Color",
+        "BaseColor"
+    };
+
+    private static int[] colorPropertyIds;
+    private static MaterialPropertyBlock sharedColorPropertyBlock;
+
+    private static int[] ColorPropertyIds
+    {
+        get
+        {
+            if (colorPropertyIds == null)
+            {
+                colorPropertyIds = new int[colorPropertyNames.Length];
+                for (int i = 0; i < colorPropertyNames.Length; i++)
+                {
+                    colorPropertyIds[i] = Shader.PropertyToID(colorPropertyNames[i]);
+                }
+            }
+
+            return colorPropertyIds;
+        }
+    }
+
+    private static MaterialPropertyBlock SharedColorPropertyBlock
+    {
+        get
+        {
+            if (sharedColorPropertyBlock == null)
+            {
+                sharedColorPropertyBlock = new MaterialPropertyBlock();
+            }
+
+            return sharedColorPropertyBlock;
+        }
+    }
+
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
     static public void ChangeColor(GameObject obj, Color color)
     {
-        Renderer[] renderers = obj.gameObject.GetComponentsInChildren<Renderer>();
+        Renderer[] renderers = obj.gameObject.GetComponentsInChildren<Renderer>(true);
+        int[] colorIds = ColorPropertyIds;
         for (int i = 0; i < renderers.Length; i++)
         {
+<<<<<<< HEAD
             Material mat = renderers[i].material;
            
             foreach (string prop in colorNames)
@@ -1708,6 +2784,43 @@ public class SimulationManager : MonoBehaviour
                     mat.SetColor(prop, color);
                     break; 
                 }
+=======
+            Renderer renderer = renderers[i];
+            MaterialPropertyBlock colorPropertyBlock = SharedColorPropertyBlock;
+            bool applied = false;
+            for (int c = 0; c < colorIds.Length; c++)
+            {
+                int propId = colorIds[c];
+                Material[] sharedMaterials = renderer.sharedMaterials;
+                for (int m = 0; m < sharedMaterials.Length; m++)
+                {
+                    Material sharedMat = sharedMaterials[m];
+                    if (sharedMat == null || !sharedMat.HasProperty(propId))
+                    {
+                        continue;
+                    }
+
+                    renderer.GetPropertyBlock(colorPropertyBlock);
+                    colorPropertyBlock.SetColor(propId, color);
+                    renderer.SetPropertyBlock(colorPropertyBlock);
+                    colorPropertyBlock.Clear();
+                    applied = true;
+                    break; 
+                }
+
+                if (applied)
+                {
+                    break;
+                }
+            }
+
+            if (!applied)
+            {
+                renderer.GetPropertyBlock(colorPropertyBlock);
+                colorPropertyBlock.SetColor(colorIds[1], color);
+                renderer.SetPropertyBlock(colorPropertyBlock);
+                colorPropertyBlock.Clear();
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
             }
            
         }
@@ -1774,6 +2887,14 @@ public class SimulationManager : MonoBehaviour
             case "precision":
                 parameters = ConnectionParameter.CreateFromJSON(content);
                 converter = new CoordinateConverter(parameters.precision, GamaCRSCoefX, GamaCRSCoefY, GamaCRSCoefY, GamaCRSOffsetX, GamaCRSOffsetY, GamaCRSOffsetZ);
+<<<<<<< HEAD
+=======
+                if (propertiesGAMA != null)
+                {
+                    ImportAgentProperties(propertiesGAMA.properties, parameters.precision);
+                    ImportPrefabProperties(propertiesGAMA.properties);
+                }
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
                 TimeSendPosition = (0.0f + parameters.minPlayerUpdateDuration) / (parameters.precision + 0.0f);
                 GameObject loc = (locomotion != null && locomotion.Count > 0) ? locomotion[0] : null;
                 if (loc != null)
@@ -1817,9 +2938,11 @@ public class SimulationManager : MonoBehaviour
                 handleGroundParametersRequested = true;
                 handleGeometriesRequested = true;
 
-                if ( parameters.cameraclippingfar != -1) Camera.main.farClipPlane = Convert.ToSingle(parameters.cameraclippingfar);
-
-                if (parameters.cameraclippingnear != -1) Camera.main.nearClipPlane = Convert.ToSingle(parameters.cameraclippingnear);
+                if (Camera.main != null)
+                {
+                    if (parameters.cameraclippingfar != -1) Camera.main.farClipPlane = Convert.ToSingle(parameters.cameraclippingfar);
+                    if (parameters.cameraclippingnear != -1) Camera.main.nearClipPlane = Convert.ToSingle(parameters.cameraclippingnear);
+                }
 
 
                 break;
@@ -1831,7 +2954,12 @@ public class SimulationManager : MonoBehaviour
                 {
                     propertyMap.Add(p.id, p);
                 }
+<<<<<<< HEAD
                 SyncSpeciesOverridesFromProperties(propertiesGAMA.properties);
+=======
+                ImportAgentProperties(propertiesGAMA.properties, parameters != null ? parameters.precision : 1);
+                ImportPrefabProperties(propertiesGAMA.properties);
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
                 break;
 
             // handle agents while simulation is running
@@ -1898,28 +3026,30 @@ public class SimulationManager : MonoBehaviour
 
     private void HandleConnectionAttempted(bool success)
     {
-        Debug.Log("SimulationManager: Connection attempt " + (success ? "successful" : "failed"));
+
         if (success)
         {
             if (IsGameState(GameState.MENU))
             {
-                Debug.Log("SimulationManager: Successfully connected to middleware");
+                Debug.Log("[GAMA] Connected to middleware");
                 UpdateGameState(GameState.WAITING);
             }
         }
         else
         {
             // stay in MENU state
-            Debug.Log("Unable to connect to middleware");
+
         }
     }
 
     private void TryReconnect()
     {
+        if (ConnectionManager.Instance == null)
+        {
+            return;
+        }
         ConnectionManager.Instance.SendExecutableAsk("ping_GAMA", connectionID);
-
         currentTimePing = maxTimePing;
-        Debug.Log("Sent Ping test");
 
     }
 
@@ -1946,6 +3076,16 @@ public class SimulationManager : MonoBehaviour
 
 }
 
+<<<<<<< HEAD
+=======
+[DisallowMultipleComponent]
+public class GamaRuntimePrefabSignature : MonoBehaviour
+{
+    public string signature;
+    public Quaternion baseRotation = Quaternion.identity;
+}
+
+>>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
 
 // ############################################################
 public enum GameState
