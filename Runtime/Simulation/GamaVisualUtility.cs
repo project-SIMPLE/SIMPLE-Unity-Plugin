@@ -721,8 +721,10 @@ public static class GamaVisualUtility
         }
 
         if (TryGetColorFromIntList(prop.color, out color) ||
-            TryGetColorFromFloatList(prop.rgba, out color) ||
-            TryGetColorFromFloatList(prop.rgb, out color))
+            TryGetColorFromIntList(prop.rgba, out color) ||
+            TryGetColorFromIntList(prop.rgb, out color) ||
+            TryGetColorFromFloatList(prop.rgbaFloat, out color) ||
+            TryGetColorFromFloatList(prop.rgbFloat, out color))
         {
             return true;
         }

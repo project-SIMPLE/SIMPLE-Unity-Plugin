@@ -1,15 +1,4 @@
 using UnityEditor;
-<<<<<<< HEAD
-/// <summary>
-/// Inspector personnalisé pour <see cref="SimulationManager"/> et ses dérivés.
-/// </summary>
-[CustomEditor(typeof(SimulationManager), true)]
-public class SimulationManagerInspector : Editor
-{
-    public override void OnInspectorGUI()
-    {
-        DrawDefaultInspector();
-=======
 using UnityEngine;
 
 [CustomEditor(typeof(SimulationManager), true)]
@@ -287,6 +276,5 @@ public class SimulationManagerInspector : Editor
                 EditorGUILayout.PropertyField(iterator, true);
             }
         }
->>>>>>> c23b158 (fix(unity-package): stabiliser le streaming/culling et supprimer les flickers agents)
     }
 }
