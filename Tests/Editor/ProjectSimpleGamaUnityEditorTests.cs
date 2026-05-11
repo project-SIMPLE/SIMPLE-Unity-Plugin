@@ -1,9 +1,7 @@
-﻿using System.Collections;
-using NUnit.Framework;
-using UnityEditor;
+﻿using NUnit.Framework;
+using UnityEditor.SceneManagement;
 using UnityEngine;
-using UnityEngine.TestTools;
-using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 
 namespace Tests.Editor
 {
@@ -19,16 +17,23 @@ namespace Tests.Editor
         {
         }
 
-        [UnityTest]
-        public IEnumerator TestMethod_TestingHow_TestResult()
+        [Test]
+        public void SetupScene_RebuildsMinimalGamaSceneFromExistingScene()
         {
-            // Arrange
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            new GameObject("XR Origin (XR Rig)");
+            new GameObject("Template Environment");
+            new GameObject("Main Camera").AddComponent<Camera>();
 
-            // Act
-            yield return null;
+            GAMAMenu.SetupScene();
 
-            // Assert
-            Assert.AreEqual(1, 1);
+            Assert.IsNull(GameObject.Find("Template Environment"));
+            Assert.IsNull(GameObject.Find("XR Origin (XR Rig)"));
+            Assert.IsNotNull(GameObject.Find("Directional Light"));
+            Assert.IsNotNull(GameObject.Find("Teleport Area/Ground"));
+            Assert.IsNotNull(GameObject.Find("FPSPlayer"));
+            Assert.IsNotNull(GameObject.Find("ManagersSolo/Connection Manager"));
+            Assert.IsNotNull(GameObject.Find("ManagersSolo/Game Manager"));
         }
     }
 }
