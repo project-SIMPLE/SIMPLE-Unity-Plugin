@@ -93,6 +93,11 @@ public class GAMAPrefabImporter : EditorWindow
         FileInfo[] files = dir.GetFiles();
         foreach (FileInfo file in files)
         {
+            if (file.Extension.ToLowerInvariant() == ".meta")
+            {
+                continue;
+            }
+
             string targetFilePath = Path.Combine(targetDir, file.Name);
             file.CopyTo(targetFilePath, true);
             fileCount++;

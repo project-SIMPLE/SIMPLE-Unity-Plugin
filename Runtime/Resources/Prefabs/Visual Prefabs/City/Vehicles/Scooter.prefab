@@ -177,7 +177,7 @@ GameObject:
   - component: {fileID: 5826133627152025007}
   - component: {fileID: 4539010592113650520}
   m_Layer: 0
-  m_Name: Scooter
+  m_Name: SCOOTER
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

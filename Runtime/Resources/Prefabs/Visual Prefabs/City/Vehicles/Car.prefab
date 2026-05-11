@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 7206199227780766315}
   - component: {fileID: 3906716167065272998}
   m_Layer: 0
-  m_Name: Car_LOD2
+  m_Name: CAR_LOD2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -94,7 +94,7 @@ GameObject:
   - component: {fileID: 5966776224381078176}
   - component: {fileID: 5292672234127134086}
   m_Layer: 0
-  m_Name: Car
+  m_Name: CAR
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -157,7 +157,7 @@ GameObject:
   - component: {fileID: 6523232711804333122}
   - component: {fileID: 8542303047209196061}
   m_Layer: 0
-  m_Name: Car_LOD0
+  m_Name: CAR_LOD0
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -240,7 +240,7 @@ GameObject:
   - component: {fileID: 9022446190817666043}
   - component: {fileID: 1102483413274166945}
   m_Layer: 0
-  m_Name: Car_LOD1
+  m_Name: CAR_LOD1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

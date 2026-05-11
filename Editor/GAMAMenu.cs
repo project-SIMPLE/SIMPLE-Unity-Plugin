@@ -30,22 +30,12 @@ public class GAMAMenu : ScriptableObject
     {
         RemoveMissingScriptsFromScene();
         EnsureRequiredTags();
-        EnsureResourcesFolder();
         ProjectSimple.GamaUnity.Runtime.GamaInitializer.InitializeGama();
         RemoveMissingScriptsFromScene();
 
         EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
         AssetDatabase.SaveAssets();
         Debug.Log("[GAMA] Scene setup complete.");
-    }
-
-    private static void EnsureResourcesFolder()
-    {
-        if (!AssetDatabase.IsValidFolder("Assets/Resources"))
-        {
-            AssetDatabase.CreateFolder("Assets", "Resources");
-            Debug.Log("[GAMA] Created 'Assets/Resources' directory.");
-        }
     }
 
     private static void RemoveMissingScriptsFromScene()
