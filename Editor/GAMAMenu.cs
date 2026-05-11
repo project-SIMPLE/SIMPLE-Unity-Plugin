@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine.SceneManagement;
+using UnityEngine.Rendering;
 
 public class GAMAMenu : ScriptableObject
 {
@@ -32,6 +33,7 @@ public class GAMAMenu : ScriptableObject
         int removedRootObjects = ClearActiveSceneObjects();
 
         ProjectSimple.GamaUnity.Runtime.GamaInitializer.InitializeGama();
+        ApplyDeterministicEnvironmentSettings();
         RemoveMissingScriptsFromScene();
 
         EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
@@ -131,5 +133,81 @@ public class GAMAMenu : ScriptableObject
 
         tags.InsertArrayElementAtIndex(tags.arraySize);
         tags.GetArrayElementAtIndex(tags.arraySize - 1).stringValue = tag;
+    }
+
+    private static void ApplyDeterministicEnvironmentSettings()
+    {
+        // Reset inherited scene template environment to keep Setup Scene deterministic.
+        Material defaultSkybox = ResolveDefaultSkyboxMaterial(RenderSettings.skybox);
+        RenderSettings.skybox = defaultSkybox;
+        RenderSettings.sun = FindDirectionalLight();
+
+        RenderSettings.ambientMode = AmbientMode.Flat;
+        RenderSettings.ambientLight = Color.black;
+        RenderSettings.ambientIntensity = 1f;
+        RenderSettings.ambientGroundColor = Color.black;
+        RenderSettings.ambientEquatorColor = Color.black;
+        RenderSettings.ambientSkyColor = Color.black;
+
+        RenderSettings.fog = false;
+        RenderSettings.fogMode = FogMode.Linear;
+        RenderSettings.fogColor = Color.gray;
+        RenderSettings.fogStartDistance = 0f;
+        RenderSettings.fogEndDistance = 300f;
+        RenderSettings.fogDensity = 0.01f;
+
+        RenderSettings.defaultReflectionMode = DefaultReflectionMode.Custom;
+        RenderSettings.customReflectionTexture = null;
+        RenderSettings.reflectionIntensity = 0f;
+        RenderSettings.reflectionBounces = 1;
+
+        RenderSettings.subtractiveShadowColor = Color.black;
+        DynamicGI.UpdateEnvironment();
+
+        EnsureMainCameraDefaults();
+    }
+
+    private static Material ResolveDefaultSkyboxMaterial(Material currentSkybox)
+    {
+        if (currentSkybox != null)
+        {
+            return currentSkybox;
+        }
+
+        // Built-in fallback available across Unity projects without package dependency.
+        Material builtInSkybox = AssetDatabase.GetBuiltinExtraResource<Material>("Default-Skybox.mat");
+        if (builtInSkybox != null)
+        {
+            return builtInSkybox;
+        }
+
+        // Additional defensive fallback for older/newer editor variants.
+        return AssetDatabase.GetBuiltinExtraResource<Material>("Skybox-Procedural.mat");
+    }
+
+    private static Light FindDirectionalLight()
+    {
+        Light[] lights = Object.FindObjectsByType<Light>(FindObjectsSortMode.None);
+        for (int i = 0; i < lights.Length; i++)
+        {
+            if (lights[i] != null && lights[i].type == LightType.Directional)
+            {
+                return lights[i];
+            }
+        }
+
+        return null;
+    }
+
+    private static void EnsureMainCameraDefaults()
+    {
+        Camera mainCamera = Camera.main ?? Object.FindFirstObjectByType<Camera>();
+        if (mainCamera == null)
+        {
+            return;
+        }
+
+        mainCamera.clearFlags = RenderSettings.skybox != null ? CameraClearFlags.Skybox : CameraClearFlags.SolidColor;
+        mainCamera.backgroundColor = Color.black;
     }
 }
