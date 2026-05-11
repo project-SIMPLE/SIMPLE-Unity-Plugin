@@ -28,14 +28,43 @@ public class GAMAMenu : ScriptableObject
     [MenuItem("GAMA/Setup Scene")]
     public static void SetupScene()
     {
-        RemoveMissingScriptsFromScene();
         EnsureRequiredTags();
+        int removedRootObjects = ClearActiveSceneObjects();
+
         ProjectSimple.GamaUnity.Runtime.GamaInitializer.InitializeGama();
         RemoveMissingScriptsFromScene();
 
         EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
         AssetDatabase.SaveAssets();
-        Debug.Log("[GAMA] Scene setup complete.");
+        Debug.Log("[GAMA] Scene setup complete. Removed " + removedRootObjects + " previous root object(s).");
+    }
+
+    private static int ClearActiveSceneObjects()
+    {
+        Scene scene = SceneManager.GetActiveScene();
+        if (!scene.IsValid())
+        {
+            return 0;
+        }
+
+        GameObject[] roots = scene.GetRootGameObjects();
+        int undoGroup = Undo.GetCurrentGroup();
+        Undo.SetCurrentGroupName("GAMA Setup Scene");
+
+        int removed = 0;
+        for (int i = 0; i < roots.Length; i++)
+        {
+            if (roots[i] == null)
+            {
+                continue;
+            }
+
+            Undo.DestroyObjectImmediate(roots[i]);
+            removed++;
+        }
+
+        Undo.CollapseUndoOperations(undoGroup);
+        return removed;
     }
 
     private static void RemoveMissingScriptsFromScene()
