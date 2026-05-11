@@ -42,6 +42,21 @@ Do not add another copy of NativeWebSocket unless you remove the vendored copy f
 
 The runtime sends `connection`, `pong`, `expression`, `ask`, and `disconnect_properly` messages. It receives `ping`, `json_state`, and `json_output` from webplatform.
 
+## Workspace Explorer (offline)
+
+Use `GAMA > Workspace Explorer` in Unity to inspect a local GAMA workspace without middleware connectivity.
+
+What it provides:
+
+- choose a workspace folder path;
+- scan `.gaml` files to discover declared `experiment` blocks;
+- list experiments with a heuristic capability label: `VR`, `Non-VR`, `VR + Non-VR`, or `Unknown`.
+
+Notes:
+
+- capability detection is heuristic and depends on keywords or metadata present in experiment blocks;
+- invalid paths, missing metadata, and permission issues are handled without crashing the editor (scan errors are summarized).
+
 ## Current Status
 
 The package is actively maintained and includes a large set of runtime fixes and optimization work completed during recent integration sessions.
