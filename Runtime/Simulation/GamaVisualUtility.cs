@@ -247,7 +247,17 @@ public static class GamaVisualUtility
             propertyBlock.SetColor("_TintColor", unityColor);
             renderer.SetPropertyBlock(propertyBlock);
 
+            if (!Application.isPlaying)
+            {
+                continue;
+            }
+
             Material[] materials = renderer.materials;
+            if (materials == null)
+            {
+                continue;
+            }
+
             for (int materialIndex = 0; materialIndex < materials.Length; materialIndex++)
             {
                 ApplyColor(materials[materialIndex], color);

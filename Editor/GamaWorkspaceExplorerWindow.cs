@@ -4,26 +4,18 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
 public sealed class GamaWorkspaceExplorerWindow : EditorWindow
 {
-    private const string WorkspacePathPrefKey = "ProjectSimple.GamaUnity.WorkspaceExplorer.Path";
-    private const string WorkspacePortsPrefKey = "ProjectSimple.GamaUnity.WorkspaceExplorer.Ports";
-    private const string DefaultPortsValue = "1000,8000,8080";
+    private readonly GamaWorkspaceExplorerPanel workspacePanel = new GamaWorkspaceExplorerPanel();
 
-    private string workspacePath = string.Empty;
-    private string workspacePorts = DefaultPortsValue;
-    private string statusMessage = "Select a GAMA workspace folder, then click Scan.";
-    private Vector2 scrollPosition;
-    private List<GamaWorkspaceExperimentInfo> experiments = new List<GamaWorkspaceExperimentInfo>();
-    private Task<GamaWorkspaceAutoDetectResult> autoDetectTask;
-
-    [MenuItem("GAMA/Workspace Explorer")]
-    private static void OpenWindow()
+    /// <summary>
+    /// Opens the workspace explorer in a separate window (also reachable from GAMA Panel).
+    /// </summary>
+    public static void ShowDetachedWindow()
     {
         GamaWorkspaceExplorerWindow window = GetWindow<GamaWorkspaceExplorerWindow>("Workspace Explorer");
         window.minSize = new Vector2(720f, 360f);
@@ -32,201 +24,17 @@ public sealed class GamaWorkspaceExplorerWindow : EditorWindow
 
     private void OnEnable()
     {
-        workspacePath = EditorPrefs.GetString(WorkspacePathPrefKey, workspacePath);
-        workspacePorts = EditorPrefs.GetString(WorkspacePortsPrefKey, DefaultPortsValue);
-        if (string.IsNullOrWhiteSpace(workspacePorts))
-        {
-            workspacePorts = DefaultPortsValue;
-        }
-
-        if (string.IsNullOrWhiteSpace(workspacePath))
-        {
-            StartAutoDetect(isAutoTryOnLoad: true);
-        }
+        workspacePanel.OnHostEnable();
     }
 
     private void Update()
     {
-        if (autoDetectTask == null || !autoDetectTask.IsCompleted)
-        {
-            return;
-        }
-
-        CompleteAutoDetect();
-        Repaint();
+        workspacePanel.Tick(this);
     }
 
     private void OnGUI()
     {
-        EditorGUILayout.HelpBox(
-            "Offline scan: no middleware connection is required. The scanner reads workspace files to discover experiments and infer VR/non-VR launch capabilities.",
-            MessageType.Info);
-
-        EditorGUILayout.Space();
-        DrawWorkspacePath();
-
-        EditorGUILayout.Space();
-        DrawToolbar();
-
-        EditorGUILayout.Space();
-        EditorGUILayout.HelpBox(statusMessage, MessageType.None);
-        DrawResults();
-    }
-
-    private void DrawWorkspacePath()
-    {
-        EditorGUILayout.LabelField("GAMA Workspace Path", EditorStyles.boldLabel);
-        EditorGUILayout.BeginHorizontal();
-
-        EditorGUI.BeginChangeCheck();
-        string updatedPath = EditorGUILayout.TextField(workspacePath);
-        if (EditorGUI.EndChangeCheck())
-        {
-            workspacePath = updatedPath.Trim();
-            EditorPrefs.SetString(WorkspacePathPrefKey, workspacePath);
-        }
-
-        if (GUILayout.Button("Browse...", GUILayout.Width(100f)))
-        {
-            string selectedPath = EditorUtility.OpenFolderPanel("Select GAMA Workspace", workspacePath, string.Empty);
-            if (!string.IsNullOrEmpty(selectedPath))
-            {
-                workspacePath = selectedPath;
-                EditorPrefs.SetString(WorkspacePathPrefKey, workspacePath);
-            }
-        }
-
-        using (new EditorGUI.DisabledScope(autoDetectTask != null && !autoDetectTask.IsCompleted))
-        {
-            if (GUILayout.Button("Auto-Detect", GUILayout.Width(100f)))
-            {
-                StartAutoDetect(isAutoTryOnLoad: false);
-            }
-        }
-
-        EditorGUILayout.EndHorizontal();
-
-        EditorGUILayout.Space(2f);
-        EditorGUILayout.LabelField("Detection Ports (comma-separated)", EditorStyles.miniLabel);
-        EditorGUI.BeginChangeCheck();
-        string updatedPorts = EditorGUILayout.TextField(workspacePorts);
-        if (EditorGUI.EndChangeCheck())
-        {
-            workspacePorts = string.IsNullOrWhiteSpace(updatedPorts) ? DefaultPortsValue : updatedPorts.Trim();
-            EditorPrefs.SetString(WorkspacePortsPrefKey, workspacePorts);
-        }
-    }
-
-    private void DrawToolbar()
-    {
-        EditorGUILayout.BeginHorizontal();
-        if (GUILayout.Button("Scan Workspace", GUILayout.Width(160f)))
-        {
-            ScanWorkspace();
-        }
-
-        using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(workspacePath) || !Directory.Exists(workspacePath)))
-        {
-            if (GUILayout.Button("Open Folder", GUILayout.Width(120f)))
-            {
-                EditorUtility.RevealInFinder(workspacePath);
-            }
-        }
-
-        GUILayout.FlexibleSpace();
-        EditorGUILayout.EndHorizontal();
-    }
-
-    private void StartAutoDetect(bool isAutoTryOnLoad)
-    {
-        if (autoDetectTask != null && !autoDetectTask.IsCompleted)
-        {
-            return;
-        }
-
-        statusMessage = isAutoTryOnLoad
-            ? "Auto-detection in progress (workspace field is empty)..."
-            : "Auto-detection in progress...";
-
-        string configuredPorts = workspacePorts;
-        autoDetectTask = Task.Run(() => GamaWorkspaceAutoDetector.Detect(configuredPorts));
-    }
-
-    private void CompleteAutoDetect()
-    {
-        Task<GamaWorkspaceAutoDetectResult> completedTask = autoDetectTask;
-        autoDetectTask = null;
-
-        GamaWorkspaceAutoDetectResult result;
-        try
-        {
-            result = completedTask.Result;
-        }
-        catch (Exception ex)
-        {
-            statusMessage = $"Auto-detection failed unexpectedly: {ex.GetType().Name}. You can still use Browse or enter a path manually.";
-            Debug.LogWarning($"[GAMA] Workspace auto-detection failed: {ex.Message}");
-            return;
-        }
-
-        string portLabel = result.UsedPort > 0 ? result.UsedPort.ToString() : "n/a";
-        if (result.Success)
-        {
-            workspacePath = result.WorkspacePath;
-            EditorPrefs.SetString(WorkspacePathPrefKey, workspacePath);
-            statusMessage = $"Workspace detected. Method: {result.Method}. Port: {portLabel}. Confidence: {result.Confidence}. Path: {workspacePath}";
-            Debug.Log($"[GAMA] Workspace auto-detected via {result.Method} (port {portLabel}, {result.Confidence}).");
-            return;
-        }
-
-        statusMessage = $"Workspace auto-detection failed. Method: {result.Method}. Port: {portLabel}. Confidence: {result.Confidence}. {result.Message}";
-        Debug.LogWarning("[GAMA] Workspace auto-detection failed. Manual path entry remains available.");
-    }
-
-    private void ScanWorkspace()
-    {
-        experiments = GamaWorkspaceScanner.Scan(workspacePath, out string scanStatus, out int scannedFileCount, out int errorCount);
-        statusMessage = $"{scanStatus} Files scanned: {scannedFileCount}. Errors: {errorCount}.";
-
-        if (errorCount > 0)
-        {
-            Debug.LogWarning($"[GAMA] Workspace Explorer completed with {errorCount} scanning issue(s).");
-        }
-        else
-        {
-            Debug.Log($"[GAMA] Workspace Explorer found {experiments.Count} experiment(s).");
-        }
-    }
-
-    private void DrawResults()
-    {
-        EditorGUILayout.LabelField($"Experiments ({experiments.Count})", EditorStyles.boldLabel);
-        if (experiments.Count == 0)
-        {
-            EditorGUILayout.HelpBox("No experiments found. Check that the workspace path is correct and contains .gaml files.", MessageType.Warning);
-            return;
-        }
-
-        EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
-        GUILayout.Label("Experiment", GUILayout.Width(220f));
-        GUILayout.Label("Capability", GUILayout.Width(120f));
-        GUILayout.Label("Confidence", GUILayout.Width(180f));
-        GUILayout.Label("Source File");
-        EditorGUILayout.EndHorizontal();
-
-        scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
-        for (int i = 0; i < experiments.Count; i++)
-        {
-            GamaWorkspaceExperimentInfo entry = experiments[i];
-            EditorGUILayout.BeginHorizontal("box");
-            GUILayout.Label(entry.Name, GUILayout.Width(220f));
-            GUILayout.Label(entry.CapabilityLabel, GUILayout.Width(120f));
-            GUILayout.Label(entry.ConfidenceNote, GUILayout.Width(180f));
-            GUILayout.Label(entry.RelativeFilePath);
-            EditorGUILayout.EndHorizontal();
-        }
-
-        EditorGUILayout.EndScrollView();
+        workspacePanel.OnGUI();
     }
 }
 

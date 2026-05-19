@@ -21,7 +21,7 @@ public class SimulationManagerInspector : Editor
             "allowResourcesLookup", "allowFileNameFallback", "logMissingPrefabOnce", "keepManualPrefabEntriesWhenMissing"
         };
 
-        DrawPropertiesExcluding(serializedObject, excludedFields);
+        DrawSerializedPropertiesExcluding(serializedObject, excludedFields);
 
         EditorGUILayout.Space(12);
 
@@ -254,7 +254,7 @@ public class SimulationManagerInspector : Editor
         EditorGUI.EndDisabledGroup();
     }
 
-    private void DrawPropertiesExcluding(SerializedObject obj, params string[] excludedProperties)
+    private void DrawSerializedPropertiesExcluding(SerializedObject obj, params string[] excludedProperties)
     {
         SerializedProperty iterator = obj.GetIterator();
         bool enterChildren = true;

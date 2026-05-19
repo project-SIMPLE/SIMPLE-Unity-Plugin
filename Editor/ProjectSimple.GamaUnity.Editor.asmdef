@@ -1,7 +1,8 @@
 {
     "name": "ProjectSimple.GamaUnity.Editor",
     "references": [
-        "ProjectSimple.GamaUnity"
+        "ProjectSimple.GamaUnity",
+        "Newtonsoft.Json"
     ],
     "includePlatforms": [
         "Editor"

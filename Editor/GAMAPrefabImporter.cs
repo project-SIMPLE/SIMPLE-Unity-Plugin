@@ -6,7 +6,6 @@ public class GAMAPrefabImporter : EditorWindow
 {
     private string sourceFolderPath = "";
 
-    [MenuItem("GAMA/Import External Prefabs...")]
     public static void ShowWindow()
     {
         GAMAPrefabImporter window = GetWindow<GAMAPrefabImporter>("GAMA Prefab Importer");

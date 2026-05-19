@@ -13,6 +13,7 @@
     "com.unity.xr.core-utils": "2.3.0",
     "com.unity.xr.interaction.toolkit": "3.3.1",
     "com.unity.xr.management": "4.5.3",
+    "com.unity.xr.openxr": "1.15.1",
     "com.unity.ugui": "2.0.0"
   },
   "samples": [
