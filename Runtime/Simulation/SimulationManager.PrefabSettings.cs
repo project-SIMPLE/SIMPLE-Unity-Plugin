@@ -535,6 +535,8 @@ public class GamaPrefabPropertyBinding
         importedPrefabNormalized = SimulationManager.NormalizeKey(property.prefab);
     }
 
+
+
     public bool TryResolveManualPrefab(
         SimulationManager settings,
         out GameObject prefab,
@@ -545,6 +547,24 @@ public class GamaPrefabPropertyBinding
         if (!enabled)
         {
             return false;
+        }
+
+        if (GamaRuntimePreviewOverrideApplier.TryGetOverride(propertyId, out GamaSpeciesRenderOverrideEntry previewOverride))
+        {
+            if (previewOverride.prefabOverride != null)
+            {
+                prefab = previewOverride.prefabOverride;
+                signature = "property:" + propertyId;
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(previewOverride.prefabResourcePath) &&
+                settings != null &&
+                settings.TryResolveResourcesPath(previewOverride.prefabResourcePath, out prefab))
+            {
+                signature = "property-resources:" + propertyId;
+                return true;
+            }
         }
 
         if (unityPrefab != null)

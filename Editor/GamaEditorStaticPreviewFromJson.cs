@@ -303,8 +303,9 @@ internal static class GamaEditorStaticPreviewFromJson
                     obj.transform.SetPositionAndRotation(pos, rotation);
 
                     ApplyPrefabVisualState(obj, prop, visualState, precision);
-                    if (speciesOverrides != null) { ApplySpeciesOverrideIfAny(obj.transform, speciesKey, speciesOverrides); }
-                    AddPreviewObjectIdentity(obj, speciesKey, name, BuildIntListHash(pt));
+                    GamaPreviewObject marker = AddPreviewObjectIdentity(obj, speciesKey, name, BuildIntListHash(pt));
+                    if (marker != null) marker.CaptureBaseTransformIfNeeded();
+                    if (speciesOverrides != null) { ApplySpeciesOverrideIfAny(marker, speciesKey, speciesOverrides); }
                     builtAgents++;
                     cptPrefab++;
                 }
@@ -363,8 +364,9 @@ internal static class GamaEditorStaticPreviewFromJson
                     obj.transform.SetParent(speciesParent, false);
 
                     ApplyPolygonVisualState(obj, prop, visualState, polygonBasePosition);
-                    if (speciesOverrides != null) { ApplySpeciesOverrideIfAny(obj.transform, speciesKey, speciesOverrides); }
-                    AddPreviewObjectIdentity(obj, speciesKey, name, BuildIntListHash(rawGeom));
+                    GamaPreviewObject marker = AddPreviewObjectIdentity(obj, speciesKey, name, BuildIntListHash(rawGeom));
+                    if (marker != null) marker.CaptureBaseTransformIfNeeded();
+                    if (speciesOverrides != null) { ApplySpeciesOverrideIfAny(marker, speciesKey, speciesOverrides); }
 
                     if (prop.hasCollider && obj.GetComponent<MeshCollider>() == null)
                     {
@@ -600,26 +602,26 @@ internal static class GamaEditorStaticPreviewFromJson
     }
 
     private static void ApplySpeciesOverrideIfAny(
-        Transform instance,
+        GamaPreviewObject marker,
         string speciesKey,
         GamaSpeciesRenderOverrides speciesOverrides)
     {
-        if (instance == null || speciesOverrides == null || string.IsNullOrWhiteSpace(speciesKey))
+        if (marker == null || speciesOverrides == null || string.IsNullOrWhiteSpace(speciesKey))
         {
             return;
         }
 
         if (speciesOverrides.TryGetOverride(speciesKey, out GamaSpeciesRenderOverrideEntry entry) && entry != null)
         {
-            GamaSpeciesWizard.ApplyEntryToInstance(instance, entry);
+            marker.ApplySpeciesOverride(entry);
         }
     }
 
-    private static void AddPreviewObjectIdentity(GameObject obj, string speciesKey, string agentId, string geometryHash)
+    private static GamaPreviewObject AddPreviewObjectIdentity(GameObject obj, string speciesKey, string agentId, string geometryHash)
     {
         if (obj == null)
         {
-            return;
+            return null;
         }
 
         GamaPreviewObject marker = obj.GetComponent<GamaPreviewObject>();
@@ -634,6 +636,7 @@ internal static class GamaEditorStaticPreviewFromJson
         marker.agentId = agentId ?? string.Empty;
         marker.geometryHash = geometryHash ?? string.Empty;
         marker.sourceTick = -1;
+        return marker;
     }
 
     private static string BuildIntListHash(IList<int> values)

@@ -108,6 +108,36 @@ public abstract partial class SimulationManager
             agentOverride.Manual.ApplyTo(ref state);
         }
 
+        if (Application.isPlaying)
+        {
+            GamaSpeciesRenderOverrideEntry previewOverride;
+            if (GamaRuntimePreviewOverrideApplier.TryGetOverride(property != null ? property.id : string.Empty, out previewOverride))
+            {
+                if (previewOverride.overrideColor)
+                {
+                    state.Color = (Color32)previewOverride.color;
+                    state.HasColor = true;
+                    state.HasManualColorOverride = true;
+                }
+                if (Math.Abs(previewOverride.scaleMultiplier - 1f) > 0.0001f)
+                {
+                    state.ScaleMultiplier *= Mathf.Max(0f, previewOverride.scaleMultiplier);
+                }
+                if (previewOverride.positionOffset.sqrMagnitude > 0.0001f)
+                {
+                    state.PositionOffset += previewOverride.positionOffset;
+                }
+                if (previewOverride.rotationOffsetEuler.sqrMagnitude > 0.0001f)
+                {
+                    state.RotationOffsetEuler += previewOverride.rotationOffsetEuler;
+                }
+                if (previewOverride.overrideVisibility || previewOverride.overrideRuntimeVisibility)
+                {
+                    state.Visible = previewOverride.visibleInRuntime;
+                }
+            }
+        }
+
         return state;
     }
 

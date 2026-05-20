@@ -46,6 +46,8 @@ public sealed class GamaPanelWindow : EditorWindow
     private const string SelectedCodeExampleIndexPrefKey = "ProjectSimple.GamaUnity.Panel.SelectedCodeExampleIndex";
     private const string WorkspaceTabAdvancedPrefKey = "ProjectSimple.GamaUnity.Panel.WorkspaceTabAdvancedExpanded";
     private const string AutoHidePreviewOnPlayPrefKey = "ProjectSimple.GamaUnity.Panel.AutoHidePreviewOnPlay";
+    private const string ApplyPreviewSettingsToPlayPrefKey = "ProjectSimple.GamaUnity.Panel.ApplyPreviewSettingsToPlay";
+    private const string AutoUpdatePreviewPrefKey = "ProjectSimple.GamaUnity.Panel.AutoUpdatePreview";
     private const string GeneratedRulePrefix = "[Workspace Import]";
     private const string StaticPreviewRootName = "[GAMA] Static Experiment Preview";
 
@@ -82,6 +84,8 @@ public sealed class GamaPanelWindow : EditorWindow
     private float capturePreviewStableSeconds = 5f;
     private bool capturePauseExperimentAfterPreview = true;
     private bool autoHidePreviewOnPlay = true;
+    private bool applyPreviewSettingsToPlay = true;
+    private bool autoUpdatePreview = true;
     private GamaSpeciesRenderOverrides speciesRenderOverridesAsset;
     private readonly List<string> availableWorldTickPaths = new List<string>();
     private string gamaHeadlessBatPath = string.Empty;
@@ -199,6 +203,12 @@ public sealed class GamaPanelWindow : EditorWindow
         autoHidePreviewOnPlay = EditorPrefs.GetBool(
             AutoHidePreviewOnPlayPrefKey,
             autoHidePreviewOnPlay);
+        applyPreviewSettingsToPlay = EditorPrefs.GetBool(
+            ApplyPreviewSettingsToPlayPrefKey,
+            applyPreviewSettingsToPlay);
+        autoUpdatePreview = EditorPrefs.GetBool(
+            AutoUpdatePreviewPrefKey,
+            autoUpdatePreview);
         string overridesAssetPath = EditorPrefs.GetString(SpeciesOverridesAssetPrefKey, string.Empty);
         if (!string.IsNullOrEmpty(overridesAssetPath))
         {
@@ -928,6 +938,9 @@ public sealed class GamaPanelWindow : EditorWindow
         autoHidePreviewOnPlay = EditorGUILayout.Toggle(
             "Masquer automatiquement la preview au Play",
             autoHidePreviewOnPlay);
+        applyPreviewSettingsToPlay = EditorGUILayout.Toggle(
+            "Appliquer les réglages de preview au Play",
+            applyPreviewSettingsToPlay);
         speciesRenderOverridesAsset = (GamaSpeciesRenderOverrides)EditorGUILayout.ObjectField(
             "Overrides par espèce",
             speciesRenderOverridesAsset,
@@ -946,7 +959,15 @@ public sealed class GamaPanelWindow : EditorWindow
             {
                 ApplySpeciesRenderOverridesToSimulationManager();
             }
+            if (GUILayout.Button("Appliquer les réglages à la preview", GUILayout.Height(22f)))
+            {
+                GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
+            }
         }
+        
+        autoUpdatePreview = EditorGUILayout.Toggle(
+            "Mettre à jour la preview en direct",
+            autoUpdatePreview);
 
         if (EditorGUI.EndChangeCheck())
         {
@@ -990,6 +1011,8 @@ public sealed class GamaPanelWindow : EditorWindow
             EditorPrefs.SetFloat(CaptureStableSecondsPrefKey, capturePreviewStableSeconds);
             EditorPrefs.SetBool(CapturePauseAfterPreviewPrefKey, capturePauseExperimentAfterPreview);
             EditorPrefs.SetBool(AutoHidePreviewOnPlayPrefKey, autoHidePreviewOnPlay);
+            EditorPrefs.SetBool(ApplyPreviewSettingsToPlayPrefKey, applyPreviewSettingsToPlay);
+            EditorPrefs.SetBool(AutoUpdatePreviewPrefKey, autoUpdatePreview);
             string overridesPath = speciesRenderOverridesAsset != null
                 ? AssetDatabase.GetAssetPath(speciesRenderOverridesAsset)
                 : string.Empty;
@@ -3351,6 +3374,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         PopulateSessionSpeciesSnapshot(root, session);
+        session.speciesOverrides = speciesRenderOverridesAsset;
         PropagateSessionToSpeciesWizards(root, session);
         EditorUtility.SetDirty(session);
 

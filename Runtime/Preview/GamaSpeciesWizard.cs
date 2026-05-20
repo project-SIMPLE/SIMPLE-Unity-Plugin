@@ -73,16 +73,23 @@ public class GamaSpeciesWizard : MonoBehaviour
     }
 
 #if UNITY_EDITOR
+    public static Action OnWizardSettingsChanged;
+    public static Func<GamaSpeciesRenderOverrides> GetDefaultOverridesAsset;
+
     private void OnValidate()
     {
         scaleMultiplier = Mathf.Max(0f, scaleMultiplier);
-        if (overridesAsset == null)
+        if (overridesAsset == null && GetDefaultOverridesAsset != null)
         {
-            overridesAsset = GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
+            overridesAsset = GetDefaultOverridesAsset.Invoke();
         }
 
-        ApplyCurrentSettingsToChildren();
         SaveCurrentSettingsToAsset();
+
+        if (OnWizardSettingsChanged != null)
+        {
+            OnWizardSettingsChanged.Invoke();
+        }
     }
 
     [ContextMenu("Save Parent Transform As Species Override")]

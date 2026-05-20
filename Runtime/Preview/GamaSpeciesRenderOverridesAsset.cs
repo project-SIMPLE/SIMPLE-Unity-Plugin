@@ -50,6 +50,20 @@ public class GamaSpeciesRenderOverrides : ScriptableObject
         return TryGetOverride(string.Empty, string.Empty, speciesName, out entry);
     }
 
+    public GamaSpeciesRenderOverrideEntry GetOrCreateEntry(string speciesName)
+    {
+        if (TryGetOverride(speciesName, out GamaSpeciesRenderOverrideEntry entry))
+        {
+            return entry;
+        }
+
+        entry = new GamaSpeciesRenderOverrideEntry();
+        entry.speciesName = speciesName;
+        entry.speciesKey = speciesName;
+        entries.Add(entry);
+        return entry;
+    }
+
     public void SetOrReplaceEntry(GamaSpeciesRenderOverrideEntry newEntry)
     {
         if (newEntry == null || string.IsNullOrWhiteSpace(newEntry.GetSpeciesName()))

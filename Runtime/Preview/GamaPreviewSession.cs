@@ -44,4 +44,5 @@ public class GamaPreviewSession : MonoBehaviour
     [Header("Species snapshot")]
     public List<string> speciesList = new List<string>();
     public List<GamaPreviewSpeciesCount> speciesCounts = new List<GamaPreviewSpeciesCount>();
+    public GamaSpeciesRenderOverrides speciesOverrides;
 }

@@ -87,25 +87,30 @@ public class SimulationManagerInspector : Editor
             return;
         }
 
+        GamaSpeciesRenderOverrides asset = GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
+        if (asset == null)
+        {
+            EditorGUILayout.HelpBox("Could not load shared GAMA Species Render Overrides asset.", MessageType.Error);
+            return;
+        }
+
         EditorGUILayout.HelpBox(
-            "GAMA values are read-only references. Enable an override to edit the Unity value applied at runtime.",
+            "Values below are stored in the shared GamaSpeciesRenderOverrides asset. They apply to both the Static Preview and the Runtime Simulation.",
             MessageType.None);
+
+        bool assetChanged = false;
 
         // Draw each species entry
         for (int i = 0; i < count; i++)
         {
             SerializedProperty entry = propertySettings.GetArrayElementAtIndex(i);
-            if (entry == null)
-            {
-                continue;
-            }
+            if (entry == null) continue;
 
             SerializedProperty propertyId = entry.FindPropertyRelative("propertyId");
             SerializedProperty tag = entry.FindPropertyRelative("tag");
             SerializedProperty prefab = entry.FindPropertyRelative("prefab");
             SerializedProperty importedColor = entry.FindPropertyRelative("importedColor");
             SerializedProperty importedBaseScale = entry.FindPropertyRelative("importedBaseScale");
-            SerializedProperty manual = entry.FindPropertyRelative("manual");
 
             string speciesName = propertyId != null ? propertyId.stringValue : "(unknown)";
             string tagStr = tag != null && !string.IsNullOrEmpty(tag.stringValue) ? " [" + tag.stringValue + "]" : "";
@@ -132,126 +137,58 @@ public class SimulationManagerInspector : Editor
             }
             EditorGUI.EndDisabledGroup();
 
-            // Manual overrides
-            if (manual != null)
+            // Shared manual overrides
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("Shared Overrides", EditorStyles.miniBoldLabel);
+
+            GamaSpeciesRenderOverrideEntry overrideEntry = asset.GetOrCreateEntry(speciesName);
+
+            EditorGUI.BeginChangeCheck();
+
+            // Prefab overrides
+            overrideEntry.prefabOverride = (GameObject)EditorGUILayout.ObjectField("Prefab Override", overrideEntry.prefabOverride, typeof(GameObject), false);
+            overrideEntry.prefabResourcePath = EditorGUILayout.TextField("Resources Path Override", overrideEntry.prefabResourcePath);
+
+            // Color override
+            overrideEntry.overrideColor = EditorGUILayout.Toggle("Override Color", overrideEntry.overrideColor);
+            EditorGUI.BeginDisabledGroup(!overrideEntry.overrideColor);
+            overrideEntry.color = EditorGUILayout.ColorField("Color", overrideEntry.color);
+            EditorGUI.EndDisabledGroup();
+
+            // Scale override
+            overrideEntry.scaleMultiplier = EditorGUILayout.FloatField("Scale Multiplier", overrideEntry.scaleMultiplier);
+            overrideEntry.scaleMultiplier = Mathf.Max(0f, overrideEntry.scaleMultiplier);
+
+            // Position override
+            overrideEntry.positionOffset = EditorGUILayout.Vector3Field("Position Offset", overrideEntry.positionOffset);
+
+            // Rotation override
+            overrideEntry.rotationOffsetEuler = EditorGUILayout.Vector3Field("Rotation Offset", overrideEntry.rotationOffsetEuler);
+
+            // Visibility override
+            overrideEntry.overrideRuntimeVisibility = EditorGUILayout.Toggle("Override Visibility", overrideEntry.overrideRuntimeVisibility);
+            EditorGUI.BeginDisabledGroup(!overrideEntry.overrideRuntimeVisibility);
+            overrideEntry.visibleInRuntime = EditorGUILayout.Toggle("Visible", overrideEntry.visibleInRuntime);
+            EditorGUI.EndDisabledGroup();
+
+            if (EditorGUI.EndChangeCheck())
             {
-                EditorGUILayout.Space(4);
-                EditorGUILayout.LabelField("Unity Overrides", EditorStyles.miniBoldLabel);
-
-                // Color override
-                SerializedProperty overrideColor = manual.FindPropertyRelative("overrideColor");
-                SerializedProperty colorProp = manual.FindPropertyRelative("color");
-                if (overrideColor != null && colorProp != null)
-                {
-                    EditorGUILayout.PropertyField(overrideColor, new GUIContent("Override Color"));
-                    EditorGUI.BeginDisabledGroup(!overrideColor.boolValue);
-                    colorProp.colorValue = EditorGUILayout.ColorField("Color Override", colorProp.colorValue);
-                    EditorGUI.EndDisabledGroup();
-                }
-
-                // Scale override
-                SerializedProperty overrideScale = manual.FindPropertyRelative("overrideScaleMultiplier");
-                SerializedProperty scaleProp = manual.FindPropertyRelative("scaleMultiplier");
-                if (overrideScale != null && scaleProp != null)
-                {
-                    EditorGUILayout.PropertyField(overrideScale, new GUIContent("Override Scale"));
-                    EditorGUI.BeginDisabledGroup(!overrideScale.boolValue);
-                    scaleProp.floatValue = EditorGUILayout.FloatField("Scale Multiplier", Mathf.Max(0f, scaleProp.floatValue));
-                    EditorGUI.EndDisabledGroup();
-                }
-
-                // Position override
-                SerializedProperty overridePosition = manual.FindPropertyRelative("overridePositionOffset");
-                SerializedProperty positionProp = manual.FindPropertyRelative("positionOffset");
-                if (overridePosition != null && positionProp != null)
-                {
-                    EditorGUILayout.PropertyField(overridePosition, new GUIContent("Override Position Offset"));
-                    EditorGUI.BeginDisabledGroup(!overridePosition.boolValue);
-                    EditorGUILayout.PropertyField(positionProp, new GUIContent("Position Offset"));
-                    EditorGUI.EndDisabledGroup();
-                }
-
-                // Rotation override
-                SerializedProperty overrideRotation = manual.FindPropertyRelative("overrideRotationOffset");
-                SerializedProperty rotationProp = manual.FindPropertyRelative("rotationOffsetEuler");
-                if (overrideRotation != null && rotationProp != null)
-                {
-                    EditorGUILayout.PropertyField(overrideRotation, new GUIContent("Override Rotation Offset"));
-                    EditorGUI.BeginDisabledGroup(!overrideRotation.boolValue);
-                    EditorGUILayout.PropertyField(rotationProp, new GUIContent("Rotation Offset Euler"));
-                    EditorGUI.EndDisabledGroup();
-                }
-
-                // Visibility override
-                SerializedProperty overrideVis = manual.FindPropertyRelative("overrideVisibility");
-                SerializedProperty visProp = manual.FindPropertyRelative("visible");
-                if (overrideVis != null && visProp != null)
-                {
-                    EditorGUILayout.PropertyField(overrideVis, new GUIContent("Override Visibility"));
-                    EditorGUI.BeginDisabledGroup(!overrideVis.boolValue);
-                    visProp.boolValue = EditorGUILayout.Toggle("Visible", visProp.boolValue);
-                    EditorGUI.EndDisabledGroup();
-                }
+                assetChanged = true;
+                Debug.Log($"[GAMA][OVERRIDES] GameManager editing species={speciesName} scale={overrideEntry.scaleMultiplier}");
             }
-
-            // Prefab override (stored directly on SimulationManager)
-            DrawPrefabOverrideForSpecies(speciesName);
 
             EditorGUI.indentLevel--;
             EditorGUILayout.EndVertical();
             EditorGUILayout.Space(2);
         }
 
-    }
-
-    private void DrawPrefabOverrideForSpecies(string propertyId)
-    {
-        if (string.IsNullOrEmpty(propertyId))
+        if (assetChanged)
         {
-            return;
+            Debug.Log($"[GAMA][OVERRIDES] source asset = {AssetDatabase.GetAssetPath(asset)}");
+            EditorUtility.SetDirty(asset);
+            Debug.Log("[GAMA][PREVIEW][AUTO] Schedule requested from GameManager inspector");
+            GamaEditorPreviewOverrideApplier.ScheduleApplyOverridesToCurrentPreview();
         }
-
-        SerializedProperty bindings = serializedObject.FindProperty("propertyBindings");
-        if (bindings == null || !bindings.isArray)
-        {
-            return;
-        }
-
-        for (int i = 0; i < bindings.arraySize; i++)
-        {
-            SerializedProperty binding = bindings.GetArrayElementAtIndex(i);
-            if (binding == null)
-            {
-                continue;
-            }
-
-            SerializedProperty bindPropId = binding.FindPropertyRelative("propertyId");
-            if (bindPropId == null ||
-                !string.Equals(bindPropId.stringValue, propertyId, System.StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            SerializedProperty unityPrefab = binding.FindPropertyRelative("unityPrefab");
-            SerializedProperty unityResourcesPath = binding.FindPropertyRelative("unityResourcesPath");
-
-            if (unityPrefab != null)
-            {
-                EditorGUILayout.PropertyField(unityPrefab, new GUIContent("Prefab Override"));
-            }
-
-            if (unityResourcesPath != null)
-            {
-                EditorGUILayout.PropertyField(unityResourcesPath, new GUIContent("Resources Path Override"));
-            }
-
-            return;
-        }
-
-        // No binding found for this species
-        EditorGUI.BeginDisabledGroup(true);
-        EditorGUILayout.ObjectField("Prefab Override", null, typeof(GameObject), false);
-        EditorGUI.EndDisabledGroup();
     }
 
     private void DrawSerializedPropertiesExcluding(SerializedObject obj, params string[] excludedProperties)
