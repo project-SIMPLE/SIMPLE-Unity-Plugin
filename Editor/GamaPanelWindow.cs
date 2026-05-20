@@ -45,6 +45,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private const string GamaMiddlewareScriptPrefKey = "ProjectSimple.GamaUnity.Panel.GamaMiddlewareScript";
     private const string SelectedCodeExampleIndexPrefKey = "ProjectSimple.GamaUnity.Panel.SelectedCodeExampleIndex";
     private const string WorkspaceTabAdvancedPrefKey = "ProjectSimple.GamaUnity.Panel.WorkspaceTabAdvancedExpanded";
+    private const string AutoHidePreviewOnPlayPrefKey = "ProjectSimple.GamaUnity.Panel.AutoHidePreviewOnPlay";
     private const string GeneratedRulePrefix = "[Workspace Import]";
     private const string StaticPreviewRootName = "[GAMA] Static Experiment Preview";
 
@@ -80,6 +81,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private bool captureStopWhenPreviewCacheStable = true;
     private float capturePreviewStableSeconds = 5f;
     private bool capturePauseExperimentAfterPreview = true;
+    private bool autoHidePreviewOnPlay = true;
     private GamaSpeciesRenderOverrides speciesRenderOverridesAsset;
     private readonly List<string> availableWorldTickPaths = new List<string>();
     private string gamaHeadlessBatPath = string.Empty;
@@ -194,6 +196,9 @@ public sealed class GamaPanelWindow : EditorWindow
         capturePauseExperimentAfterPreview = EditorPrefs.GetBool(
             CapturePauseAfterPreviewPrefKey,
             capturePauseExperimentAfterPreview);
+        autoHidePreviewOnPlay = EditorPrefs.GetBool(
+            AutoHidePreviewOnPlayPrefKey,
+            autoHidePreviewOnPlay);
         string overridesAssetPath = EditorPrefs.GetString(SpeciesOverridesAssetPrefKey, string.Empty);
         if (!string.IsNullOrEmpty(overridesAssetPath))
         {
@@ -920,6 +925,9 @@ public sealed class GamaPanelWindow : EditorWindow
         capturePauseExperimentAfterPreview = EditorGUILayout.Toggle(
             "Mettre l'expérience en pause après capture",
             capturePauseExperimentAfterPreview);
+        autoHidePreviewOnPlay = EditorGUILayout.Toggle(
+            "Masquer automatiquement la preview au Play",
+            autoHidePreviewOnPlay);
         speciesRenderOverridesAsset = (GamaSpeciesRenderOverrides)EditorGUILayout.ObjectField(
             "Overrides par espèce",
             speciesRenderOverridesAsset,
@@ -981,6 +989,7 @@ public sealed class GamaPanelWindow : EditorWindow
             EditorPrefs.SetBool(CaptureStopWhenStablePrefKey, captureStopWhenPreviewCacheStable);
             EditorPrefs.SetFloat(CaptureStableSecondsPrefKey, capturePreviewStableSeconds);
             EditorPrefs.SetBool(CapturePauseAfterPreviewPrefKey, capturePauseExperimentAfterPreview);
+            EditorPrefs.SetBool(AutoHidePreviewOnPlayPrefKey, autoHidePreviewOnPlay);
             string overridesPath = speciesRenderOverridesAsset != null
                 ? AssetDatabase.GetAssetPath(speciesRenderOverridesAsset)
                 : string.Empty;
