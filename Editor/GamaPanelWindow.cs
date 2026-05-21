@@ -54,7 +54,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private readonly string[] tabs =
     {
         "Setup Scene",
-        "Explorer le workspace",
+        "Workspace Explorer",
         "Import Prefabs",
         "Import Experiment"
     };
@@ -95,7 +95,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private string gamaHeadlessCustomCmd = string.Empty;
     private int gamaHeadlessTimeoutSeconds = 300;
     private bool gamaHeadlessRunPreviewAfter = true;
-    private bool headlessExportSectionExpanded = true;
+    private bool headlessExportSectionExpanded = false;
     private string captureHost = "localhost";
     private string capturePort = "8080";
     private string captureConnectionId = string.Empty;
@@ -265,11 +265,17 @@ public sealed class GamaPanelWindow : EditorWindow
         selectedCodeExampleIndex = EditorPrefs.GetInt(SelectedCodeExampleIndexPrefKey, selectedCodeExampleIndex);
         workspaceTabAdvancedExpanded = EditorPrefs.GetBool(WorkspaceTabAdvancedPrefKey, false);
         RefreshCodeExampleScenes();
+        
+        GameObject previewRoot = GameObject.Find(StaticPreviewRootName);
+        if (previewRoot != null)
+        {
+            UpdateAgentOverridesFromPreview(previewRoot);
+        }
     }
 
     private void OnDisable()
     {
-        AbortCaptureIfRunning("Fenêtre fermée");
+        AbortCaptureIfRunning("Window closed");
     }
 
     private void Update()
@@ -290,7 +296,7 @@ public sealed class GamaPanelWindow : EditorWindow
             else
             {
                 double elapsed = EditorApplication.timeSinceStartup - captureStartedAt;
-                captureRuntimeStatus = "Capture en cours… " + elapsed.ToString("0.0") + " s écoulées.";
+                captureRuntimeStatus = "Capture in progress... " + elapsed.ToString("0.0") + " s elapsed.";
                 Repaint();
             }
         }
@@ -307,7 +313,7 @@ public sealed class GamaPanelWindow : EditorWindow
             }
             catch (Exception ex)
             {
-                catalogDiagnosisStatus = "Diagnostic catalogue échoué : " + ex.Message;
+                catalogDiagnosisStatus = "Catalog diagnosis failed: " + ex.Message;
                 captureRuntimeStatus = catalogDiagnosisStatus;
             }
 
@@ -339,12 +345,12 @@ public sealed class GamaPanelWindow : EditorWindow
             captureMiddlewareProcess = null;
         }
 
-        captureRuntimeStatus = "Annulation… fermeture propre du WebSocket (quelques secondes).";
+        captureRuntimeStatus = "Cancelling... closing WebSocket gracefully (a few seconds).";
         if (captureTask == null)
         {
             try { captureCts?.Dispose(); } catch { /* ignore */ }
             captureCts = null;
-            captureRuntimeStatus = "Capture annulée : " + reason;
+            captureRuntimeStatus = "Capture cancelled: " + reason;
             pendingCaptureAbortUserMessage = null;
             captureFlowActive = false;
         }
@@ -401,7 +407,7 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorGUI.BeginChangeCheck();
         workspaceTabAdvancedExpanded = EditorGUILayout.Foldout(
             workspaceTabAdvancedExpanded,
-            "Paramètres avancés (scan : ports / auto-détection, exploration .gaml, prefabs, headless…)",
+            "Advanced Settings (scan: ports / auto-detection, .gaml exploration, prefabs, headless...)",
             true);
         if (EditorGUI.EndChangeCheck())
         {
@@ -411,16 +417,16 @@ public sealed class GamaPanelWindow : EditorWindow
         if (workspaceTabAdvancedExpanded)
         {
             EditorGUI.indentLevel++;
-            EditorGUILayout.LabelField("Scan hors-ligne", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Offline Scan", EditorStyles.boldLabel);
             workspaceExplorerPanel.DrawAdvancedScannerOptions();
             EditorGUILayout.Space(10f);
             DrawWorkspaceConfigurationSection();
             EditorGUILayout.Space(8f);
-            EditorGUILayout.LabelField("Explorateur dans une fenêtre", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Explorer in Separate Window", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "Ouvre la même vue de scan dans une fenêtre séparée.",
+                "Opens the same scan view in a separate window.",
                 MessageType.Info);
-            if (GUILayout.Button("Ouvrir l’explorateur dans une fenêtre", GUILayout.Height(24f)))
+            if (GUILayout.Button("Open Explorer in a Window", GUILayout.Height(24f)))
             {
                 GamaWorkspaceExplorerWindow.ShowDetachedWindow();
             }
@@ -463,18 +469,18 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private void DrawSetupSceneChooser()
     {
-        EditorGUILayout.LabelField("Configuration de la scène", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("Scene Configuration", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "Choisissez un modèle : scène GAMA minimale classique, version VR avec simulateur d’appareil XR, ou une scène générée à partir des exemples du package (cas particuliers documentés dans le code).",
+            "Choose a template: classic minimal GAMA scene, VR version with XR device simulator, or a scene generated from the package examples (special cases documented in the code).",
             MessageType.Info);
 
         EditorGUILayout.BeginHorizontal();
-        if (GUILayout.Button("Setup classique (simulateur)", GUILayout.Height(36f)))
+        if (GUILayout.Button("Setup (VR Simulator)", GUILayout.Height(36f)))
         {
             GAMAMenu.SetupScene();
         }
 
-        if (GUILayout.Button("Setup casque réel", GUILayout.Height(36f)))
+        if (GUILayout.Button("Setup (Headset Ready)", GUILayout.Height(36f)))
         {
             GAMAMenu.SetupSceneHeadsetReady();
         }
@@ -482,13 +488,13 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorGUILayout.EndHorizontal();
 
         EditorGUILayout.Space(10f);
-        EditorGUILayout.LabelField("Scènes d’exemple (code)", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("Code Example Scenes", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "Génère un fichier de scène sous Assets/Scenes/Code Examples à partir des définitions du package. Utile pour tester un flux précis (static data, interactions, multiplexer, etc.).",
+            "Generates a scene file under Assets/Scenes/Code Examples from the package definitions. Useful for testing a specific flow (static data, interactions, multiplexer, etc.).",
             MessageType.None);
 
         EditorGUILayout.BeginHorizontal();
-        if (GUILayout.Button("Actualiser la liste", GUILayout.Width(150f)))
+        if (GUILayout.Button("Refresh List", GUILayout.Width(150f)))
         {
             RefreshCodeExampleScenes();
         }
@@ -498,7 +504,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
         if (codeExampleScenes.Count == 0)
         {
-            EditorGUILayout.HelpBox("Aucun exemple de scène n’est disponible dans le package.", MessageType.Warning);
+            EditorGUILayout.HelpBox("No example scenes are available in the package.", MessageType.Warning);
             return;
         }
 
@@ -510,25 +516,25 @@ public sealed class GamaPanelWindow : EditorWindow
 
         EditorGUI.BeginChangeCheck();
         selectedCodeExampleIndex = Mathf.Clamp(selectedCodeExampleIndex, 0, codeExampleScenes.Count - 1);
-        selectedCodeExampleIndex = EditorGUILayout.Popup("Scène d’exemple", selectedCodeExampleIndex, labels);
+        selectedCodeExampleIndex = EditorGUILayout.Popup("Example Scene", selectedCodeExampleIndex, labels);
         if (EditorGUI.EndChangeCheck())
         {
             EditorPrefs.SetInt(SelectedCodeExampleIndexPrefKey, selectedCodeExampleIndex);
         }
 
-        if (GUILayout.Button("Générer la scène d’exemple sélectionnée", GUILayout.Height(32f)))
+        if (GUILayout.Button("Generate Selected Example Scene", GUILayout.Height(32f)))
         {
             SetupSelectedCodeExampleScene();
         }
 
-        codeExampleAdvancedExpanded = EditorGUILayout.Foldout(codeExampleAdvancedExpanded, "Options avancées (exemples)", true);
+        codeExampleAdvancedExpanded = EditorGUILayout.Foldout(codeExampleAdvancedExpanded, "Advanced Options (examples)", true);
         if (codeExampleAdvancedExpanded)
         {
             EditorGUI.indentLevel++;
             EditorGUILayout.HelpBox(
-                "« Générer toutes les scènes » écrit tous les .unity d’un coup sans ouvrir chaque scène. Réutilisez après une mise à jour du package.",
+                "'Generate All Scenes' writes all .unity files at once without opening each scene. Re-run after a package update.",
                 MessageType.None);
-            if (GUILayout.Button("Générer toutes les scènes d’exemple", GUILayout.Height(28f)))
+            if (GUILayout.Button("Generate All Example Scenes", GUILayout.Height(28f)))
             {
                 CreateAllCodeExampleScenes();
             }
@@ -538,22 +544,22 @@ public sealed class GamaPanelWindow : EditorWindow
 
         EditorGUILayout.Space(8f);
         EditorGUILayout.HelpBox(
-            "Le setup classique ou VR reconstruit la scène active (joueur, teleport, caméra, managers). Compatible avec une scène vide ou un template Unity.",
+            "The classic or VR setup rebuilds the active scene (player, teleport, camera, managers). Compatible with an empty scene or a Unity template.",
             MessageType.None);
     }
 
     private void DrawWorkspaceConfigurationSection()
     {
-        EditorGUILayout.LabelField("Workspace GAMA et outils", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("GAMA Workspace & Tools", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "Indiquez un dossier workspace ou un fichier .gaml, puis Explorer pour analyser un modèle et préparer l’onglet Import Experiment. « Importer l’expérience » ouvre cet onglet avec l’expérience sélectionnée. Ici aussi : prefabs externes et export headless.",
+            "Enter a workspace folder or .gaml file, then click Explore to analyze a model and prepare the Import Experiment tab. 'Import Experiment' opens that tab with the selected experiment. Also here: external prefabs and headless export.",
             MessageType.Info);
 
-        DrawExperimentPathInput("Workspace ou fichier .gaml");
+        DrawExperimentPathInput("Workspace or .gaml file");
         EditorGUILayout.BeginHorizontal();
         using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(experimentPath)))
         {
-            if (GUILayout.Button("Explorer", GUILayout.Width(120f)))
+            if (GUILayout.Button("Explore", GUILayout.Width(120f)))
             {
                 ExploreExperimentPathFromWorkspace();
             }
@@ -571,11 +577,11 @@ public sealed class GamaPanelWindow : EditorWindow
         string runnerHint = string.Empty;
         if (GamaHeadlessPackagePaths.TryGetBundledRunnerBat(out string runnerAbs, out _))
         {
-            runnerHint = "Lanceur inclus : " + runnerAbs;
+            runnerHint = "Bundled runner: " + runnerAbs;
         }
         else
         {
-            runnerHint = "Lanceur package introuvable — vérifiez l’installation du package.";
+            runnerHint = "Package runner not found — check your package installation.";
         }
 
         EditorGUILayout.HelpBox(runnerHint, MessageType.None);
@@ -587,15 +593,15 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         EditorGUILayout.BeginHorizontal();
         EditorGUI.BeginChangeCheck();
-        prefabSourceFolder = EditorGUILayout.TextField("Dossier prefabs externe", prefabSourceFolder);
+        prefabSourceFolder = EditorGUILayout.TextField("External Prefabs Folder", prefabSourceFolder);
         if (EditorGUI.EndChangeCheck())
         {
             EditorPrefs.SetString(PrefabSourcePrefKey, prefabSourceFolder);
         }
 
-        if (GUILayout.Button("Parcourir…", GUILayout.Width(100f)))
+        if (GUILayout.Button("Browse...", GUILayout.Width(100f)))
         {
-            string selectedPath = EditorUtility.OpenFolderPanel("Dossier de prefabs externes", prefabSourceFolder, string.Empty);
+            string selectedPath = EditorUtility.OpenFolderPanel("External Prefabs Folder", prefabSourceFolder, string.Empty);
             if (!string.IsNullOrWhiteSpace(selectedPath))
             {
                 prefabSourceFolder = selectedPath;
@@ -626,10 +632,10 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorGUILayout.EndHorizontal();
 
         EditorGUILayout.BeginHorizontal();
-        gamaHeadlessWorkingDir = EditorGUILayout.TextField("Répertoire de travail (optionnel)", gamaHeadlessWorkingDir);
+        gamaHeadlessWorkingDir = EditorGUILayout.TextField("Working Directory (optional)", gamaHeadlessWorkingDir);
         if (GUILayout.Button("…", GUILayout.Width(28f)))
         {
-            string path = EditorUtility.OpenFolderPanel("Répertoire de travail GAMA headless", gamaHeadlessWorkingDir, string.Empty);
+            string path = EditorUtility.OpenFolderPanel("GAMA Headless Working Directory", gamaHeadlessWorkingDir, string.Empty);
             if (!string.IsNullOrEmpty(path))
             {
                 gamaHeadlessWorkingDir = path;
@@ -639,10 +645,10 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorGUILayout.EndHorizontal();
 
         EditorGUILayout.BeginHorizontal();
-        gamaJsonExportOutputDir = EditorGUILayout.TextField("Dossier sortie JSON", gamaJsonExportOutputDir);
+        gamaJsonExportOutputDir = EditorGUILayout.TextField("JSON Output Folder", gamaJsonExportOutputDir);
         if (GUILayout.Button("…", GUILayout.Width(28f)))
         {
-            string path = EditorUtility.OpenFolderPanel("Dossier de sortie des JSON", gamaJsonExportOutputDir, string.Empty);
+            string path = EditorUtility.OpenFolderPanel("JSON Output Folder", gamaJsonExportOutputDir, string.Empty);
             if (!string.IsNullOrEmpty(path))
             {
                 gamaJsonExportOutputDir = path;
@@ -651,14 +657,14 @@ public sealed class GamaPanelWindow : EditorWindow
 
         EditorGUILayout.EndHorizontal();
 
-        EditorGUILayout.LabelField("Commande personnalisée (optionnel, remplace l’appel par défaut)", EditorStyles.miniLabel);
+        EditorGUILayout.LabelField("Custom Command (optional, overrides default call)", EditorStyles.miniLabel);
         gamaHeadlessCustomCmd = EditorGUILayout.TextArea(gamaHeadlessCustomCmd, GUILayout.MinHeight(44f));
         EditorGUILayout.HelpBox(
-            "Laissez vide pour utiliser le lanceur du package (GamaUnityHeadlessRunner.bat) avec gama-headless.bat. " +
-            "Sinon : chaîne passée à cmd /c après expansion des jetons {Batch}, {Gaml}, {OutputDir}, {GamaHeadlessBat}, {GamaHeadlessDir}.",
+            "Leave empty to use the package runner (GamaUnityHeadlessRunner.bat) with gama-headless.bat. " +
+            "Otherwise: string passed to cmd /c after expanding tokens {Batch}, {Gaml}, {OutputDir}, {GamaHeadlessBat}, {GamaHeadlessDir}.",
             MessageType.None);
 
-        gamaHeadlessTimeoutSeconds = Mathf.Clamp(EditorGUILayout.IntField("Timeout export (secondes)", gamaHeadlessTimeoutSeconds), 30, 7200);
+        gamaHeadlessTimeoutSeconds = Mathf.Clamp(EditorGUILayout.IntField("Export Timeout (seconds)", gamaHeadlessTimeoutSeconds), 30, 7200);
 
         if (EditorGUI.EndChangeCheck())
         {
@@ -674,10 +680,10 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         EditorGUILayout.LabelField("Import Experiment", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "Flux recommandé : onglet « Explorer le workspace » → chemin du dossier ou .gaml → Explorer → « Importer l’expérience » sur la ligne voulue. " +
-            "Vous pouvez aussi saisir le chemin ici et cliquer Explorer. " +
-            "Sans middleware / aperçu cumulé, utilisez l’aperçu grille et les réglages agents (échelle, couleur, visibilité) comme avant. " +
-            "Pour un aperçu statique fidèle au monde après warmup, ouvrez le middleware, puis la section de prévisualisation ci-dessous.",
+            "Recommended workflow: 'Workspace Explorer' tab → folder path or .gaml → Explore → 'Import Experiment' on the desired row. " +
+            "You can also enter the path here and click Explore. " +
+            "Without middleware / cumulative preview, use the grid preview and agent settings (scale, color, visibility) as before. " +
+            "For a static preview faithful to the world after warmup, launch the middleware, then use the preview section below.",
             MessageType.Info);
 
         EditorGUILayout.Space();
@@ -697,16 +703,17 @@ public sealed class GamaPanelWindow : EditorWindow
             AnalyzeSelectedExperiment();
         }
 
-        if (analysis == null)
+        experimentScroll = EditorGUILayout.BeginScrollView(experimentScroll);
+
+        if (analysis != null)
         {
-            return;
+            DrawExperimentSummary();
+            DrawSceneSettings();
         }
 
-        experimentScroll = EditorGUILayout.BeginScrollView(experimentScroll);
-        DrawExperimentSummary();
-        DrawSceneSettings();
-        DrawAgentSettings();
-        DrawApplyControls();
+        EditorGUILayout.Space();
+        DrawStaticPreviewMiddlewareJsonSection();
+
         EditorGUILayout.EndScrollView();
     }
 
@@ -752,13 +759,13 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorGUILayout.BeginHorizontal();
         using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(experimentPath)))
         {
-            if (GUILayout.Button("Explorer", GUILayout.Width(120f)))
+            if (GUILayout.Button("Explore", GUILayout.Width(120f)))
             {
                 ExploreExperimentPath();
             }
         }
 
-        if (GUILayout.Button("Explorer le workspace", GUILayout.Width(170f)))
+        if (GUILayout.Button("Workspace Explorer", GUILayout.Width(170f)))
         {
             selectedTab = TabWorkspace;
         }
@@ -809,8 +816,6 @@ public sealed class GamaPanelWindow : EditorWindow
         cameraFarClip = Mathf.Max(cameraNearClip + 1f, EditorGUILayout.FloatField("Camera Far Clip", cameraFarClip));
         previewSamplesPerAgent = Mathf.Clamp(EditorGUILayout.IntField("Preview Samples / Agent", previewSamplesPerAgent), 1, 100);
         backgroundColor = EditorGUILayout.ColorField("Background Color", backgroundColor);
-
-        DrawStaticPreviewMiddlewareJsonSection();
     }
 
     private void DrawStaticPreviewMiddlewareJsonSection()
@@ -821,50 +826,97 @@ public sealed class GamaPanelWindow : EditorWindow
     private void DrawHeadlessJsonExportSection()
     {
         EditorGUILayout.Space(12f);
-        headlessExportSectionExpanded = EditorGUILayout.Foldout(headlessExportSectionExpanded, "Preview depuis GAMA", true);
+        EditorGUILayout.LabelField("Preview from the Open GAMA Experiment", EditorStyles.boldLabel);
+
+        EditorGUILayout.HelpBox(
+            "Start GAMA and simple.webplatform, then open the desired experiment in GAMA. The experiment does not need to be already running. " +
+            "Unity uses middleware port 8080 to generate a static preview. " +
+            "The static preview uses the cumulative cache, not the last isolated chunk. Empty ID = " + StaticInformation.getId() + ".",
+            MessageType.Info);
+
+        bool busy = captureFlowActive || captureTask != null;
+
+        using (new EditorGUI.DisabledScope(busy || captureUseLocalMiddleware))
+        {
+            if (GUILayout.Button("Generate Preview from GAMA", GUILayout.Height(34f)))
+            {
+                captureManagedFromUnity = true;
+                captureUseExternalMiddleware = true;
+                captureUseLocalMiddleware = false;
+                captureSkipRemoteLoad = false;
+                capturePort = "8080";
+                EditorPrefs.SetBool(GamaCaptureManagedFromUnityPrefKey, true);
+                EditorPrefs.SetBool(GamaCaptureExternalMiddlewarePrefKey, true);
+                EditorPrefs.SetBool(GamaCaptureUseLocalMiddlewarePrefKey, false);
+                EditorPrefs.SetBool(GamaCaptureSkipRemoteLoadPrefKey, false);
+                EditorPrefs.SetString(GamaCapturePortPrefKey, capturePort);
+                StartCaptureFlow(launchGama: false, managedFromUnity: true);
+            }
+        }
+
+        using (new EditorGUI.DisabledScope(!busy))
+        {
+            if (GUILayout.Button("Cancel Capture", GUILayout.Height(22f)))
+            {
+                AbortCaptureIfRunning("Cancelled by user");
+            }
+        }
+
+        EditorGUILayout.Space(6f);
+        if (!string.IsNullOrEmpty(captureRuntimeStatus))
+        {
+            EditorGUILayout.HelpBox(captureRuntimeStatus, MessageType.None);
+        }
+
+        if (analysis != null || agentOverrides.Count > 0)
+        {
+            EditorGUILayout.Space(8f);
+            DrawAgentSettings();
+            if (analysis != null)
+            {
+                DrawApplyControls();
+            }
+        }
+
+        EditorGUILayout.Space(12f);
+        headlessExportSectionExpanded = EditorGUILayout.Foldout(headlessExportSectionExpanded, "Advanced Preview Settings", true);
         if (!headlessExportSectionExpanded)
         {
             return;
         }
 
-        EditorGUILayout.HelpBox(
-            "Workflow principal : lancez simple.webplatform et GAMA vous-même, ouvrez l'expérience voulue dans GAMA, puis générez la preview. " +
-            "Unity se connecte au middleware existant sur 8080 et reproduit la séquence Play Runtime, sans catalogue, settings.json, restart Node ni LEARNING_PACKAGE_PATH. " +
-            "L'aperçu statique utilise le cache cumulatif, pas le dernier chunk isolé. ID vide = " + StaticInformation.getId() + ".",
-            MessageType.Info);
-
         EditorGUI.BeginChangeCheck();
-        captureUseLocalMiddleware = EditorGUILayout.ToggleLeft("Capture directe GAMA GUI (diagnostic avancé)", captureUseLocalMiddleware, EditorStyles.boldLabel);
+        captureUseLocalMiddleware = EditorGUILayout.ToggleLeft("Direct GAMA GUI Capture (advanced diagnostics)", captureUseLocalMiddleware, EditorStyles.boldLabel);
         captureManagedFromUnity = EditorGUILayout.ToggleLeft(
-            "Preview de l'expérience sélectionnée dans GAMA (séquence Play-like, middleware externe)",
+            "Preview from the selected GAMA experiment (Play-like sequence, external middleware)",
             captureManagedFromUnity);
         using (new EditorGUI.DisabledScope(!captureManagedFromUnity))
         {
             captureUseExternalMiddleware = EditorGUILayout.ToggleLeft(
-                "Utiliser middleware déjà lancé / External middleware",
+                "Use already running middleware / External middleware",
                 captureUseExternalMiddleware);
 
             if (!captureUseExternalMiddleware)
             {
                 EditorGUILayout.HelpBox(
-                    "Mode avancé uniquement : Unity peut arrêter les processus qui écoutent sur 8001/8080 puis relancer Node avec un LEARNING_PACKAGE_PATH généré. " +
-                    "Le bouton principal ci-dessous force toujours le middleware externe.",
+                    "Advanced mode only: Unity can stop processes listening on 8001/8080 and restart Node with a generated LEARNING_PACKAGE_PATH. " +
+                    "The main button below always forces the external middleware.",
                     MessageType.Warning);
             }
         }
         using (new EditorGUI.DisabledScope(captureManagedFromUnity))
         {
             captureSkipRemoteLoad = EditorGUILayout.ToggleLeft(
-                "Ancien diagnostic 8080 seul (sans launch monitor)",
+                "Legacy 8080-only diagnostic (no launch monitor)",
                 captureSkipRemoteLoad);
         }
 
         if (captureManagedFromUnity)
         {
             autoLaunchGamaOnPlay = EditorGUILayout.ToggleLeft(
-                "Au Play Runtime : lancer l'expérience GAMA via monitor (8001)",
+                "At Play Runtime: launch GAMA experiment via monitor (8001)",
                 autoLaunchGamaOnPlay);
-            captureMonitorPort = EditorGUILayout.IntField("Port monitor (UI web)", captureMonitorPort);
+            captureMonitorPort = EditorGUILayout.IntField("Monitor Port (web UI)", captureMonitorPort);
         }
 
         EditorGUILayout.Space(4f);
@@ -872,7 +924,7 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorGUILayout.BeginHorizontal();
         using (new EditorGUI.DisabledScope(captureUseLocalMiddleware))
         {
-            captureHost = EditorGUILayout.TextField("Host middleware", captureHost);
+            captureHost = EditorGUILayout.TextField("Middleware Host", captureHost);
         }
         capturePort = EditorGUILayout.TextField(captureUseLocalMiddleware ? "Port GAMA" : "Port", capturePort, GUILayout.Width(120f));
         EditorGUILayout.EndHorizontal();
@@ -880,7 +932,7 @@ public sealed class GamaPanelWindow : EditorWindow
         using (new EditorGUI.DisabledScope(captureUseLocalMiddleware))
         {
             captureConnectionId = EditorGUILayout.TextField(
-                "ID connexion (vide = " + StaticInformation.getId() + ")", captureConnectionId);
+                "Connection ID (empty = " + StaticInformation.getId() + ")", captureConnectionId);
         }
         if (analysis != null && !string.IsNullOrWhiteSpace(analysis.Name))
         {
@@ -889,84 +941,84 @@ public sealed class GamaPanelWindow : EditorWindow
 
         using (new EditorGUI.DisabledScope(analysis != null && !string.IsNullOrWhiteSpace(analysis.Name)))
         {
-            gamaHeadlessBatchName = EditorGUILayout.TextField("Nom expérience GAMA", gamaHeadlessBatchName);
+            gamaHeadlessBatchName = EditorGUILayout.TextField("GAMA Experiment Name", gamaHeadlessBatchName);
         }
 
         string[] modes = { "batch", "script", "custom" };
         int currentMode = Array.IndexOf(modes, string.IsNullOrEmpty(captureMode) ? "batch" : captureMode);
         if (currentMode < 0) currentMode = 0;
-        currentMode = EditorGUILayout.Popup("Mode lancement GAMA", currentMode, modes);
+        currentMode = EditorGUILayout.Popup("GAMA Launch Mode", currentMode, modes);
         captureMode = modes[currentMode];
 
         using (new EditorGUI.DisabledScope(true))
         {
             string gamlHint = analysis != null && !string.IsNullOrEmpty(analysis.SourcePath)
                 ? analysis.SourcePath
-                : "(importez depuis « Explorer le workspace » ou cliquez Explorer ici)";
-            EditorGUILayout.TextField("Fichier .gaml utilisé", gamlHint);
+                : "(import from Workspace Explorer or click Explore here)";
+            EditorGUILayout.TextField(".gaml file used", gamlHint);
         }
 
-        gamaHeadlessRunPreviewAfter = EditorGUILayout.Toggle("Générer la prévisualisation statique après succès", gamaHeadlessRunPreviewAfter);
+        gamaHeadlessRunPreviewAfter = EditorGUILayout.Toggle("Generate Static Preview After Success", gamaHeadlessRunPreviewAfter);
 
         EditorGUILayout.Space(4f);
-        EditorGUILayout.LabelField("Capture d'aperçu (stabilisation)", EditorStyles.boldLabel);
-        captureWorldPhaseSeconds = EditorGUILayout.Slider("Preview warmup seconds", captureWorldPhaseSeconds, 5f, 120f);
-        captureMaxWorldFrames = EditorGUILayout.IntSlider("Frames monde max.", captureMaxWorldFrames, 3, 120);
-        captureDynamicSpeciesRegex = EditorGUILayout.TextField("Espèces dynamiques (regex)", captureDynamicSpeciesRegex);
+        EditorGUILayout.LabelField("Preview Capture (Stabilization)", EditorStyles.boldLabel);
+        captureWorldPhaseSeconds = EditorGUILayout.Slider("Preview Warmup Seconds", captureWorldPhaseSeconds, 5f, 120f);
+        captureMaxWorldFrames = EditorGUILayout.IntSlider("Max Frames", captureMaxWorldFrames, 3, 120);
+        captureDynamicSpeciesRegex = EditorGUILayout.TextField("Dynamic Species (regex)", captureDynamicSpeciesRegex);
         EditorGUILayout.HelpBox(
-            "Pour Traffic and Pollution VR, l'espèce GAMA s'appelle « people » (géométries mobiles). " +
-            "Incluez people|human dans la regex. La capture attend jusqu'à ~40 s après le warmup " +
-            "avant de s'arrêter sur « cache stable » si aucun piéton n'est encore arrivé.",
+            "For Traffic and Pollution VR, the GAMA species is called 'people' (mobile geometries). " +
+            "Include people|human in the regex. Capture waits up to ~40 s after warmup " +
+            "before stopping on 'stable cache' if no pedestrian has arrived yet.",
             MessageType.None);
         captureStopWhenDynamicAgentsFound = EditorGUILayout.Toggle(
-            "Stop si espèce dynamique présente après warmup",
+            "Stop When Cache Is Stable",
             captureStopWhenDynamicAgentsFound);
         captureStopWhenPreviewCacheStable = EditorGUILayout.Toggle(
-            "Stop si cache stable",
+            "Stop When Preview Cache Is Stable",
             captureStopWhenPreviewCacheStable);
         using (new EditorGUI.DisabledScope(!captureStopWhenPreviewCacheStable))
         {
             capturePreviewStableSeconds = EditorGUILayout.Slider(
-                "Aucune nouveauté depuis (s)",
+                "Agent Wait Time (s)",
                 capturePreviewStableSeconds,
                 1f,
                 30f);
         }
         capturePauseExperimentAfterPreview = EditorGUILayout.Toggle(
-            "Mettre l'expérience en pause après capture",
+            "Automatic Warmup",
             capturePauseExperimentAfterPreview);
         autoHidePreviewOnPlay = EditorGUILayout.Toggle(
-            "Masquer automatiquement la preview au Play",
+            "Hide Preview During Play",
             autoHidePreviewOnPlay);
         applyPreviewSettingsToPlay = EditorGUILayout.Toggle(
-            "Appliquer les réglages de preview au Play",
+            "Apply Preview Settings to Play",
             applyPreviewSettingsToPlay);
         speciesRenderOverridesAsset = (GamaSpeciesRenderOverrides)EditorGUILayout.ObjectField(
-            "Overrides par espèce",
+            "Species Render Overrides",
             speciesRenderOverridesAsset,
             typeof(GamaSpeciesRenderOverrides),
             false);
         using (new EditorGUI.DisabledScope(speciesRenderOverridesAsset != null))
         {
-            if (GUILayout.Button("Créer GamaSpeciesRenderOverrides.asset", GUILayout.Height(22f)))
+            if (GUILayout.Button("Create GamaSpeciesRenderOverrides.asset", GUILayout.Height(22f)))
             {
                 speciesRenderOverridesAsset = CreateSpeciesRenderOverridesAsset();
             }
         }
         using (new EditorGUI.DisabledScope(speciesRenderOverridesAsset == null))
         {
-            if (GUILayout.Button("Appliquer overrides au mode live", GUILayout.Height(22f)))
+            if (GUILayout.Button("Apply Overrides to Live Mode", GUILayout.Height(22f)))
             {
                 ApplySpeciesRenderOverridesToSimulationManager();
             }
-            if (GUILayout.Button("Appliquer les réglages à la preview", GUILayout.Height(22f)))
+            if (GUILayout.Button("Apply Settings to Preview", GUILayout.Height(22f)))
             {
                 GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
             }
         }
         
         autoUpdatePreview = EditorGUILayout.Toggle(
-            "Mettre à jour la preview en direct",
+            "Live Update Preview",
             autoUpdatePreview);
 
         if (EditorGUI.EndChangeCheck())
@@ -1019,45 +1071,12 @@ public sealed class GamaPanelWindow : EditorWindow
             EditorPrefs.SetString(SpeciesOverridesAssetPrefKey, overridesPath ?? string.Empty);
         }
 
-        EditorGUILayout.Space(6f);
-        if (!string.IsNullOrEmpty(captureRuntimeStatus))
-        {
-            EditorGUILayout.HelpBox(captureRuntimeStatus, MessageType.None);
-        }
-
-        bool busy = captureFlowActive || captureTask != null;
-        using (new EditorGUI.DisabledScope(busy || captureUseLocalMiddleware))
-        {
-            if (GUILayout.Button("Générer preview de l'expérience sélectionnée dans GAMA", GUILayout.Height(34f)))
-            {
-                captureManagedFromUnity = true;
-                captureUseExternalMiddleware = true;
-                captureUseLocalMiddleware = false;
-                captureSkipRemoteLoad = false;
-                capturePort = "8080";
-                EditorPrefs.SetBool(GamaCaptureManagedFromUnityPrefKey, true);
-                EditorPrefs.SetBool(GamaCaptureExternalMiddlewarePrefKey, true);
-                EditorPrefs.SetBool(GamaCaptureUseLocalMiddlewarePrefKey, false);
-                EditorPrefs.SetBool(GamaCaptureSkipRemoteLoadPrefKey, false);
-                EditorPrefs.SetString(GamaCapturePortPrefKey, capturePort);
-                StartCaptureFlow(launchGama: false, managedFromUnity: true);
-            }
-        }
-
         DrawMiddlewareSection(busy);
-
-        using (new EditorGUI.DisabledScope(!busy))
-        {
-            if (GUILayout.Button("Annuler la capture", GUILayout.Height(22f)))
-            {
-                AbortCaptureIfRunning("Annulé par l'utilisateur");
-            }
-        }
 
         EditorGUILayout.Space(4f);
         EditorGUILayout.HelpBox(
-            "Si le middleware répète « Reconnecting player of id … » après une capture annulée, le slot joueur est resté bloqué côté GAMA (max_num_players = 1). " +
-            "Utilisez « Purger le joueur fantôme » pour envoyer disconnect_properly à cet id et libérer la sim.",
+            "If the middleware keeps repeating 'Reconnecting player of id ...' after a cancelled capture, the player slot is stuck on the GAMA side (max_num_players = 1). " +
+            "Use 'Purge Ghost Player' to send disconnect_properly for that id and free the simulation.",
             MessageType.None);
 
         EditorGUILayout.BeginHorizontal();
@@ -1068,11 +1087,11 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         ghostPlayerIdToPurge = EditorGUILayout.TextField(
-            "Id à purger (souvent " + defaultGhostId + ")",
+            "ID to purge (usually " + defaultGhostId + ")",
             string.IsNullOrEmpty(ghostPlayerIdToPurge) ? defaultGhostId : ghostPlayerIdToPurge);
         using (new EditorGUI.DisabledScope(busy || string.IsNullOrWhiteSpace(ghostPlayerIdToPurge)))
         {
-            if (GUILayout.Button("Purger le joueur fantôme", GUILayout.Width(200f), GUILayout.Height(22f)))
+            if (GUILayout.Button("Purge Ghost Player", GUILayout.Width(200f), GUILayout.Height(22f)))
             {
                 _ = PurgeGhostPlayerInteractiveAsync(ghostPlayerIdToPurge.Trim());
             }
@@ -1085,7 +1104,7 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorGUILayout.Space(4f);
         using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(gamaJsonExportOutputDir) || !Directory.Exists(gamaJsonExportOutputDir)))
         {
-            if (GUILayout.Button("Ouvrir dossier de sortie", GUILayout.Height(22f), GUILayout.Width(180f)))
+            if (GUILayout.Button("Open Output Folder", GUILayout.Height(22f), GUILayout.Width(180f)))
             {
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
@@ -1099,20 +1118,20 @@ public sealed class GamaPanelWindow : EditorWindow
     private void DrawMiddlewareSection(bool busy)
     {
         EditorGUILayout.Space(6f);
-        middlewareSectionExpanded = EditorGUILayout.Foldout(middlewareSectionExpanded, "Avancé / lancement via catalogue middleware", true);
+        middlewareSectionExpanded = EditorGUILayout.Foldout(middlewareSectionExpanded, "Advanced / Middleware Catalog Launch", true);
         if (!middlewareSectionExpanded) return;
 
         EditorGUILayout.HelpBox(
-            "Section avancée conservée pour les tests via catalogue monitor : génération settings.json, LEARNING_PACKAGE_PATH, diagnostic catalogue, " +
-            "lancement via monitor et redémarrage Node. Le bouton principal de preview n'utilise pas ce flux.",
+            "Advanced section kept for monitor catalog tests: settings.json generation, LEARNING_PACKAGE_PATH, catalog diagnosis, " +
+            "monitor launch and Node restart. The main preview button does not use this flow.",
             MessageType.Warning);
 
         EditorGUI.BeginChangeCheck();
         EditorGUILayout.BeginHorizontal();
-        middlewareScriptPath = EditorGUILayout.TextField("Script middleware", middlewareScriptPath);
+        middlewareScriptPath = EditorGUILayout.TextField("Middleware Script", middlewareScriptPath);
         if (GUILayout.Button("…", GUILayout.Width(28f)))
         {
-            string path = EditorUtility.OpenFilePanel("Script middleware", "", "bat,cmd,sh");
+            string path = EditorUtility.OpenFilePanel("Middleware Script", "", "bat,cmd,sh");
             if (!string.IsNullOrEmpty(path))
             {
                 middlewareScriptPath = path;
@@ -1128,7 +1147,7 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorGUILayout.Space(4f);
         using (new EditorGUI.DisabledScope(busy || captureUseLocalMiddleware || catalogDiagnosisTask != null))
         {
-            if (GUILayout.Button("Diagnostiquer catalogue middleware", GUILayout.Height(24f)))
+            if (GUILayout.Button("Diagnose Middleware Catalog", GUILayout.Height(24f)))
             {
                 StartCatalogDiagnosis();
             }
@@ -1136,7 +1155,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
         using (new EditorGUI.DisabledScope(busy || captureUseLocalMiddleware))
         {
-            if (GUILayout.Button("Préparer/générer package middleware", GUILayout.Height(24f)))
+            if (GUILayout.Button("Prepare/Generate Middleware Package", GUILayout.Height(24f)))
             {
                 SyncSelectedModelWithMiddleware();
             }
@@ -1144,7 +1163,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
         using (new EditorGUI.DisabledScope(busy || captureUseLocalMiddleware))
         {
-            if (GUILayout.Button("Gérer/redémarrer le middleware depuis Unity", GUILayout.Height(24f)))
+            if (GUILayout.Button("Manage/Restart Middleware from Unity", GUILayout.Height(24f)))
             {
                 ConfigureAndOfferMiddlewareRestart();
             }
@@ -1153,7 +1172,7 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorGUILayout.BeginHorizontal();
         using (new EditorGUI.DisabledScope(busy))
         {
-            if (GUILayout.Button("Ancienne capture selon options ci-dessus", GUILayout.Height(28f)))
+            if (GUILayout.Button("Legacy Capture (current options above)", GUILayout.Height(28f)))
             {
                 StartCaptureFlow(launchGama: false, managedFromUnity: captureManagedFromUnity);
             }
@@ -1161,7 +1180,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
         using (new EditorGUI.DisabledScope(busy || analysis == null || string.IsNullOrEmpty(analysis.SourcePath)))
         {
-            if (GUILayout.Button("Lancer GAMA (headless) + capturer", GUILayout.Height(28f), GUILayout.Width(240f)))
+            if (GUILayout.Button("Launch GAMA (headless) + Capture", GUILayout.Height(28f), GUILayout.Width(240f)))
             {
                 StartCaptureFlow(launchGama: true, managedFromUnity: false);
             }
@@ -1173,12 +1192,12 @@ public sealed class GamaPanelWindow : EditorWindow
     private void DrawManualJsonFallbackSection()
     {
         EditorGUILayout.Space(6f);
-        manualJsonSectionExpanded = EditorGUILayout.Foldout(manualJsonSectionExpanded, "Charger des JSON déjà capturés (avancé)", true);
+        manualJsonSectionExpanded = EditorGUILayout.Foldout(manualJsonSectionExpanded, "Advanced / Captured JSON", true);
         if (!manualJsonSectionExpanded) return;
 
         EditorGUILayout.HelpBox(
-            "Utilisez cette section uniquement si vous avez déjà capturé manuellement les 3 fichiers. " +
-            "Sinon utilisez « Prévisualisation complète après warmup » ou « Lancer GAMA (headless) + capturer ».",
+            "Use this section only if you have already manually captured the 3 files. " +
+            "Otherwise use 'Generate Preview from GAMA' or 'Launch GAMA (headless) + Capture'.",
             MessageType.None);
 
         EditorGUI.BeginChangeCheck();
@@ -1229,14 +1248,14 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         EditorGUILayout.Space(6f);
-        EditorGUILayout.LabelField("Tick à prévisualiser", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("Tick to Preview", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "Chaque tick est un snapshot cumulatif du cache preview. Faites glisser le curseur pour inspecter la progression.",
+            "Each tick is a cumulative snapshot of the preview cache. Drag the slider to inspect the progression.",
             MessageType.Info);
 
         int maxTick = availableWorldTickPaths.Count - 1;
         EditorGUI.BeginChangeCheck();
-        staticPreviewWorldTickIndex = EditorGUILayout.IntSlider("Index tick", staticPreviewWorldTickIndex, 0, maxTick);
+        staticPreviewWorldTickIndex = EditorGUILayout.IntSlider("Tick Index", staticPreviewWorldTickIndex, 0, maxTick);
         if (EditorGUI.EndChangeCheck())
         {
             EditorPrefs.SetInt(StaticPreviewWorldTickPrefKey, staticPreviewWorldTickIndex);
@@ -1246,10 +1265,10 @@ public sealed class GamaPanelWindow : EditorWindow
 
         using (new EditorGUI.DisabledScope(true))
         {
-            EditorGUILayout.TextField("world.json utilisé", ResolvePreviewWorldJsonPath());
+            EditorGUILayout.TextField("world.json used", ResolvePreviewWorldJsonPath());
         }
 
-        if (GUILayout.Button("Régénérer l’aperçu pour ce tick", GUILayout.Height(24f)))
+        if (GUILayout.Button("Regenerate Static Preview", GUILayout.Height(24f)))
         {
             GenerateStaticPreview();
         }
@@ -1259,7 +1278,7 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         string host = string.IsNullOrWhiteSpace(captureHost) ? PlayerPrefs.GetString("IP", "localhost") : captureHost.Trim();
         string port = string.IsNullOrWhiteSpace(capturePort) ? PlayerPrefs.GetString("PORT", "8080") : capturePort.Trim();
-        captureRuntimeStatus = "Purge en cours du joueur fantôme \"" + ghostId + "\" sur ws://" + host + ":" + port + "/ …";
+        captureRuntimeStatus = "Purging ghost player \"" + ghostId + "\" on ws://" + host + ":" + port + "/...";
         Repaint();
 
         string outcome;
@@ -1269,7 +1288,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         catch (Exception ex)
         {
-            outcome = "Erreur purge : " + ex.Message;
+            outcome = "Purge error: " + ex.Message;
         }
 
         captureRuntimeStatus = outcome;
@@ -1288,13 +1307,13 @@ public sealed class GamaPanelWindow : EditorWindow
         if (string.IsNullOrWhiteSpace(generatedLearningPackageRoot) ||
             !Directory.Exists(generatedLearningPackageRoot))
         {
-            error = "Learning package généré introuvable : " + generatedLearningPackageRoot;
+            error = "Generated learning package not found: " + generatedLearningPackageRoot;
             return false;
         }
 
         if (!GamaEditorMiddlewareLauncher.TryResolveWebplatformRoot(out string webplatformRoot))
         {
-            error = "Dépôt simple.webplatform introuvable (attendu sur le Bureau ou à côté du projet Unity).";
+            error = "simple.webplatform repository not found (expected on the Desktop or next to the Unity project).";
             return false;
         }
 
@@ -1315,7 +1334,7 @@ public sealed class GamaPanelWindow : EditorWindow
         if (!middlewareEnv.TryGetValue("LEARNING_PACKAGE_PATH", out string learningPackagePath) ||
             string.IsNullOrWhiteSpace(learningPackagePath))
         {
-            error = "LEARNING_PACKAGE_PATH vide : impossible de lancer le middleware pour la sélection Unity.";
+            error = "Empty LEARNING_PACKAGE_PATH: cannot launch middleware for Unity selection.";
             return false;
         }
 
@@ -1353,13 +1372,13 @@ public sealed class GamaPanelWindow : EditorWindow
 
         if (captureMiddlewareProcess == null)
         {
-            error = "Échec démarrage middleware : " + startError;
+            error = "Middleware startup failed: " + startError;
             return false;
         }
 
         lastMiddlewareProcessId = captureMiddlewareProcess.ProcessId;
-        Debug.Log("[GAMA][MW] Nouveau middleware PID=" + lastMiddlewareProcessId + " cwd=" + webplatformRoot);
-        captureRuntimeStatus = "Attente des ports monitor " + captureMonitorPort + " et joueur " + playerPort + "…";
+        Debug.Log("[GAMA][MW] New middleware PID=" + lastMiddlewareProcessId + " cwd=" + webplatformRoot);
+        captureRuntimeStatus = "Waiting for monitor ports " + captureMonitorPort + " and player " + playerPort + "...";
         Repaint();
 
         bool monitorReady;
@@ -1383,22 +1402,22 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         catch (Exception ex)
         {
-            error = "Attente ports middleware interrompue : " + ex.Message;
+            error = "Wait for middleware ports interrupted: " + ex.Message;
             return false;
         }
 
         if (!monitorReady)
         {
-            error = "Le middleware a été lancé (PID " + lastMiddlewareProcessId + ") mais le port monitor " +
-                    captureMonitorPort + " ne répond pas après 60 s. Cwd=" + webplatformRoot +
-                    ". Logs process:\n" + captureMiddlewareProcess.LogSnapshot;
+            error = "The middleware was launched (PID " + lastMiddlewareProcessId + ") but the monitor port " +
+                    captureMonitorPort + " is not responding after 60 s. Cwd=" + webplatformRoot +
+                    ". Process logs:\n" + captureMiddlewareProcess.LogSnapshot;
             return false;
         }
 
         if (!playerReady)
         {
-            error = "Monitor " + captureMonitorPort + " prêt, mais le socket joueur " + playerPort +
-                    " ne répond pas. Logs process:\n" + captureMiddlewareProcess.LogSnapshot;
+            error = "Monitor " + captureMonitorPort + " ready, but the player socket " + playerPort +
+                    " is not responding. Process logs:\n" + captureMiddlewareProcess.LogSnapshot;
             return false;
         }
 
@@ -1406,8 +1425,8 @@ public sealed class GamaPanelWindow : EditorWindow
         List<int> playerListenerPids = GamaEditorMiddlewareOrchestrator.GetListeningPidsOnTcpPort(playerPort, Debug.Log);
         string monitorListener = monitorListenerPids.Count == 0 ? "?" : string.Join(",", monitorListenerPids);
         string playerListener = playerListenerPids.Count == 0 ? "?" : string.Join(",", playerListenerPids);
-        Debug.Log("[GAMA][MW] Monitor TCP prêt sur le port " + captureMonitorPort + " (listener PID=" + monitorListener + ").");
-        Debug.Log("[GAMA][MW] Player socket prêt sur le port " + playerPort + " (listener PID=" + playerListener + ").");
+        Debug.Log("[GAMA][MW] Monitor TCP ready on port " + captureMonitorPort + " (listener PID=" + monitorListener + ").");
+        Debug.Log("[GAMA][MW] Player socket ready on port " + playerPort + " (listener PID=" + playerListener + ").");
         return true;
     }
 
@@ -1424,40 +1443,40 @@ public sealed class GamaPanelWindow : EditorWindow
         for (int i = 0; i < monitorPids.Count; i++)
         {
             allPids.Add(monitorPids[i]);
-            Debug.Log("[GAMA][MW] Port " + monitorPort + " occupé par PID=" + monitorPids[i]);
+            Debug.Log("[GAMA][MW] Port " + monitorPort + " occupied by PID=" + monitorPids[i]);
         }
 
         for (int i = 0; i < playerPids.Count; i++)
         {
             allPids.Add(playerPids[i]);
-            Debug.Log("[GAMA][MW] Port " + playerPort + " occupé par PID=" + playerPids[i]);
+            Debug.Log("[GAMA][MW] Port " + playerPort + " occupied by PID=" + playerPids[i]);
         }
 
         if (allPids.Count == 0)
         {
-            Debug.Log("[GAMA][MW] Port " + monitorPort + " libre");
-            Debug.Log("[GAMA][MW] Port " + playerPort + " libre");
+            Debug.Log("[GAMA][MW] Port " + monitorPort + " free");
+            Debug.Log("[GAMA][MW] Port " + playerPort + " free");
             return true;
         }
 
         string pidList = string.Join(", ", allPids);
         bool kill = EditorUtility.DisplayDialog(
-            "Relancer le middleware GAMA",
-            "Un middleware écoute déjà sur le port monitor " + monitorPort + " et/ou joueur " + playerPort +
-            " (PID " + pidList + ").\n\nL'arrêter pour charger le modèle Unity sélectionné ?",
-            "Arrêter l'ancien middleware",
-            "Annuler");
+            "Restart GAMA Middleware",
+            "A middleware is already listening on monitor port " + monitorPort + " and/or player port " + playerPort +
+            " (PID " + pidList + ").\n\nStop it to load the selected Unity model?",
+            "Stop old middleware",
+            "Cancel");
 
         if (!kill)
         {
-            error = "Ports " + monitorPort + "/" + playerPort + " occupés par PID " + pidList +
-                    ". Relance annulée : Unity ne peut pas garantir que le catalogue correspond à la sélection.";
+            error = "Ports " + monitorPort + "/" + playerPort + " occupied by PID " + pidList +
+                    ". Relaunch cancelled: Unity cannot guarantee the catalog matches the selection.";
             return false;
         }
 
         foreach (int pid in allPids)
         {
-            Debug.Log("[GAMA][MW] Arrêt PID " + pid + "...");
+            Debug.Log("[GAMA][MW] Stopping PID " + pid + "...");
             GamaEditorMiddlewareOrchestrator.KillProcessByPid(pid, Debug.Log);
         }
 
@@ -1474,21 +1493,21 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         catch (Exception ex)
         {
-            error = "Attente libération ports middleware interrompue : " + ex.Message;
+            error = "Wait for middleware ports release interrupted: " + ex.Message;
             return false;
         }
 
         if (!monitorClosed || !playerClosed)
         {
-            error = "Les ports " + monitorPort + "/" + playerPort + " restent occupés après taskkill. PIDs monitor=" +
+            error = "Ports " + monitorPort + "/" + playerPort + " remain occupied after taskkill. Monitor PIDs=" +
                     string.Join(", ", GamaEditorMiddlewareOrchestrator.GetListeningPidsOnTcpPort(monitorPort, Debug.Log)) +
-                    " joueur=" +
+                    " player=" +
                     string.Join(", ", GamaEditorMiddlewareOrchestrator.GetListeningPidsOnTcpPort(playerPort, Debug.Log));
             return false;
         }
 
-        Debug.Log("[GAMA][MW] Port " + monitorPort + " libre");
-        Debug.Log("[GAMA][MW] Port " + playerPort + " libre");
+        Debug.Log("[GAMA][MW] Port " + monitorPort + " free");
+        Debug.Log("[GAMA][MW] Port " + playerPort + " free");
         return true;
     }
 
@@ -1572,8 +1591,8 @@ public sealed class GamaPanelWindow : EditorWindow
         error = null;
         int playerPort = ResolveCapturePlayerPort();
         Debug.Log("[GAMA][CAPTURE][8080][INFO] EXTERNAL MIDDLEWARE MODE — no kill, no restart");
-        Debug.Log("[GAMA][MW] Connexion monitor existant ws://" + host + ":" + captureMonitorPort + "/");
-        Debug.Log("[GAMA][MW] Connexion socket joueur existant ws://" + host + ":" + playerPort + "/");
+        Debug.Log("[GAMA][MW] Existing monitor connection ws://" + host + ":" + captureMonitorPort + "/");
+        Debug.Log("[GAMA][MW] Existing player socket connection ws://" + host + ":" + playerPort + "/");
 
         bool monitorReady;
         bool playerReady;
@@ -1588,21 +1607,21 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         catch (Exception ex)
         {
-            error = "Vérification du middleware existant interrompue : " + ex.Message;
+            error = "Existing middleware verification interrupted: " + ex.Message;
             return false;
         }
 
         if (!monitorReady)
         {
-            error = "Le monitor existant ws://" + host + ":" + captureMonitorPort +
-                    "/ ne répond pas. Lancez simple.webplatform manuellement, puis réessayez.";
+            error = "The existing monitor ws://" + host + ":" + captureMonitorPort +
+                    "/ is not responding. Launch simple.webplatform manually, then try again.";
             return false;
         }
 
         if (!playerReady)
         {
-            error = "Le socket joueur existant ws://" + host + ":" + playerPort +
-                    "/ ne répond pas. Lancez simple.webplatform manuellement, puis réessayez.";
+            error = "The existing player socket ws://" + host + ":" + playerPort +
+                    "/ is not responding. Launch simple.webplatform manually, then try again.";
             return false;
         }
 
@@ -1625,7 +1644,7 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         if (captureFlowActive || captureTask != null)
         {
-            EditorUtility.DisplayDialog("Capture", "Une capture est déjà en cours.", "OK");
+            EditorUtility.DisplayDialog("Capture", "A capture is already in progress.", "OK");
             return;
         }
 
@@ -1676,7 +1695,7 @@ public sealed class GamaPanelWindow : EditorWindow
         if (!captureUseLocalMiddleware && !captureSkipRemoteLoad && !managedFromUnity)
         {
             UnityEngine.Debug.LogWarning(
-                "[GAMA] Capture avec load distant (port 1000) : préférez « Piloté par Unity » ou « Lancer et capturer ».");
+                "[GAMA] Capture with remote load (port 1000): prefer 'Managed by Unity' or 'Launch and capture'.");
         }
 
         captureFlowActive = true;
@@ -1706,7 +1725,7 @@ public sealed class GamaPanelWindow : EditorWindow
         try { Directory.CreateDirectory(outDir); }
         catch (Exception ex)
         {
-            EditorUtility.DisplayDialog("Capture", "Impossible de créer le dossier de sortie : " + ex.Message, "OK");
+            EditorUtility.DisplayDialog("Capture", "Could not create output folder: " + ex.Message, "OK");
             captureFlowActive = false;
             return;
         }
@@ -1715,7 +1734,7 @@ public sealed class GamaPanelWindow : EditorWindow
             !selectedGamaPreviewMode &&
             string.IsNullOrWhiteSpace(runtimeModelPath))
         {
-            EditorUtility.DisplayDialog("Capture", "Explorez d'abord une expérience valide depuis l'onglet Workspace.", "OK");
+            EditorUtility.DisplayDialog("Capture", "First explore a valid experiment from the Workspace tab.", "OK");
             captureFlowActive = false;
             return;
         }
@@ -1727,10 +1746,10 @@ public sealed class GamaPanelWindow : EditorWindow
                 runtimeExperimentName,
                 out string unityCompatError))
         {
-            EditorUtility.DisplayDialog("Capture — modèle non compatible Unity", unityCompatError, "OK");
+            EditorUtility.DisplayDialog("Capture — incompatible Unity model", unityCompatError, "OK");
             captureFlowActive = false;
             captureRuntimeStatus = unityCompatError;
-            UnityEngine.Debug.LogWarning("[GAMA] Capture refusée : " + unityCompatError);
+            UnityEngine.Debug.LogWarning("[GAMA] Capture refused: " + unityCompatError);
             return;
         }
 
@@ -1752,7 +1771,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
         captureCts?.Dispose();
         captureCts = new System.Threading.CancellationTokenSource();
-        captureRuntimeStatus = "Démarrage…";
+        captureRuntimeStatus = "Starting...";
         captureStartedAt = EditorApplication.timeSinceStartup;
 
         if (useExternalMiddleware)
@@ -1796,9 +1815,9 @@ public sealed class GamaPanelWindow : EditorWindow
             }
             catch (Exception ex)
             {
-                AbortCaptureIfRunning("Diagnostic catalogue échoué", purgePlayer: false);
+                AbortCaptureIfRunning("Catalog diagnosis failed", purgePlayer: false);
                 EditorUtility.DisplayDialog("Capture",
-                    "Diagnostic catalogue monitor impossible : " + ex.Message,
+                    "Monitor catalog diagnosis impossible: " + ex.Message,
                     "OK");
                 captureFlowActive = false;
                 return;
@@ -1809,13 +1828,13 @@ public sealed class GamaPanelWindow : EditorWindow
                 string message = BuildCatalogDiagnosisStatus(diagnosis);
                 if (useExternalMiddleware)
                 {
-                    message = "Le middleware déjà lancé ne connaît pas ce modèle. " +
-                              "Relancez-le manuellement avec le bon package ou sélectionnez une expérience déjà cataloguée.\n\n" +
+                    message = "The running middleware doesn't know this model. " +
+                              "Restart it manually with the correct package or select an already catalogued experiment.\n\n" +
                               message;
                 }
 
-                AbortCaptureIfRunning("Catalogue middleware incompatible", purgePlayer: false);
-                EditorUtility.DisplayDialog("Capture bloquée (catalogue middleware)", message, "OK");
+                AbortCaptureIfRunning("Incompatible middleware catalog", purgePlayer: false);
+                EditorUtility.DisplayDialog("Capture blocked (middleware catalog)", message, "OK");
                 captureFlowActive = false;
                 captureRuntimeStatus = message;
                 return;
@@ -1825,9 +1844,9 @@ public sealed class GamaPanelWindow : EditorWindow
         {
             Debug.Log("[GAMA][PREVIEW][SELECTED] Preview de l'expérience sélectionnée dans GAMA");
             Debug.Log("[GAMA][PREVIEW][SELECTED] Aucun catalogue middleware");
-            Debug.Log("[GAMA][PREVIEW][SELECTED] Aucun settings.json");
-            Debug.Log("[GAMA][PREVIEW][SELECTED] Aucun restart middleware");
-            Debug.Log("[GAMA][PREVIEW][SELECTED] Séquence Play-like Runtime");
+            Debug.Log("[GAMA][PREVIEW][SELECTED] No settings.json");
+            Debug.Log("[GAMA][PREVIEW][SELECTED] No middleware restart");
+            Debug.Log("[GAMA][PREVIEW][SELECTED] Play-like Runtime sequence");
         }
 
         if (launchGama)
@@ -1847,9 +1866,9 @@ public sealed class GamaPanelWindow : EditorWindow
             {
                 EditorUtility.DisplayDialog(
                     "Capture",
-                    "Indiquez le chemin vers gama-headless.bat dans l'onglet Workspace (ou choisissez le mode « custom »).",
+                    "Please specify the path to gama-headless.bat in the Workspace tab (or choose 'custom' mode).",
                     "OK");
-                AbortCaptureIfRunning("gama-headless.bat manquant");
+                AbortCaptureIfRunning("Missing gama-headless.bat");
                 return;
             }
 
@@ -1880,7 +1899,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
             if (captureGamaProcess == null)
             {
-                EditorUtility.DisplayDialog("Capture", "Échec démarrage GAMA : " + gamaError, "OK");
+                EditorUtility.DisplayDialog("Capture", "Failed to start GAMA: " + gamaError, "OK");
                 AbortCaptureIfRunning(gamaError);
                 return;
             }
@@ -1898,8 +1917,8 @@ public sealed class GamaPanelWindow : EditorWindow
         if (!captureUseLocalMiddleware && GamaEditorFirstTickCapture.IsGamaNativeWebSocketPort(port))
         {
             UnityEngine.Debug.LogWarning(
-                "[GAMA] Port " + port + " = serveur GAMA intégré : capture en mode direct (protocole load/play). " +
-                "Pour le middleware Node, lancez simple.webplatform et utilisez le port 8080.");
+                "[GAMA] Port " + port + " = integrated GAMA server: direct capture mode (load/play protocol). " +
+                "For the Node middleware, launch simple.webplatform and use port 8080.");
         }
 
         if (managedFromUnity && !captureUseLocalMiddleware)
@@ -1907,20 +1926,20 @@ public sealed class GamaPanelWindow : EditorWindow
             if (selectedGamaPreviewMode)
             {
                 UnityEngine.Debug.Log(
-                    "[GAMA] Preview depuis GAMA : middleware externe ws://" + host + ":" + port +
-                    "/, séquence Play-like, aucun catalogue monitor.");
+                    "[GAMA] Preview from GAMA: external middleware ws://" + host + ":" + port +
+                    "/, Play-like sequence, no monitor catalog.");
             }
             else
             {
                 UnityEngine.Debug.Log(
-                    "[GAMA] Piloté par Unity : monitor ws://" + host + ":" + captureMonitorPort +
-                    "/ (launch_experiment) puis casque ws://" + host + ":" + port + "/.");
+                    "[GAMA] Managed by Unity: monitor ws://" + host + ":" + captureMonitorPort +
+                    "/ (launch_experiment) then headset ws://" + host + ":" + port + "/.");
             }
         }
         else if (captureSkipRemoteLoad && !captureUseLocalMiddleware)
         {
             UnityEngine.Debug.Log(
-                "[GAMA] Expérience déjà ouverte : middleware 8080 seul (diagnostic, sans launch monitor).");
+                "[GAMA] Experiment already open: 8080 middleware only (diagnostic, no launch monitor).");
         }
 
         int maxWorldFrames = Mathf.Clamp(captureMaxWorldFrames, 3, 120);
@@ -1955,9 +1974,9 @@ public sealed class GamaPanelWindow : EditorWindow
                 UnityEngine.Debug.Log,
                 captureCts.Token);
 
-            captureRuntimeStatus = "Capture directe lancée vers GAMA ws://localhost:" + gamaPort + "/  (min. " +
-                (captureTimeoutMs / 1000) + " s, prolongée après load/create_player). id = " + id + ".";
-            UnityEngine.Debug.Log("[GAMA] Capture directe GAMA : ws://localhost:" + gamaPort + "/ id=\"" + id + "\".");
+            captureRuntimeStatus = "Direct capture started to GAMA ws://localhost:" + gamaPort + "/  (min. " +
+                (captureTimeoutMs / 1000) + " s, extended after load/create_player). id = " + id + ".";
+            UnityEngine.Debug.Log("[GAMA] Direct GAMA Capture: ws://localhost:" + gamaPort + "/ id=\"" + id + "\".");
         }
         else
         {
@@ -1988,15 +2007,15 @@ public sealed class GamaPanelWindow : EditorWindow
                 UnityEngine.Debug.Log,
                 captureCts.Token);
 
-            captureRuntimeStatus = "Capture middleware ws://" + host + ":" + port + "/ (min. " + (captureTimeoutMs / 1000) +
+            captureRuntimeStatus = "Middleware capture ws://" + host + ":" + port + "/ (min. " + (captureTimeoutMs / 1000) +
                 " s). id=\"" + id + "\". " +
                 (managedFromUnity
                     ? captureUseExternalMiddleware
-                        ? "Preview depuis GAMA : middleware externe, séquence Play-like sur 8080, sans catalogue ni restart."
-                        : "Unity pilote le monitor " + captureMonitorPort + " puis écoute json_output sur 8080."
+                        ? "Preview from GAMA: external middleware, Play-like sequence on 8080, no catalog/restart."
+                        : "Unity drives monitor " + captureMonitorPort + " then listens to json_output on 8080."
                     : captureSkipRemoteLoad
-                        ? "Middleware 8080 seul (diagnostic)."
-                        : "Load/play/create_player automatiques si l’expérience est importée.");
+                        ? "8080 Middleware only (diagnostic)."
+                        : "Automatic load/play/create_player if experiment is imported.");
             UnityEngine.Debug.Log("[GAMA] Capture middleware id=\"" + id + "\" ws://" + host + ":" + port + "/");
         }
 
@@ -2036,14 +2055,14 @@ public sealed class GamaPanelWindow : EditorWindow
                 return true;
             }
 
-            errorMessage = "Aucune expérience sélectionnée dans Unity. Sélectionnez une expérience dans le dropdown.";
+            errorMessage = "No experiment selected in Unity. Select an experiment in the dropdown.";
             return false;
         }
 
         GamaPanelExperimentOption selectedOption = experimentOptions[selectedExperimentIndex];
         if (selectedOption == null)
         {
-            errorMessage = "Sélection d'expérience invalide. Réexplorez le workspace.";
+            errorMessage = "Invalid experiment selection. Re-explore the workspace.";
             return false;
         }
 
@@ -2061,7 +2080,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
         if (string.IsNullOrWhiteSpace(runtimeModelPath) || string.IsNullOrWhiteSpace(runtimeExperimentName))
         {
-            errorMessage = "Sélection Unity incomplète (modelPath/experimentName).";
+            errorMessage = "Incomplete Unity selection (modelPath/experimentName).";
             return false;
         }
 
@@ -2080,7 +2099,7 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorPrefs.DeleteKey(StaticPreviewPropertiesJsonPrefKey);
         EditorPrefs.DeleteKey(StaticPreviewWorldJsonPrefKey);
         EditorPrefs.DeleteKey(StaticPreviewWorldTickPrefKey);
-        captureRuntimeStatus = "Sélection modifiée : cache de preview invalidé, prochaine capture forcera la sélection Unity courante.";
+        captureRuntimeStatus = "Selection changed: preview cache invalidated, next capture will force current Unity selection.";
     }
 
     private void StartCatalogDiagnosis()
@@ -2103,7 +2122,7 @@ public sealed class GamaPanelWindow : EditorWindow
             {
                 catalogDiagnosisStatus = learningError;
                 captureRuntimeStatus = learningError;
-                EditorUtility.DisplayDialog("Diagnostic catalogue", learningError, "OK");
+                EditorUtility.DisplayDialog("Catalog Diagnosis", learningError, "OK");
                 return;
             }
 
@@ -2122,7 +2141,7 @@ public sealed class GamaPanelWindow : EditorWindow
                 {
                     catalogDiagnosisStatus = restartError;
                     captureRuntimeStatus = restartError;
-                    EditorUtility.DisplayDialog("Diagnostic catalogue", restartError, "OK");
+                    EditorUtility.DisplayDialog("Catalog Diagnosis", restartError, "OK");
                     return;
                 }
             }
@@ -2136,13 +2155,13 @@ public sealed class GamaPanelWindow : EditorWindow
                 {
                     catalogDiagnosisStatus = verifyError;
                     captureRuntimeStatus = verifyError;
-                    EditorUtility.DisplayDialog("Diagnostic catalogue", verifyError, "OK");
+                    EditorUtility.DisplayDialog("Catalog Diagnosis", verifyError, "OK");
                     return;
                 }
             }
         }
 
-        catalogDiagnosisStatus = "Diagnostic catalogue monitor en cours…";
+        catalogDiagnosisStatus = "Monitor catalog diagnosis in progress...";
         captureRuntimeStatus = catalogDiagnosisStatus;
         Repaint();
         catalogDiagnosisTask = GamaEditorMiddlewareOrchestrator.DiagnoseCatalogAsync(
@@ -2175,8 +2194,8 @@ public sealed class GamaPanelWindow : EditorWindow
 
         generatedLearningPackageRoot = learningRoot;
         captureRuntimeStatus =
-            "[GAMA][SYNC] Package généré: " + generatedLearningPackageRoot +
-            " | Relancez le middleware avec LEARNING_PACKAGE_PATH incluant ce dossier.";
+            "[GAMA][SYNC] Generated package: " + generatedLearningPackageRoot +
+            " | Restart the middleware with LEARNING_PACKAGE_PATH including this folder.";
         Debug.Log("[GAMA][SYNC] Selected model: " + runtimeModelPath);
         Debug.Log("[GAMA][SYNC] Experiments found: " + runtimeExperimentName);
         Debug.Log("[GAMA][SYNC] Generated middleware package: " + generatedLearningPackageRoot);
@@ -2220,7 +2239,7 @@ public sealed class GamaPanelWindow : EditorWindow
                 return;
             }
 
-            captureRuntimeStatus = "Middleware relancé. Diagnostic catalogue en cours…";
+            captureRuntimeStatus = "Middleware restarted. Catalog diagnosis in progress...";
             Repaint();
             GamaEditorMiddlewareOrchestrator.CatalogDiagnosisResult diagnosis =
                 GamaEditorMiddlewareOrchestrator.DiagnoseCatalogAsync(
@@ -2236,7 +2255,7 @@ public sealed class GamaPanelWindow : EditorWindow
             captureRuntimeStatus = BuildCatalogDiagnosisStatus(diagnosis);
             if (!diagnosis.Success)
             {
-                EditorUtility.DisplayDialog("Catalogue middleware", captureRuntimeStatus, "OK");
+                EditorUtility.DisplayDialog("Middleware Catalog", captureRuntimeStatus, "OK");
             }
         }
     }
@@ -2259,7 +2278,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
         middlewareScriptPath = launcherPath;
         EditorPrefs.SetString(GamaMiddlewareScriptPrefKey, middlewareScriptPath);
-        Debug.Log("[GAMA][MW] Script middleware enregistré : " + middlewareScriptPath);
+        Debug.Log("[GAMA][MW] Middleware script registered: " + middlewareScriptPath);
         return true;
     }
 
@@ -2273,7 +2292,7 @@ public sealed class GamaPanelWindow : EditorWindow
         error = null;
         if (string.IsNullOrWhiteSpace(runtimeModelPath) || string.IsNullOrWhiteSpace(runtimeExperimentName))
         {
-            error = "Impossible de générer un learning package : modelPath/experimentName manquants.";
+            error = "Cannot generate a learning package: missing modelPath/experimentName.";
             return false;
         }
 
@@ -2309,7 +2328,7 @@ public sealed class GamaPanelWindow : EditorWindow
             Debug.Log("[GAMA][SYNC] settings.json exists=" + exists);
             if (!exists)
             {
-                error = "settings.json non écrit : " + settingsPath;
+                error = "settings.json not written: " + settingsPath;
                 return false;
             }
 
@@ -2325,15 +2344,15 @@ public sealed class GamaPanelWindow : EditorWindow
 
             if (!string.Equals(parsedExperiment.Trim(), runtimeExperimentName.Trim(), StringComparison.Ordinal))
             {
-                error = "settings.json invalide : experiment_name=" + parsedExperiment +
-                        " attendu=" + runtimeExperimentName;
+                error = "Invalid settings.json: experiment_name=" + parsedExperiment +
+                        " expected=" + runtimeExperimentName;
                 return false;
             }
 
             if (!string.Equals(NormalizePath(parsedModel), NormalizePath(modelFullPath), StringComparison.OrdinalIgnoreCase))
             {
-                error = "settings.json invalide : model_file_path=" + parsedModel +
-                        " attendu=" + modelFullPath;
+                error = "Invalid settings.json: model_file_path=" + parsedModel +
+                        " expected=" + modelFullPath;
                 return false;
             }
 
@@ -2342,7 +2361,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         catch (Exception ex)
         {
-            error = "Génération du learning package middleware impossible : " + ex.Message;
+            error = "Middleware learning package generation impossible: " + ex.Message;
             return false;
         }
     }
@@ -2352,7 +2371,7 @@ public sealed class GamaPanelWindow : EditorWindow
         error = null;
         if (string.IsNullOrWhiteSpace(root))
         {
-            error = "Dossier racine du learning package vide.";
+            error = "Empty learning package root folder.";
             return false;
         }
 
@@ -2377,7 +2396,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
         if (failures.Count > 0)
         {
-            error = "Impossible de nettoyer les anciens learning packages Unity : " + string.Join(" | ", failures);
+            error = "Failed to clean old Unity learning packages: " + string.Join(" | ", failures);
             return false;
         }
 
@@ -2454,7 +2473,7 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         if (diagnosis == null)
         {
-            return "Diagnostic catalogue indisponible.";
+            return "Catalog diagnosis unavailable.";
         }
 
         string models = diagnosis.AvailableModels.Count == 0 ? "(none)" : string.Join(" | ", diagnosis.AvailableModels);
@@ -2469,40 +2488,40 @@ public sealed class GamaPanelWindow : EditorWindow
 
         string statusLabel = diagnosis.Status.ToString().ToUpperInvariant();
         string settingsSummary = string.IsNullOrWhiteSpace(lastGeneratedSettingsJsonContent)
-            ? "(settings.json non généré dans cette session)"
+            ? "(settings.json not generated in this session)"
             : lastGeneratedSettingsJsonContent;
         string action = captureUseExternalMiddleware
-            ? "1) Le middleware déjà lancé ne connaît pas ce modèle.\n" +
-              "2) Relancez-le manuellement avec le bon package, ou sélectionnez une expérience déjà cataloguée.\n" +
-              "3) Relancez le diagnostic sans que Unity arrête ou redémarre Node.\n"
-            : "1) Arrêter les anciens PID sur les ports monitor/joueur.\n" +
-              "2) Relancer depuis simple.webplatform avec LEARNING_PACKAGE_PATH vers GamaGeneratedLearningPackages.\n" +
-              "3) Vérifier que le catalogue liste le .gaml Unity exact.\n";
+            ? "1) The running middleware doesn't know this model.\n" +
+              "2) Restart it manually with the correct package, or select an already catalogued experiment.\n" +
+              "3) Restart the diagnosis without Unity stopping or restarting Node.\n"
+            : "1) Stop the old PIDs on the monitor/player ports.\n" +
+              "2) Restart from simple.webplatform with LEARNING_PACKAGE_PATH pointing to GamaGeneratedLearningPackages.\n" +
+              "3) Verify that the catalog lists the exact Unity .gaml.\n";
         string conclusion = captureUseExternalMiddleware
-            ? "Le middleware déjà lancé ne catalogue pas le .gaml sélectionné dans Unity."
-            : "Le middleware ignore le package généré et charge encore un autre learning package (souvent la démo).";
+            ? "The running middleware does not catalog the .gaml selected in Unity."
+            : "The middleware ignores the generated package and still loads another learning package (often the demo).";
 
         return "MODELNOTFOUND\n\n" +
-               "Unity demande :\n" +
+               "Unity asks for:\n" +
                "model=" + diagnosis.RequestedModelPath + "\n" +
                "experiment=" + diagnosis.RequestedExperimentName + "\n\n" +
-               "Middleware lancé :\n" +
+               "Running middleware:\n" +
                "WorkingDirectory=" + (string.IsNullOrWhiteSpace(lastMiddlewareWorkingDirectory) ? "?" : lastMiddlewareWorkingDirectory) + "\n" +
                "PID=" + (lastMiddlewareProcessId > 0 ? lastMiddlewareProcessId.ToString(CultureInfo.InvariantCulture) : "?") + "\n" +
                "LEARNING_PACKAGE_PATH=" + (string.IsNullOrWhiteSpace(lastMiddlewareLearningPackagePath) ? "?" : lastMiddlewareLearningPackagePath) + "\n" +
                "EXTRA_LEARNING_PACKAGE_PATH=" + (lastMiddlewareExtraLearningPackagePath ?? string.Empty) + "\n\n" +
-               "Package Unity généré :\n" +
+               "Generated Unity Package:\n" +
                "root=" + (string.IsNullOrWhiteSpace(generatedLearningPackageRoot) ? "?" : generatedLearningPackageRoot) + "\n" +
                "settings=" + (string.IsNullOrWhiteSpace(lastGeneratedSettingsJsonPath) ? "?" : lastGeneratedSettingsJsonPath) + "\n" +
                settingsSummary + "\n\n" +
-               "Catalogue reçu :\n" +
+               "Received catalog:\n" +
                "models=" + models + "\n" +
                "experiments=" + experiments + "\n\n" +
-               "Conclusion :\n" +
+               "Conclusion:\n" +
                conclusion + "\n\n" +
-               "Action :\n" +
+               "Action:\n" +
                action +
-               (string.IsNullOrWhiteSpace(diagnosis.Error) ? string.Empty : ("\nDétail : " + diagnosis.Error));
+               (string.IsNullOrWhiteSpace(diagnosis.Error) ? string.Empty : ("\nDetails: " + diagnosis.Error));
     }
 
     private static string SafeFullPath(string path)
@@ -2537,7 +2556,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
         if (userAbortReason != null)
         {
-            captureRuntimeStatus = "Capture annulée : " + userAbortReason;
+            captureRuntimeStatus = "Capture cancelled: " + userAbortReason;
             Repaint();
             return;
         }
@@ -2549,7 +2568,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         catch (Exception ex)
         {
-            captureRuntimeStatus = "Capture échouée : " + ex.Message;
+            captureRuntimeStatus = "Capture failed: " + ex.Message;
             UnityEngine.Debug.LogError("[GAMA] Capture : " + ex);
         }
 
@@ -2561,7 +2580,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
         if (!result.Success)
         {
-            captureRuntimeStatus = "Capture KO : " + (result.Error ?? "raison inconnue");
+            captureRuntimeStatus = "Capture failed: " + (result.Error ?? "unknown reason");
             UnityEngine.Debug.LogError("[GAMA] Capture : " + result.Error + "\n" + result.LogTrail);
             Repaint();
             return;
@@ -2591,9 +2610,9 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorPrefs.SetInt(StaticPreviewWorldTickPrefKey, staticPreviewWorldTickIndex);
 
         string tickInfo = result.WorldFrameCount > 1
-            ? " (" + result.WorldFrameCount + " chunks, aperçu cumulé tick " + result.BestWorldTickIndex + ")"
+            ? " (" + result.WorldFrameCount + " chunks, cumulative preview tick " + result.BestWorldTickIndex + ")"
             : string.Empty;
-        captureRuntimeStatus = "Capture OK : 3 JSON dans " + Path.GetDirectoryName(staticPreviewPrecisionJsonPath) + tickInfo + ".";
+        captureRuntimeStatus = "Capture OK: 3 JSON in " + Path.GetDirectoryName(staticPreviewPrecisionJsonPath) + tickInfo + ".";
         if (!result.DynamicAgentsFound && !string.IsNullOrEmpty(result.PreviewWarning))
         {
             captureRuntimeStatus += " " + result.PreviewWarning;
@@ -2640,6 +2659,9 @@ public sealed class GamaPanelWindow : EditorWindow
             EditorGUILayout.LabelField(agent.Name, GUILayout.Width(180f));
             EditorGUILayout.LabelField(agent.CountExpression, GUILayout.Width(80f));
             EditorGUILayout.LabelField(agent.PrefabHint, GUILayout.Width(150f));
+            
+            EditorGUI.BeginChangeCheck();
+
             agent.OverrideColor = EditorGUILayout.Toggle(agent.OverrideColor, GUILayout.Width(18f));
             using (new EditorGUI.DisabledScope(!agent.OverrideColor))
             {
@@ -2658,8 +2680,54 @@ public sealed class GamaPanelWindow : EditorWindow
                 agent.Visible = EditorGUILayout.Toggle(agent.Visible, GUILayout.Width(42f));
             }
             EditorGUILayout.EndHorizontal();
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                PushAgentOverridesToAsset(agent);
+            }
         }
         EditorGUILayout.EndScrollView();
+    }
+
+    private void PushAgentOverridesToAsset(GamaPanelAgentOverride agent)
+    {
+        GamaSpeciesRenderOverrides asset = GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
+        if (asset != null)
+        {
+            GamaSpeciesRenderOverrideEntry entry = asset.GetOrCreateEntry(agent.Name);
+            
+            if (agent.OverrideColor)
+            {
+                entry.overrideColor = true;
+                entry.color = agent.Color;
+            }
+            else
+            {
+                entry.overrideColor = false;
+            }
+
+            if (agent.OverrideScale)
+            {
+                entry.scaleMultiplier = agent.ScaleMultiplier;
+            }
+            else
+            {
+                entry.scaleMultiplier = 1f;
+            }
+
+            if (agent.OverrideVisibility)
+            {
+                entry.overrideRuntimeVisibility = true;
+                entry.visibleInRuntime = agent.Visible;
+            }
+            else
+            {
+                entry.overrideRuntimeVisibility = false;
+            }
+
+            EditorUtility.SetDirty(asset);
+            GamaEditorPreviewOverrideApplier.ScheduleApplyOverridesToCurrentPreview();
+        }
     }
 
     private void DrawApplyControls()
@@ -2695,14 +2763,14 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         EditorGUILayout.Space(10f);
-        EditorGUILayout.LabelField("Expériences détectées", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("Detected Experiments", EditorStyles.boldLabel);
         workspaceExperimentListScroll = EditorGUILayout.BeginScrollView(workspaceExperimentListScroll, GUILayout.MinHeight(Mathf.Clamp(28f + experimentOptions.Count * 36f, 80f, 280f)));
         for (int i = 0; i < experimentOptions.Count; i++)
         {
             GamaPanelExperimentOption option = experimentOptions[i];
             EditorGUILayout.BeginHorizontal("box");
             EditorGUILayout.LabelField(option.DisplayName, GUILayout.ExpandWidth(true));
-            if (GUILayout.Button("Importer l’expérience", GUILayout.Width(150f), GUILayout.Height(22f)))
+            if (GUILayout.Button("Import Experiment", GUILayout.Width(150f), GUILayout.Height(22f)))
             {
                 GoToImportExperimentWithIndex(i);
             }
@@ -2723,7 +2791,7 @@ public sealed class GamaPanelWindow : EditorWindow
         selectedExperimentIndex = index;
         AnalyzeSelectedExperiment();
         InvalidateCaptureSelectionCache();
-        experimentStatus = "Expérience importée : " + experimentOptions[index].DisplayName + ". Ajustez agents / scène, lancez la prévisualisation cumulative ou générez l’aperçu statique.";
+        experimentStatus = "Experiment imported: " + experimentOptions[index].DisplayName + ". Adjust agents / scene, run cumulative preview or generate static preview.";
         selectedTab = TabImportExperiment;
         Repaint();
     }
@@ -2769,7 +2837,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         experimentStatus = "Found " + experimentOptions.Count.ToString(CultureInfo.InvariantCulture) +
-            " experiment(s). Cliquez sur « Importer l’expérience » pour ouvrir l’onglet Import Experiment.";
+            " experiment(s). Click 'Import Experiment' to open the Import Experiment tab.";
     }
 
     private void ExploreExperimentPath()
@@ -2801,7 +2869,7 @@ public sealed class GamaPanelWindow : EditorWindow
         sceneCharacteristicSize = Mathf.Max(1f, analysis.SuggestedSceneSize);
         renderDistance = Mathf.Max(100f, analysis.SuggestedRenderDistance);
         cameraFarClip = Mathf.Max(renderDistance, sceneCharacteristicSize * 3f);
-        experimentStatus = "Expérience analysée. Vérifiez la scène, les agents et la prévisualisation cumulative si besoin.";
+        experimentStatus = "Experiment analyzed. Check the scene, agents and cumulative preview if needed.";
         gamaHeadlessBatchName = analysis.Name;
         InvalidateCaptureSelectionCache();
     }
@@ -2955,7 +3023,7 @@ public sealed class GamaPanelWindow : EditorWindow
             string path = AssetDatabase.GetAssetPath(asset);
             EditorPrefs.SetString(SpeciesOverridesAssetPrefKey, path);
             Selection.activeObject = asset;
-            UnityEngine.Debug.Log("[GAMA] Asset overrides prêt : " + path);
+            UnityEngine.Debug.Log("[GAMA] Overrides asset ready: " + path);
         }
 
         return asset;
@@ -3112,9 +3180,9 @@ public sealed class GamaPanelWindow : EditorWindow
         {
             EditorUtility.DisplayDialog(
                 "Static preview",
-                "Si vous utilisez les captures JSON, les trois chemins (precision, properties, monde / pointsLoc) doivent être renseignés. Sinon, effacez-les pour l'aperçu grille.",
+                "If you use JSON captures, all three paths (precision, properties, world / pointsLoc) must be provided. Otherwise, clear them for the grid preview.",
                 "OK");
-            status = "JSON incomplet.";
+            status = "Incomplete JSON.";
             return true;
         }
 
@@ -3127,7 +3195,7 @@ public sealed class GamaPanelWindow : EditorWindow
             !GamaEditorStaticPreviewFromJson.TryReadFile(staticPreviewPropertiesJsonPath, out propertiesJson, out readError) ||
             !GamaEditorStaticPreviewFromJson.TryReadFile(worldPathForPreview, out worldJson, out readError))
         {
-            EditorUtility.DisplayDialog("Static preview", "Lecture fichier impossible:\n" + readError, "OK");
+            EditorUtility.DisplayDialog("Static preview", "Cannot read file:\n" + readError, "OK");
             status = readError;
             return true;
         }
@@ -3135,7 +3203,7 @@ public sealed class GamaPanelWindow : EditorWindow
         SimulationManager manager = UnityEngine.Object.FindFirstObjectByType<SimulationManager>(FindObjectsInactive.Include);
         if (manager == null)
         {
-            Debug.LogWarning("[GAMA][PREVIEW][BUILD] Aucun SimulationManager dans la scène : construction avec CRS/visual defaults.");
+            Debug.LogWarning("[GAMA][PREVIEW][BUILD] No SimulationManager in the scene: building with CRS/visual defaults.");
         }
 
         int prefabN;
@@ -3159,7 +3227,7 @@ public sealed class GamaPanelWindow : EditorWindow
         string tickLabel = availableWorldTickPaths.Count > 1
             ? " (tick " + staticPreviewWorldTickIndex + ")"
             : string.Empty;
-        status = "Prévisualisation (middleware JSON)" + tickLabel + ": " + prefabN + " prefab(s), " + geomN + " géométrie(s). CRS = coefficients du SimulationManager.";
+        status = "Preview (JSON middleware)" + tickLabel + ": " + prefabN + " prefab(s), " + geomN + " geometry(s). CRS = SimulationManager coefficients.";
         Debug.Log("[GAMA] " + status);
         return true;
     }
@@ -3173,7 +3241,7 @@ public sealed class GamaPanelWindow : EditorWindow
         catch (Exception ex)
         {
             Debug.LogError("[GAMA][PREVIEW][BUILD] Exception: " + ex);
-            captureRuntimeStatus = "Capture OK mais construction preview échouée : " + ex.Message;
+            captureRuntimeStatus = "Capture OK but preview build failed: " + ex.Message;
             experimentStatus = captureRuntimeStatus;
         }
     }
@@ -3200,18 +3268,19 @@ public sealed class GamaPanelWindow : EditorWindow
                 Undo.CollapseUndoOperations(undoGroup);
                 EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
                 string speciesSummary = BuildPreviewSpeciesSummary(root);
+                UpdateAgentOverridesFromPreview(root);
                 experimentStatus = string.IsNullOrWhiteSpace(speciesSummary)
                     ? jsonStatus
                     : jsonStatus + " species=" + speciesSummary;
-                captureRuntimeStatus = "Preview statique construite : " + experimentStatus;
+                captureRuntimeStatus = "Static preview built: " + experimentStatus;
                 Debug.Log("[GAMA][PREVIEW][BUILD] " + captureRuntimeStatus);
                 return;
             }
 
             Undo.DestroyObjectImmediate(root);
             Undo.CollapseUndoOperations(undoGroup);
-            experimentStatus = jsonStatus ?? "Erreur JSON.";
-            captureRuntimeStatus = "Capture réussie, mais construction de la preview échouée : " + experimentStatus;
+            experimentStatus = jsonStatus ?? "JSON Error.";
+            captureRuntimeStatus = "Capture successful, but preview build failed: " + experimentStatus;
             Debug.LogError("[GAMA][PREVIEW][BUILD] " + captureRuntimeStatus);
             return;
         }
@@ -3313,6 +3382,40 @@ public sealed class GamaPanelWindow : EditorWindow
         return string.Join(", ", parts.ToArray());
     }
 
+    private void UpdateAgentOverridesFromPreview(GameObject root)
+    {
+        if (root == null) return;
+        GamaPreviewObject[] previewObjects = root.GetComponentsInChildren<GamaPreviewObject>(true);
+        Dictionary<string, int> counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < previewObjects.Length; i++)
+        {
+            if (previewObjects[i] == null) continue;
+            string species = string.IsNullOrWhiteSpace(previewObjects[i].speciesName) ? "unknown" : previewObjects[i].speciesName.Trim();
+            counts[species] = counts.TryGetValue(species, out int count) ? count + 1 : 1;
+        }
+
+        foreach (KeyValuePair<string, int> pair in counts)
+        {
+            bool exists = false;
+            for (int i = 0; i < agentOverrides.Count; i++)
+            {
+                if (string.Equals(agentOverrides[i].Name, pair.Key, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists)
+            {
+                GamaPanelAgentInfo info = new GamaPanelAgentInfo();
+                info.Name = pair.Key;
+                info.CountExpression = pair.Value.ToString();
+                info.PrefabHint = "-";
+                agentOverrides.Add(new GamaPanelAgentOverride(info));
+            }
+        }
+    }
+
     private void ConfigurePreviewSession(GameObject root)
     {
         if (root == null)
@@ -3356,7 +3459,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         else
         {
-            Debug.Log("[GAMA][PREVIEW] Runtime selection store non modifié (mode " + session.selectionMode + ", model=" + model + ").");
+            Debug.Log("[GAMA][PREVIEW] Runtime selection store unmodified (mode " + session.selectionMode + ", model=" + model + ").");
         }
 
         SimulationManager manager = UnityEngine.Object.FindFirstObjectByType<SimulationManager>(FindObjectsInactive.Include);
@@ -4308,12 +4411,12 @@ internal static class GamaPanelExperimentAnalyzer
 
         if (vr && nonVr)
         {
-            return "VR + Non-VR (sans Unity)";
+            return "VR + Non-VR (without Unity)";
         }
 
         if (vr)
         {
-            return "VR (sans Unity)";
+            return "VR (without Unity)";
         }
 
         if (nonVr)

@@ -11,8 +11,8 @@ using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 /// <summary>
-/// Démarre un mini-serveur WebSocket dans Unity pour jouer le rôle du middleware (simple.webplatform).
-/// Cela permet à GAMA de se connecter directement à l'éditeur Unity sans Node.js.
+/// Starts a mini WebSocket server in Unity to act as the middleware (simple.webplatform).
+/// This allows GAMA to connect directly to the Unity editor without Node.js.
 /// </summary>
 internal static class GamaEditorLocalMiddleware
 {
@@ -45,7 +45,7 @@ internal static class GamaEditorLocalMiddleware
         try { Directory.CreateDirectory(outputDirectory); }
         catch (Exception ex)
         {
-            result.Error = "Impossible de créer le dossier de sortie : " + ex.Message;
+            result.Error = "Cannot create output folder: " + ex.Message;
             result.LogTrail = logBuilder.ToString();
             return result;
         }
@@ -57,11 +57,11 @@ internal static class GamaEditorLocalMiddleware
         try
         {
             listener.Start();
-            append($"[GAMA] Serveur local démarré sur {prefix}. En attente de la connexion de GAMA...");
+            append($"[GAMA] Local server started on {prefix}. Waiting for GAMA connection...");
         }
         catch (Exception ex)
         {
-            result.Error = "Impossible de démarrer le serveur local : " + ex.Message + "\nEssayez un autre port ou lancez Unity en administrateur.";
+            result.Error = "Cannot start local server: " + ex.Message + "\nTry another port or launch Unity as administrator.";
             result.LogTrail = logBuilder.ToString();
             return result;
         }
@@ -81,13 +81,13 @@ internal static class GamaEditorLocalMiddleware
                 {
                     context.Response.StatusCode = 400;
                     context.Response.Close();
-                    result.Error = "La connexion reçue n'est pas une requête WebSocket.";
+                    result.Error = "The received connection is not a WebSocket request.";
                     return result;
                 }
 
                 HttpListenerWebSocketContext wsContext = await context.AcceptWebSocketAsync(null).ConfigureAwait(false);
                 WebSocket ws = wsContext.WebSocket;
-                append("[GAMA] Client WebSocket connecté !");
+                append("[GAMA] WebSocket client connected!");
 
                 var state = new CaptureState();
                 Task pumpTask = RunServerPumpAsync(ws, state, captureCts.Token, append);
@@ -106,7 +106,7 @@ internal static class GamaEditorLocalMiddleware
 
                     if (rr.MessageType == WebSocketMessageType.Close)
                     {
-                        append("[GAMA] GAMA a fermé la connexion WebSocket.");
+                        append("[GAMA] GAMA closed the WebSocket connection.");
                         break;
                     }
 
@@ -124,7 +124,7 @@ internal static class GamaEditorLocalMiddleware
                     await pumpTask.ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) { }
-                catch (Exception ex) { append("[GAMA] Pompe serveur : " + ex.Message); }
+                catch (Exception ex) { append("[GAMA] Server pump: " + ex.Message); }
 
                 try
                 {
@@ -137,17 +137,17 @@ internal static class GamaEditorLocalMiddleware
 
                 if (!state.HasAllThree)
                 {
-                    result.Error = "Capture terminée sans avoir reçu tous les fichiers attendus (timeout ou erreur).";
+                    result.Error = "Capture completed without receiving all expected files (timeout or error).";
                 }
             }
             catch (OperationCanceledException)
             {
-                result.Error = "La capture a expiré ou a été annulée.";
+                result.Error = "Capture timed out or was cancelled.";
             }
             catch (Exception ex)
             {
                 if (ex.Message != "The listener is closed" && !(ex is HttpListenerException hl && hl.ErrorCode == 995))
-                    result.Error = "Erreur serveur local : " + ex.Message;
+                    result.Error = "Local server error: " + ex.Message;
             }
             finally
             {
@@ -168,7 +168,7 @@ internal static class GamaEditorLocalMiddleware
         {
             { "type", "ask" },
             { "action", action },
-            { "args", "{}" }, // vide
+            { "args", "{}" }, // empty
             { "agent", UnityLinkerAgent }
         });
         byte[] bytes = Encoding.UTF8.GetBytes(payload);
@@ -191,7 +191,7 @@ internal static class GamaEditorLocalMiddleware
                 await Task.Delay(200, ct).ConfigureAwait(false);
                 if (ws.State != WebSocketState.Open) break;
 
-                // Une fois GAMA connecté, on envoie le json_state pour simuler que l'UI Unity est connectée
+                // Once GAMA is connected, we send json_state to simulate that the Unity UI is connected
                 if (!sentInitData)
                 {
                     string jsonState = JsonConvert.SerializeObject(new
@@ -203,7 +203,7 @@ internal static class GamaEditorLocalMiddleware
                     await ws.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes(jsonState)), WebSocketMessageType.Text, true, ct);
                     
                     await SendExecutableAskAsync(ws, "send_init_data", ct).ConfigureAwait(false);
-                    append("[GAMA] Requête send_init_data envoyée.");
+                    append("[GAMA] send_init_data request sent.");
                     sentInitData = true;
                 }
 
@@ -211,7 +211,7 @@ internal static class GamaEditorLocalMiddleware
                 {
                     sentGeomReady = true;
                     await SendExecutableAskAsync(ws, "player_ready_to_receive_geometries", ct).ConfigureAwait(false);
-                    append("[GAMA] Demande player_ready_to_receive_geometries envoyée.");
+                    append("[GAMA] player_ready_to_receive_geometries request sent.");
                 }
             }
         }
@@ -244,7 +244,7 @@ internal static class GamaEditorLocalMiddleware
 
         if (type == "connection")
         {
-            append("[GAMA] Handshake 'connection' reçu de GAMA.");
+            append("[GAMA] 'connection' handshake received from GAMA.");
             return;
         }
 
@@ -273,14 +273,14 @@ internal static class GamaEditorLocalMiddleware
                 if (!state.GotPrecision)
                 {
                     written = WriteFile(outputDirectory, "precision.json", contentSerialized, append);
-                    if (written != null) { result.PrecisionJsonPath = written; state.GotPrecision = true; append("[GAMA] precision.json reçu."); }
+                    if (written != null) { result.PrecisionJsonPath = written; state.GotPrecision = true; append("[GAMA] precision.json received."); }
                 }
                 break;
             case "properties":
                 if (!state.GotProperties)
                 {
                     written = WriteFile(outputDirectory, "properties.json", contentSerialized, append);
-                    if (written != null) { result.PropertiesJsonPath = written; state.GotProperties = true; append("[GAMA] properties.json reçu."); }
+                    if (written != null) { result.PropertiesJsonPath = written; state.GotProperties = true; append("[GAMA] properties.json received."); }
                 }
                 break;
             case "pointsLoc":
@@ -289,7 +289,7 @@ internal static class GamaEditorLocalMiddleware
                 if (!state.GotWorld)
                 {
                     written = WriteFile(outputDirectory, "world.json", contentSerialized, append);
-                    if (written != null) { result.WorldJsonPath = written; state.GotWorld = true; append("[GAMA] world.json reçu."); }
+                    if (written != null) { result.WorldJsonPath = written; state.GotWorld = true; append("[GAMA] world.json received."); }
                 }
                 break;
             default:
@@ -297,7 +297,7 @@ internal static class GamaEditorLocalMiddleware
                 if (!state.GotWorld && contents["pointsLoc"] != null && contents["names"] != null)
                 {
                     written = WriteFile(outputDirectory, "world.json", contentSerialized, append);
-                    if (written != null) { result.WorldJsonPath = written; state.GotWorld = true; append("[GAMA] world.json déduit."); }
+                    if (written != null) { result.WorldJsonPath = written; state.GotWorld = true; append("[GAMA] world.json deduced."); }
                 }
                 break;
         }
@@ -337,7 +337,7 @@ internal static class GamaEditorLocalMiddleware
         }
         catch (Exception ex)
         {
-            append("[GAMA] Impossible d'écrire " + fileName + " : " + ex.Message);
+            append("[GAMA] Cannot write " + fileName + ": " + ex.Message);
             return null;
         }
     }

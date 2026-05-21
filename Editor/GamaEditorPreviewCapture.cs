@@ -214,7 +214,7 @@ internal static class GamaEditorPreviewCapture
         sb.Append("[GAMA][PREVIEW] ").Append(scope).Append(" species:");
         if (counts == null || counts.Count == 0)
         {
-            sb.Append(" (aucun agent)");
+            sb.Append(" (no agents)");
             return sb.ToString();
         }
 
