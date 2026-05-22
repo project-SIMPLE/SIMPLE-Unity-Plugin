@@ -872,10 +872,17 @@ public sealed class GamaPanelWindow : EditorWindow
         {
             EditorGUILayout.Space(8f);
             DrawAgentSettings();
+
             if (analysis != null)
             {
                 DrawApplyControls();
             }
+
+            DrawPreviewValidationControls();
+        }
+        else if (GameObject.Find(StaticPreviewRootName) != null)
+        {
+            DrawPreviewValidationControls();
         }
 
         EditorGUILayout.Space(12f);
