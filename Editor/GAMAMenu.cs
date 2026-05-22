@@ -29,19 +29,19 @@ public class GAMAMenu : ScriptableObject
         "useMiddleWare"
     };
 
-    [MenuItem("GAMA/Setup Scene")]
+    // [MenuItem("GAMA/Setup Scene")] // Hidden for demo — accessible via GAMA Panel > Setup Scene
     public static void SetupScene()
     {
         SetupSceneCore(true);
     }
 
-    [MenuItem("GAMA/Setup Scene (VR Simulator)")]
+    // [MenuItem("GAMA/Setup Scene (VR Simulator)")] // Hidden for demo — accessible via GAMA Panel > Setup Scene
     public static void SetupSceneVrSimulator()
     {
         SetupSceneCore(true);
     }
 
-    [MenuItem("GAMA/Setup Scene (Headset Ready)")]
+    // [MenuItem("GAMA/Setup Scene (Headset Ready)")] // Hidden for demo — accessible via GAMA Panel > Setup Scene
     public static void SetupSceneHeadsetReady()
     {
         SetupSceneCore(false);

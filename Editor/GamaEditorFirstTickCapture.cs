@@ -384,7 +384,7 @@ internal static class GamaEditorFirstTickCapture
         }
         catch (Exception ex)
         {
-            result.Error = "Impossible de créer le dossier de sortie : " + ex.Message;
+            result.Error = "Cannot create output folder: " + ex.Message;
             result.LogTrail = logBuilder.ToString();
             return result;
         }
@@ -398,7 +398,7 @@ internal static class GamaEditorFirstTickCapture
         }
         catch (Exception ex)
         {
-            result.Error = "URL middleware invalide : " + ex.Message;
+            result.Error = "Invalid middleware URL: " + ex.Message;
             result.LogTrail = logBuilder.ToString();
             return result;
         }
@@ -411,7 +411,7 @@ internal static class GamaEditorFirstTickCapture
             {
                 if (string.IsNullOrWhiteSpace(directModelPath) || string.IsNullOrWhiteSpace(directExperimentName))
                 {
-                    result.Error = "Mode piloté par Unity: modelPath + experimentName obligatoires (sélection Unity).";
+                    result.Error = "Unity-managed mode: modelPath + experimentName are required (Unity selection).";
                     result.LogTrail = logBuilder.ToString();
                     return result;
                 }
@@ -430,7 +430,7 @@ internal static class GamaEditorFirstTickCapture
                         .ConfigureAwait(false);
                 if (!orch.Success)
                 {
-                    result.Error = orch.Error ?? "Échec orchestration middleware (monitor).";
+                    result.Error = orch.Error ?? "Middleware orchestration failed (monitor).";
                     result.LogTrail = logBuilder + orch.LogTrail;
                     return result;
                 }
@@ -450,7 +450,7 @@ internal static class GamaEditorFirstTickCapture
                 }
                 catch (OperationCanceledException)
                 {
-                    result.Error = "Capture annulée pendant la purge préventive.";
+                    result.Error = "Capture cancelled during preventive purge.";
                     result.LogTrail = logBuilder.ToString();
                     return result;
                 }
@@ -471,11 +471,11 @@ internal static class GamaEditorFirstTickCapture
                     }
                     catch (OperationCanceledException)
                     {
-                        result.Error = "Connexion impossible au middleware (timeout " + (connectTimeoutMs / 1000) + " s) sur " + uri + ".";
+                        result.Error = "Cannot connect to middleware (timeout " + (connectTimeoutMs / 1000) + " s) on " + uri + ".";
                     }
                     catch (Exception ex)
                     {
-                        result.Error = "Connexion impossible au middleware : " + ex.Message;
+                        result.Error = "Cannot connect to middleware: " + ex.Message;
                     }
                 }
 
@@ -510,7 +510,7 @@ internal static class GamaEditorFirstTickCapture
                     }
                     catch (Exception ex)
                     {
-                        result.Error = "Échec d'envoi du handshake : " + ex.Message;
+                        result.Error = "Failed to send handshake: " + ex.Message;
                         result.LogTrail = logBuilder.ToString();
                         return result;
                     }
@@ -577,7 +577,7 @@ internal static class GamaEditorFirstTickCapture
                     }
                     catch (Exception ex)
                     {
-                        result.Error = "Impossible d'obtenir le verrou GAMA (autre capture en cours ?) : " + ex.Message;
+                        result.Error = "Cannot acquire GAMA lock (another capture in progress?): " + ex.Message;
                         result.LogTrail = logBuilder.ToString();
                         return result;
                     }
@@ -2920,13 +2920,13 @@ internal static class GamaEditorFirstTickCapture
             {
                 append("[GAMA] Port " + (state.DirectGamaMode ? "?" : "1000") +
                        " = serveur GAMA, pas le middleware Node. Cochez « Capture directe » ou lancez simple.webplatform sur le port 8080.");
-                result.Error = "Protocole incorrect : le port cible est le serveur GAMA (commande « connection » refusée). Utilisez le port 8080 avec simple.webplatform, ou cochez « Capture directe GAMA GUI » pour le port 1000.";
+                result.Error = "Incorrect protocol: target port is GAMA Server ('connection' command refused). Use port 8080 with simple.webplatform, or check 'Direct GAMA GUI Capture' for port 1000.";
                 return;
             }
 
             if (state.DirectGamaMode && state.SkipRemoteLoad && isCreatePlayer && simUnavailable)
             {
-                result.Error = "Impossible de piloter une expérience GAMA déjà ouverte à la main depuis ce WebSocket : GAMA Server ne connaît pas son exp_id pour Unity. Décochez « Expérience déjà ouverte dans GAMA » pour laisser Unity faire le load, ou utilisez simple.webplatform sur 8080.";
+                result.Error = "Cannot control an already opened GAMA experiment manually from this WebSocket: GAMA Server does not know its exp_id for Unity. Uncheck 'Experiment already open in GAMA' to let Unity load it, or use simple.webplatform on port 8080.";
                 state.DirectCreatePlayerSent = true;
                 state.CaptureDeadlineUtc = DateTime.UtcNow;
                 append("[GAMA] " + result.Error);
@@ -3698,24 +3698,24 @@ internal static class GamaEditorFirstTickCapture
     {
         if (!state.DirectGamaMode && !string.IsNullOrEmpty(state.MiddlewareOccupiedPlayerId))
         {
-            return "Slot joueur occupé par « " + state.MiddlewareOccupiedPlayerId +
-                   " » (max_num_players=1). Arrêtez Unity Play, purguez ce joueur dans le panneau, puis capturez avec id « " +
-                   state.ConnectionId + " ».";
+            return "Player slot occupied by '" + state.MiddlewareOccupiedPlayerId +
+                   "' (max_num_players=1). Stop Unity Play, purge this player in the panel, then capture with id '" +
+                   state.ConnectionId + "'.";
         }
 
         if (state.HybridGamaCommandChannel && state.HybridGamaCommandsDone && !state.GotPrecision)
         {
             if (state.HybridGamaInitSentCount == 0)
             {
-                return "Capture (expérience déjà ouverte) : aucun send_init_data n’a pu être envoyé (middleware ni GAMA:1000). " +
-                       "Vérifiez simple.webplatform (8080), GAMA (Yes), ID vide → " + StaticInformation.getId() +
-                       ", arrêtez Unity Play.";
+                return "Capture (experiment already open): no send_init_data could be sent (neither middleware nor GAMA:1000). " +
+                       "Check simple.webplatform (8080), GAMA (Yes), empty ID -> " + StaticInformation.getId() +
+                       ", stop Unity Play.";
             }
 
-            return "Capture (comme au Play) : send_init_data sur GAMA:1000 OK, mais aucun json_output sur le middleware. " +
-                   "Les commandes 8080 sont ignorées si l’expérience n’a été lancée que depuis GAMA (Yes) : lancez-la une fois depuis l’UI web du middleware, " +
-                   "vérifiez simple.webplatform connecté à GAMA, ID vide → " + StaticInformation.getId() +
-                   ", arrêtez Unity Play avant capture.";
+            return "Capture (as in Play): send_init_data on GAMA:1000 OK, but no json_output on middleware. " +
+                   "8080 commands are ignored if the experiment was only launched from GAMA (Yes): launch it once from the middleware web UI, " +
+                   "check simple.webplatform is connected to GAMA, empty ID -> " + StaticInformation.getId() +
+                   ", stop Unity Play before capture.";
         }
 
         if (!state.DirectGamaMode && state.ManagedFromUnity && !state.GotPrecision)
@@ -3726,23 +3726,23 @@ internal static class GamaEditorFirstTickCapture
                        "Sélectionnez l'expérience dans GAMA, puis réessayez.";
             }
 
-            return "Capture pilotée par Unity : expérience lancée via monitor mais aucun json_output sur 8080. " +
-                   "Vérifiez GAMA (Yes) connecté au middleware, le catalogue VU (LEARNING_PACKAGE_PATH), ID vide → " +
+            return "Unity-managed capture: experiment launched via monitor but no json_output on 8080. " +
+                   "Check GAMA (Yes) is connected to middleware, VU catalog (LEARNING_PACKAGE_PATH), empty ID -> " +
                    StaticInformation.getId() + ".";
         }
 
         if (!state.DirectGamaMode && state.SkipRemoteLoad && !state.HybridGamaCommandChannel &&
             state.SendInitDataSuccessCount == 0 && !state.GotPrecision)
         {
-            return "Capture middleware 8080 pur (expérience déjà ouverte) : send_init_data envoyé mais aucun json_output. " +
-                   "Essayez le mode « Piloté par Unity » pour lancer l’expérience via le monitor sans l’UI web.";
+            return "Pure 8080 middleware capture (experiment already open): send_init_data sent but no json_output. " +
+                   "Try the 'Managed from Unity' mode to launch the experiment via monitor without web UI.";
         }
 
         if (!state.DirectGamaMode && state.GamaBootstrapPhase == 3 && state.SendInitDataSuccessCount == 0)
         {
-            return "Bootstrap GAMA (create_player/load) n'a pas abouti avant la capture middleware. " +
-                   "Si vous avez lancé l'expérience dans GAMA (Yes), cochez « Expérience déjà ouverte ». " +
-                   "Sinon fermez la simulation dans GAMA et réessayez.";
+            return "GAMA bootstrap (create_player/load) did not succeed before middleware capture. " +
+                   "If you launched the experiment in GAMA (Yes), check 'Experiment already open'. " +
+                   "Otherwise close the simulation in GAMA and try again.";
         }
 
         if (state.DirectGamaMode &&
@@ -3753,19 +3753,19 @@ internal static class GamaEditorFirstTickCapture
             !state.GotProperties &&
             state.WorldFrameCount <= 0)
         {
-            return "Capture directe incomplète : create_player et send_init_data ont été confirmés par GAMA (" +
+            return "Incomplete direct capture: create_player and send_init_data were confirmed by GAMA (" +
                    state.SendInitDataSuccessCount +
-                   " fois), mais aucun SimulationOutput/json_output contenant precision, properties ou world n'a été émis sur le WebSocket GAMA.";
+                   " times), but no SimulationOutput/json_output containing precision, properties or world was emitted on the GAMA WebSocket.";
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.Append("Prévisualisation cumulative non capturée (timeout). Manquant : ");
+        sb.Append("Cumulative preview not captured (timeout). Missing: ");
         bool first = true;
         if (!state.GotPrecision) { sb.Append("precision"); first = false; }
         if (!state.GotProperties) { if (!first) sb.Append(", "); sb.Append("properties"); first = false; }
         if (state.WorldFrameCount <= 0) { if (!first) sb.Append(", "); sb.Append("world (pointsLoc)"); first = false; }
-        else if (!state.WorldHasAgents) { if (!first) sb.Append(", "); sb.Append("agents dans le monde"); first = false; }
-        sb.Append(". Messages json_output autres reçus : ").Append(state.OtherOutputCount).Append('.');
+        else if (!state.WorldHasAgents) { if (!first) sb.Append(", "); sb.Append("agents in world"); first = false; }
+        sb.Append(". Other json_output messages received: ").Append(state.OtherOutputCount).Append('.');
         return state.GeometryExportErrorDetected
             ? state.GeometryExportErrorMessage + " " + sb
             : sb.ToString();

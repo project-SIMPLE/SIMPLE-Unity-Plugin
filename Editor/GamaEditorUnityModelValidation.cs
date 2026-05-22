@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 
 /// <summary>
-/// Vérifie qu'un modèle / expérience GAMA est compatible avec le plugin Unity (unity_linker, type unity).
+/// Checks if a GAMA model / experiment is compatible with the Unity plugin (unity_linker, type unity).
 /// </summary>
 internal static class GamaEditorUnityModelValidation
 {
@@ -32,7 +32,7 @@ internal static class GamaEditorUnityModelValidation
         errorMessage = null;
         if (string.IsNullOrWhiteSpace(modelPath))
         {
-            errorMessage = "Aucun fichier .gaml sélectionné.";
+            errorMessage = "No .gaml file selected.";
             return false;
         }
 
@@ -43,19 +43,19 @@ internal static class GamaEditorUnityModelValidation
         }
         catch (Exception ex)
         {
-            errorMessage = "Chemin modèle invalide : " + ex.Message;
+            errorMessage = "Invalid model path: " + ex.Message;
             return false;
         }
 
         if (!File.Exists(fullPath))
         {
-            errorMessage = "Fichier .gaml introuvable : " + fullPath;
+            errorMessage = ".gaml file not found: " + fullPath;
             return false;
         }
 
         if (string.IsNullOrWhiteSpace(experimentName))
         {
-            errorMessage = "Aucune expérience sélectionnée.";
+            errorMessage = "No experiment selected.";
             return false;
         }
 
@@ -66,16 +66,16 @@ internal static class GamaEditorUnityModelValidation
         }
         catch (Exception ex)
         {
-            errorMessage = "Impossible de lire le modèle : " + ex.Message;
+            errorMessage = "Cannot read model: " + ex.Message;
             return false;
         }
 
         if (!UnityLinkerSpeciesRegex.IsMatch(content) && !AbstractUnityLinkerRegex.IsMatch(content))
         {
             errorMessage =
-                "Ce modèle n'est pas compatible Unity : aucune espèce « unity_linker » (parent abstract_unity_linker) dans « " +
-                Path.GetFileName(fullPath) + " ».\n\n" +
-                "Utilisez un modèle *-VR.gaml (ex. Traffic and Pollution-VR.gaml, experiment vr_xp) ou ajoutez unity_linker + experiment type: unity.";
+                "This model is not Unity-compatible: no 'unity_linker' species (parent abstract_unity_linker) in '" +
+                Path.GetFileName(fullPath) + "'.\n\n" +
+                "Use a *-VR.gaml model (e.g., Traffic and Pollution-VR.gaml, experiment vr_xp) or add unity_linker + experiment type: unity.";
             return false;
         }
 
@@ -83,7 +83,7 @@ internal static class GamaEditorUnityModelValidation
             .FirstOrDefault(o => string.Equals(o.Name, experimentName.Trim(), StringComparison.OrdinalIgnoreCase));
         if (option == null)
         {
-            errorMessage = "Expérience « " + experimentName + " » introuvable dans " + Path.GetFileName(fullPath) + ".";
+            errorMessage = "Experiment '" + experimentName + "' not found in " + Path.GetFileName(fullPath) + ".";
             return false;
         }
 
@@ -96,9 +96,9 @@ internal static class GamaEditorUnityModelValidation
         if (!unityExperiment)
         {
             errorMessage =
-                "L'expérience « " + experimentName + " » n'est pas une expérience Unity (attendu « type: unity » ou action create_player).\n\n" +
-                "Exemple : experiment vr_xp type: unity dans un modèle *-VR.gaml.\n" +
-                "Les modèles batch / 2D (ex. reproductibilité_parallélisme.gaml) ne peuvent pas être capturés pour la prévisualisation Unity.";
+                "Experiment '" + experimentName + "' is not a Unity experiment (expected 'type: unity' or create_player action).\n\n" +
+                "Example: experiment vr_xp type: unity in a *-VR.gaml model.\n" +
+                "Batch / 2D models (e.g. reproducibility_parallelism.gaml) cannot be captured for Unity preview.";
             return false;
         }
 

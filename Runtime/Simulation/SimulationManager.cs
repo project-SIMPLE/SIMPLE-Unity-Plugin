@@ -18,6 +18,9 @@ public abstract partial class SimulationManager : MonoBehaviour
     [Header("Base GameObjects")]
     [SerializeField] protected GameObject player;
     [SerializeField] protected GameObject Ground;
+    
+    [SerializeField, Tooltip("Organize runtime agents into [GAMA] Runtime Live Agents / species hierarchy.")]
+    protected bool groupRuntimeAgentsBySpecies = true;
 
     [Header("Prefab viewport streaming")]
     [SerializeField] protected bool streamPrefabsByCameraView = true;
@@ -83,6 +86,11 @@ public abstract partial class SimulationManager : MonoBehaviour
     //    public static event Action<WorldJSONInfo> OnWorldDataReceived;
     // ########################################################################
 
+    protected Dictionary<string, GamaAgentVisualState> visualStateCache;
+    protected Dictionary<string, string> resolvedPrefabSignatures;
+    
+    private Transform runtimeAgentsRoot;
+    private Dictionary<string, Transform> runtimeSpeciesParents;
     protected Dictionary<string, List<object>> geometryMap;
     protected Dictionary<string, PropertiesGAMA> propertyMap = null;
     private static readonly HashSet<string> missingPrefabWarnings = new HashSet<string>();
@@ -250,6 +258,10 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     void Start()
     {
+        visualStateCache = new Dictionary<string, GamaAgentVisualState>(StringComparer.Ordinal);
+        resolvedPrefabSignatures = new Dictionary<string, string>(StringComparer.Ordinal);
+        runtimeSpeciesParents = new Dictionary<string, Transform>(StringComparer.OrdinalIgnoreCase);
+
         geometryMap = new Dictionary<string, List<object>>();
         handleGeometriesRequested = false;
         // handlePlayerParametersRequested = false;
@@ -757,6 +769,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                         if (prop.isGrabable) mc.convex = true;
                     }
                     instantiateGO(obj, name, prop);
+                    ParentRuntimeAgent(obj, prop.id);
                     if (geometryMap != null)
                     {
                         geometryMap[name] = new List<object> { obj, prop };
@@ -1093,7 +1106,58 @@ public abstract partial class SimulationManager : MonoBehaviour
             instantiateGO(obj, name, prop);
         }
 
+        ParentRuntimeAgent(obj, prop.id);
+
         return obj;
+    }
+
+    private void ParentRuntimeAgent(GameObject obj, string speciesKey)
+    {
+        if (!groupRuntimeAgentsBySpecies || obj == null) return;
+        
+        if (runtimeAgentsRoot == null)
+        {
+            GameObject rootObj = GameObject.Find("[GAMA] Runtime Live Agents");
+            if (rootObj == null)
+            {
+                rootObj = new GameObject("[GAMA] Runtime Live Agents");
+                Debug.Log("[GAMA][RUNTIME] Created runtime hierarchy root: [GAMA] Runtime Live Agents");
+            }
+            runtimeAgentsRoot = rootObj.transform;
+            runtimeAgentsRoot.position = Vector3.zero;
+            runtimeAgentsRoot.rotation = Quaternion.identity;
+            runtimeAgentsRoot.localScale = Vector3.one;
+        }
+
+        string safeSpecies = string.IsNullOrWhiteSpace(speciesKey) ? "unknown" : speciesKey.Trim();
+
+        Transform speciesParent;
+        if (runtimeSpeciesParents == null) 
+        {
+            runtimeSpeciesParents = new Dictionary<string, Transform>(StringComparer.OrdinalIgnoreCase);
+        }
+        
+        if (!runtimeSpeciesParents.TryGetValue(safeSpecies, out speciesParent) || speciesParent == null)
+        {
+            Transform existingParent = runtimeAgentsRoot.Find(safeSpecies);
+            if (existingParent != null)
+            {
+                speciesParent = existingParent;
+            }
+            else
+            {
+                GameObject parentObj = new GameObject(safeSpecies);
+                parentObj.transform.SetParent(runtimeAgentsRoot, false);
+                speciesParent = parentObj.transform;
+            }
+            
+            speciesParent.position = Vector3.zero;
+            speciesParent.rotation = Quaternion.identity;
+            speciesParent.localScale = Vector3.one;
+            runtimeSpeciesParents[safeSpecies] = speciesParent;
+        }
+
+        obj.transform.SetParent(speciesParent, true);
     }
 
     private static void WarnMissingPrefabOnce(PropertiesGAMA prop, string sampleAgentName)
@@ -1347,6 +1411,17 @@ public abstract partial class SimulationManager : MonoBehaviour
         {
             UnityEngine.Object.Destroy(prefabPoolRoot.gameObject);
             prefabPoolRoot = null;
+        }
+
+        if (runtimeAgentsRoot != null)
+        {
+            UnityEngine.Object.Destroy(runtimeAgentsRoot.gameObject);
+            runtimeAgentsRoot = null;
+        }
+        
+        if (runtimeSpeciesParents != null)
+        {
+            runtimeSpeciesParents.Clear();
         }
     }
 

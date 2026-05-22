@@ -1,74 +1,209 @@
 using UnityEditor;
 using UnityEngine;
+using System.Collections.Generic;
 
 [CustomEditor(typeof(SimulationManager), true)]
 [CanEditMultipleObjects]
 public class SimulationManagerInspector : Editor
 {
     private bool showSpeciesPanel = true;
-    private bool showAgentSettings = false;
-    private bool showPrefabSettings = false;
+    private bool showRenderingSettings = true;
+    private bool showPreviewAndPlaySettings = true;
+    private bool showSceneReferences = false;
+    private bool showInteractionScenario = false;
+    private bool showPerformanceAndStreaming = false;
+    private bool showAdvancedDebug = false;
+
+    // We keep a HashSet of explicitly mapped fields so we don't double-draw them
+    private HashSet<string> explicitFields = new HashSet<string>
+    {
+        "m_Script",
+        "createAgentEntries", "maxAgentEntries", "logWhenAgentEntriesCapReached", "keepManualAgentEntriesWhenMissing",
+        "propertySettings", "applyRuleOverrides", "ruleSettings", "agentSettings",
+        "createPropertyEntries", "propertyBindings", "applyKeyTranslations", "keyTranslations",
+        "allowResourcesLookup", "allowFileNameFallback", "logMissingPrefabOnce", "keepManualPrefabEntriesWhenMissing",
+        
+        "streamPrefabsByCameraView", "preferSceneViewCameraInEditor", "keepSelectedPrefabsLoaded", "prefabViewPadding",
+        "prefabViewUpdateInterval", "enablePrefabRenderDistance", "globalPrefabRenderDistance", "prefabRenderDistanceHysteresis",
+        "enableGpuInstancingForPrefabMaterials",
+        
+        "primaryRightHandButton", "player", "Ground", "XROrigin", "toFollow", "lightObject", "groupRuntimeAgentsBySpecies",
+        
+        "dayNight", "hotspots", "interactionTags", "gamaAsks", "visualFeedback", "interactionRules",
+        
+        "enablePrefabPooling", "maxPooledPrefabsPerSignature", "limitAgentUpdatesPerTick", "maxAgentUpdatesPerTick",
+        "removeMissingGeometryAgents", "missingTicksBeforeCull",
+        
+        "logPrefabStreamingStats", "prefabStreamingStatsInterval", "logAgentUpdateBudgetStats", "agentUpdateBudgetStatsInterval",
+        "debugOptions"
+    };
 
     public override void OnInspectorGUI()
     {
         serializedObject.Update();
 
-        string[] excludedFields = new string[] {
-            "m_Script",
-            "createAgentEntries", "maxAgentEntries", "logWhenAgentEntriesCapReached", "keepManualAgentEntriesWhenMissing",
-            "propertySettings", "applyRuleOverrides", "ruleSettings", "agentSettings",
-            "createPropertyEntries", "propertyBindings", "applyKeyTranslations", "keyTranslations",
-            "allowResourcesLookup", "allowFileNameFallback", "logMissingPrefabOnce", "keepManualPrefabEntriesWhenMissing"
-        };
-
-        DrawSerializedPropertiesExcluding(serializedObject, excludedFields);
-
-        EditorGUILayout.Space(12);
-
-        // ====================== SPECIES PANEL ======================
-        showSpeciesPanel = EditorGUILayout.Foldout(showSpeciesPanel, "GAMA Species Overview", true, EditorStyles.foldoutHeader);
+        // 1. GAMA Species Overview and Attributes
+        showSpeciesPanel = EditorGUILayout.Foldout(showSpeciesPanel, "GAMA Species Overview and Attributes", true, EditorStyles.foldoutHeader);
         if (showSpeciesPanel)
         {
             EditorGUI.indentLevel++;
+            EditorGUILayout.HelpBox("Detected species and shared visual overrides. These settings are used by both the static preview and the Play runtime.", MessageType.Info);
             DrawSpeciesOverview();
             EditorGUI.indentLevel--;
         }
 
         EditorGUILayout.Space(8);
 
-        // ====================== AGENT SCENE SETTINGS ======================
-        showAgentSettings = EditorGUILayout.Foldout(showAgentSettings, "Agent Visual Settings (Advanced)", true, EditorStyles.foldoutHeader);
-        if (showAgentSettings)
+        // 2. Rendering Settings
+        showRenderingSettings = EditorGUILayout.Foldout(showRenderingSettings, "Rendering Settings", true, EditorStyles.foldoutHeader);
+        if (showRenderingSettings)
         {
             EditorGUI.indentLevel++;
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("createAgentEntries"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("maxAgentEntries"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("logWhenAgentEntriesCapReached"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("keepManualAgentEntriesWhenMissing"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("propertySettings"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("applyRuleOverrides"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("ruleSettings"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("agentSettings"));
+            EditorGUILayout.HelpBox("Controls which agents are rendered based on camera visibility and distance. This improves performance in large GAMA scenes.\nCamera FOV is read from the active Game camera.", MessageType.Info);
+            DrawProperty("streamPrefabsByCameraView", "Cull Agents Outside Camera View");
+            DrawProperty("preferSceneViewCameraInEditor", "Use Scene View Camera In Editor");
+            DrawProperty("keepSelectedPrefabsLoaded", "Keep Selected Agents Visible");
+            DrawProperty("prefabViewPadding", "Camera View Padding");
+            DrawProperty("prefabViewUpdateInterval", "Visibility Update Interval");
+            DrawProperty("enablePrefabRenderDistance", "Enable Max Render Distance");
+            DrawProperty("globalPrefabRenderDistance", "Max Render Distance");
+            DrawProperty("prefabRenderDistanceHysteresis", "Render Distance Hysteresis");
+            DrawProperty("enableGpuInstancingForPrefabMaterials", "Enable GPU Instancing");
             EditorGUI.indentLevel--;
         }
 
-        // ====================== PREFAB SCENE SETTINGS ======================
-        showPrefabSettings = EditorGUILayout.Foldout(showPrefabSettings, "Prefab Resolution Settings (Advanced)", true, EditorStyles.foldoutHeader);
-        if (showPrefabSettings)
+        EditorGUILayout.Space(8);
+
+        // 3. Preview and Play Settings
+        showPreviewAndPlaySettings = EditorGUILayout.Foldout(showPreviewAndPlaySettings, "Preview and Play Settings", true, EditorStyles.foldoutHeader);
+        if (showPreviewAndPlaySettings)
         {
             EditorGUI.indentLevel++;
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("createPropertyEntries"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("keepManualPrefabEntriesWhenMissing"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("propertyBindings"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("applyKeyTranslations"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("keyTranslations"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("allowResourcesLookup"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("allowFileNameFallback"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("logMissingPrefabOnce"));
+            EditorGUILayout.HelpBox("Controls how the static preview is synchronized with the Play runtime.\n- Static preview is visible in Edit Mode.\n- Static preview is hidden during Play.\n- Species overrides are applied to live agents during Play.", MessageType.Info);
+            
+            EditorGUI.BeginChangeCheck();
+            bool autoHide = EditorPrefs.GetBool("ProjectSimple.GamaUnity.Panel.AutoHidePreviewOnPlay", true);
+            autoHide = EditorGUILayout.Toggle("Hide Preview During Play", autoHide);
+            
+            bool applyToPlay = EditorPrefs.GetBool("ProjectSimple.GamaUnity.Panel.ApplyPreviewSettingsToPlay", true);
+            applyToPlay = EditorGUILayout.Toggle("Apply Preview Settings to Play", applyToPlay);
+            
+            bool liveUpdate = EditorPrefs.GetBool("ProjectSimple.GamaUnity.Panel.AutoUpdatePreview", false);
+            liveUpdate = EditorGUILayout.Toggle("Live Update Preview", liveUpdate);
+            
+            if (EditorGUI.EndChangeCheck())
+            {
+                EditorPrefs.SetBool("ProjectSimple.GamaUnity.Panel.AutoHidePreviewOnPlay", autoHide);
+                EditorPrefs.SetBool("ProjectSimple.GamaUnity.Panel.ApplyPreviewSettingsToPlay", applyToPlay);
+                EditorPrefs.SetBool("ProjectSimple.GamaUnity.Panel.AutoUpdatePreview", liveUpdate);
+            }
+
+            if (GUILayout.Button("Apply Settings to Preview", GUILayout.Height(22f)))
+            {
+                GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
+            }
+
+            EditorGUI.indentLevel--;
+        }
+
+        EditorGUILayout.Space(8);
+
+        // 4. Scene References
+        showSceneReferences = EditorGUILayout.Foldout(showSceneReferences, "Scene References", true, EditorStyles.foldoutHeader);
+        if (showSceneReferences)
+        {
+            EditorGUI.indentLevel++;
+            EditorGUILayout.HelpBox("References required by the scene setup and XR interaction workflow.", MessageType.None);
+            DrawProperty("primaryRightHandButton");
+            DrawProperty("player");
+            DrawProperty("Ground");
+            DrawProperty("XROrigin");
+            DrawProperty("toFollow");
+            DrawProperty("lightObject");
+            
+            EditorGUILayout.Space(4);
+            DrawProperty("groupRuntimeAgentsBySpecies", "Group Runtime Agents By Species");
+            
+            // Draw any unknown serialized properties here
+            DrawUnknownProperties();
+            EditorGUI.indentLevel--;
+        }
+
+        EditorGUILayout.Space(8);
+
+        // 5. Interaction Scenario
+        showInteractionScenario = EditorGUILayout.Foldout(showInteractionScenario, "Interaction Scenario", true, EditorStyles.foldoutHeader);
+        if (showInteractionScenario)
+        {
+            EditorGUI.indentLevel++;
+            EditorGUILayout.HelpBox("Scenario-specific behavior for interactions, hotspots, vehicles, and visual feedback.", MessageType.None);
+            DrawProperty("dayNight");
+            DrawProperty("hotspots");
+            DrawProperty("interactionTags");
+            DrawProperty("gamaAsks");
+            DrawProperty("visualFeedback");
+            DrawProperty("interactionRules");
+            EditorGUI.indentLevel--;
+        }
+
+        EditorGUILayout.Space(8);
+
+        // 6. Performance and Streaming
+        showPerformanceAndStreaming = EditorGUILayout.Foldout(showPerformanceAndStreaming, "Performance and Streaming", true, EditorStyles.foldoutHeader);
+        if (showPerformanceAndStreaming)
+        {
+            EditorGUI.indentLevel++;
+            EditorGUILayout.HelpBox("Performance options for large simulations. Keep default values unless profiling shows a bottleneck.", MessageType.None);
+            DrawProperty("enablePrefabPooling", "Enable Object Pooling");
+            DrawProperty("maxPooledPrefabsPerSignature", "Max Pooled Objects Per Type");
+            DrawProperty("limitAgentUpdatesPerTick", "Limit Agent Updates Per Frame");
+            DrawProperty("maxAgentUpdatesPerTick", "Max Agent Updates Per Frame");
+            DrawProperty("removeMissingGeometryAgents", "Remove Missing Geometry Agents");
+            DrawProperty("missingTicksBeforeCull", "Missing Ticks Before Hide");
+            EditorGUI.indentLevel--;
+        }
+
+        EditorGUILayout.Space(8);
+
+        // 7. Advanced Debug
+        showAdvancedDebug = EditorGUILayout.Foldout(showAdvancedDebug, "Advanced Debug", true, EditorStyles.foldoutHeader);
+        if (showAdvancedDebug)
+        {
+            EditorGUI.indentLevel++;
+            EditorGUILayout.HelpBox("Debug-only settings. Keep disabled during demos unless troubleshooting.", MessageType.Warning);
+            DrawProperty("logPrefabStreamingStats");
+            DrawProperty("prefabStreamingStatsInterval");
+            DrawProperty("logAgentUpdateBudgetStats");
+            DrawProperty("agentUpdateBudgetStatsInterval");
+            DrawProperty("debugOptions");
             EditorGUI.indentLevel--;
         }
 
         serializedObject.ApplyModifiedProperties();
+    }
+
+    private void DrawProperty(string propName, string label = null)
+    {
+        SerializedProperty prop = serializedObject.FindProperty(propName);
+        if (prop != null)
+        {
+            if (label != null) EditorGUILayout.PropertyField(prop, new GUIContent(label), true);
+            else EditorGUILayout.PropertyField(prop, true);
+        }
+    }
+
+    private void DrawUnknownProperties()
+    {
+        SerializedProperty iterator = serializedObject.GetIterator();
+        bool enterChildren = true;
+        while (iterator.NextVisible(enterChildren))
+        {
+            enterChildren = false;
+            if (!explicitFields.Contains(iterator.name))
+            {
+                EditorGUILayout.PropertyField(iterator, true);
+            }
+        }
     }
 
     private void DrawSpeciesOverview()
@@ -76,14 +211,14 @@ public class SimulationManagerInspector : Editor
         SerializedProperty propertySettings = serializedObject.FindProperty("propertySettings");
         if (propertySettings == null || !propertySettings.isArray)
         {
-            EditorGUILayout.HelpBox("No species data available. Start a simulation to populate species from GAMA.", MessageType.Info);
+            EditorGUILayout.LabelField("Species will appear after generating a preview or receiving data from GAMA.", EditorStyles.wordWrappedLabel);
             return;
         }
 
         int count = propertySettings.arraySize;
         if (count == 0)
         {
-            EditorGUILayout.HelpBox("No species detected yet. Connect to GAMA middleware and start a simulation.", MessageType.Info);
+            EditorGUILayout.LabelField("Species will appear after generating a preview or receiving data from GAMA.", EditorStyles.wordWrappedLabel);
             return;
         }
 
@@ -93,10 +228,6 @@ public class SimulationManagerInspector : Editor
             EditorGUILayout.HelpBox("Could not load shared GAMA Species Render Overrides asset.", MessageType.Error);
             return;
         }
-
-        EditorGUILayout.HelpBox(
-            "Values below are stored in the shared GamaSpeciesRenderOverrides asset. They apply to both the Static Preview and the Runtime Simulation.",
-            MessageType.None);
 
         bool assetChanged = false;
 
@@ -120,7 +251,9 @@ public class SimulationManagerInspector : Editor
             // Species header
             EditorGUILayout.LabelField(speciesName + tagStr, EditorStyles.boldLabel);
 
-            // Imported values (read-only info)
+            // GAMA Attributes (read-only)
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("GAMA Attributes", EditorStyles.miniBoldLabel);
             EditorGUI.indentLevel++;
             EditorGUI.BeginDisabledGroup(true);
             if (prefab != null)
@@ -136,11 +269,13 @@ public class SimulationManagerInspector : Editor
                 EditorGUILayout.FloatField("GAMA Base Scale", importedBaseScale.floatValue);
             }
             EditorGUI.EndDisabledGroup();
+            EditorGUI.indentLevel--;
 
-            // Shared manual overrides
+            // Unity Overrides
             EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField("Shared Overrides", EditorStyles.miniBoldLabel);
-
+            EditorGUILayout.LabelField("Unity Overrides", EditorStyles.miniBoldLabel);
+            EditorGUI.indentLevel++;
+            
             GamaSpeciesRenderOverrideEntry overrideEntry = asset.GetOrCreateEntry(speciesName);
 
             EditorGUI.BeginChangeCheck();
@@ -184,34 +319,8 @@ public class SimulationManagerInspector : Editor
 
         if (assetChanged)
         {
-            Debug.Log($"[GAMA][OVERRIDES] source asset = {AssetDatabase.GetAssetPath(asset)}");
             EditorUtility.SetDirty(asset);
-            Debug.Log("[GAMA][PREVIEW][AUTO] Schedule requested from GameManager inspector");
             GamaEditorPreviewOverrideApplier.ScheduleApplyOverridesToCurrentPreview();
-        }
-    }
-
-    private void DrawSerializedPropertiesExcluding(SerializedObject obj, params string[] excludedProperties)
-    {
-        SerializedProperty iterator = obj.GetIterator();
-        bool enterChildren = true;
-        while (iterator.NextVisible(enterChildren))
-        {
-            enterChildren = false;
-            bool excluded = false;
-            for (int i = 0; i < excludedProperties.Length; i++)
-            {
-                if (iterator.name == excludedProperties[i])
-                {
-                    excluded = true;
-                    break;
-                }
-            }
-
-            if (!excluded)
-            {
-                EditorGUILayout.PropertyField(iterator, true);
-            }
         }
     }
 }
