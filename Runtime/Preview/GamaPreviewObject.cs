@@ -16,6 +16,8 @@ public class GamaPreviewObject : MonoBehaviour
     [SerializeField, HideInInspector] private Vector3 baseLocalPosition;
     [SerializeField, HideInInspector] private Quaternion baseLocalRotation;
     [SerializeField, HideInInspector] private Vector3 baseLocalScale;
+    [SerializeField, HideInInspector] private bool hasVisualAnchor = false;
+    [SerializeField, HideInInspector] private Vector3 visualAnchorLocal = Vector3.zero;
 
     [System.Serializable]
     private class RendererBaseState
@@ -49,6 +51,26 @@ public class GamaPreviewObject : MonoBehaviour
             }
 
             hasBaseState = true;
+        }
+    }
+
+    public void SetVisualAnchorLocal(Vector3 localAnchor)
+    {
+        visualAnchorLocal = localAnchor;
+        hasVisualAnchor = true;
+    }
+
+    public bool TryGetVisualAnchorLocal(out Vector3 localAnchor)
+    {
+        localAnchor = visualAnchorLocal;
+        return hasVisualAnchor;
+    }
+
+    public void RestoreBaseLocalScaleIfCaptured()
+    {
+        if (hasBaseState)
+        {
+            transform.localScale = baseLocalScale;
         }
     }
 

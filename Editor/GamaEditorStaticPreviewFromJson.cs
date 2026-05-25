@@ -304,7 +304,11 @@ internal static class GamaEditorStaticPreviewFromJson
 
                     ApplyPrefabVisualState(obj, prop, visualState, precision);
                     GamaPreviewObject marker = AddPreviewObjectIdentity(obj, speciesKey, name, BuildIntListHash(pt));
-                    if (marker != null) marker.CaptureBaseTransformIfNeeded();
+                    if (marker != null)
+                    {
+                        marker.SetVisualAnchorLocal(Vector3.zero);
+                        marker.CaptureBaseTransformIfNeeded();
+                    }
                     if (speciesOverrides != null) { ApplySpeciesOverrideIfAny(marker, speciesKey, speciesOverrides); }
                     builtAgents++;
                     cptPrefab++;
@@ -365,7 +369,11 @@ internal static class GamaEditorStaticPreviewFromJson
 
                     ApplyPolygonVisualState(obj, prop, visualState, polygonBasePosition);
                     GamaPreviewObject marker = AddPreviewObjectIdentity(obj, speciesKey, name, BuildIntListHash(rawGeom));
-                    if (marker != null) marker.CaptureBaseTransformIfNeeded();
+                    if (marker != null)
+                    {
+                        marker.SetVisualAnchorLocal(ResolvePreviewAnchorLocal(obj, rawGeom, converter, yOffsetGeom));
+                        marker.CaptureBaseTransformIfNeeded();
+                    }
                     if (speciesOverrides != null) { ApplySpeciesOverrideIfAny(marker, speciesKey, speciesOverrides); }
 
                     if (prop.hasCollider && obj.GetComponent<MeshCollider>() == null)
@@ -637,6 +645,153 @@ internal static class GamaEditorStaticPreviewFromJson
         marker.geometryHash = geometryHash ?? string.Empty;
         marker.sourceTick = -1;
         return marker;
+    }
+
+    private static Vector3 ResolvePreviewAnchorLocal(
+        GameObject obj,
+        IList<int> rawGeom,
+        CoordinateConverter converter,
+        float yOffset)
+    {
+        if (obj == null)
+        {
+            return Vector3.zero;
+        }
+
+        Vector3 anchor;
+        if (TryGetRendererAnchorLocal(obj, out anchor))
+        {
+            return anchor;
+        }
+
+        if (TryGetMeshAnchorLocal(obj, out anchor))
+        {
+            return anchor;
+        }
+
+        if (TryGetRawGeometryAnchorLocal(obj, rawGeom, converter, yOffset, out anchor))
+        {
+            return anchor;
+        }
+
+        return Vector3.zero;
+    }
+
+    private static bool TryGetRendererAnchorLocal(GameObject obj, out Vector3 anchor)
+    {
+        anchor = Vector3.zero;
+        if (obj == null)
+        {
+            return false;
+        }
+
+        Renderer[] renderers = obj.GetComponentsInChildren<Renderer>(true);
+        bool hasBounds = false;
+        Bounds combined = default;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null || renderer.bounds.size.sqrMagnitude <= 0.000001f)
+            {
+                continue;
+            }
+
+            if (!hasBounds)
+            {
+                combined = renderer.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                combined.Encapsulate(renderer.bounds);
+            }
+        }
+
+        if (!hasBounds)
+        {
+            return false;
+        }
+
+        anchor = obj.transform.InverseTransformPoint(combined.center);
+        return true;
+    }
+
+    private static bool TryGetMeshAnchorLocal(GameObject obj, out Vector3 anchor)
+    {
+        anchor = Vector3.zero;
+        if (obj == null)
+        {
+            return false;
+        }
+
+        MeshFilter[] meshFilters = obj.GetComponentsInChildren<MeshFilter>(true);
+        bool hasBounds = false;
+        Bounds combined = default;
+        for (int i = 0; i < meshFilters.Length; i++)
+        {
+            MeshFilter meshFilter = meshFilters[i];
+            Mesh mesh = meshFilter != null ? meshFilter.sharedMesh : null;
+            if (mesh == null || mesh.bounds.size.sqrMagnitude <= 0.000001f)
+            {
+                continue;
+            }
+
+            Bounds worldBounds = new Bounds(
+                meshFilter.transform.TransformPoint(mesh.bounds.center),
+                Vector3.zero);
+            Vector3 ext = mesh.bounds.extents;
+            worldBounds.Encapsulate(meshFilter.transform.TransformPoint(mesh.bounds.center + new Vector3(ext.x, ext.y, ext.z)));
+            worldBounds.Encapsulate(meshFilter.transform.TransformPoint(mesh.bounds.center + new Vector3(-ext.x, -ext.y, -ext.z)));
+
+            if (!hasBounds)
+            {
+                combined = worldBounds;
+                hasBounds = true;
+            }
+            else
+            {
+                combined.Encapsulate(worldBounds);
+            }
+        }
+
+        if (!hasBounds)
+        {
+            return false;
+        }
+
+        anchor = obj.transform.InverseTransformPoint(combined.center);
+        return true;
+    }
+
+    private static bool TryGetRawGeometryAnchorLocal(
+        GameObject obj,
+        IList<int> rawGeom,
+        CoordinateConverter converter,
+        float yOffset,
+        out Vector3 anchor)
+    {
+        anchor = Vector3.zero;
+        if (obj == null || rawGeom == null || rawGeom.Count < 2 || converter == null)
+        {
+            return false;
+        }
+
+        int pointCount = rawGeom.Count / 2;
+        if (pointCount <= 0)
+        {
+            return false;
+        }
+
+        Vector3 sum = Vector3.zero;
+        for (int i = 0; i < pointCount; i++)
+        {
+            Vector2 pt = converter.fromGAMACRS2D(rawGeom[i * 2], rawGeom[i * 2 + 1]);
+            sum += new Vector3(pt.x, yOffset, pt.y);
+        }
+
+        Vector3 worldCenter = sum / pointCount;
+        anchor = obj.transform.InverseTransformPoint(worldCenter);
+        return true;
     }
 
     private static string BuildIntListHash(IList<int> values)

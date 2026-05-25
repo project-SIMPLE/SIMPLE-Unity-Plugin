@@ -12,6 +12,8 @@ using UnityEditor;
 
 public abstract partial class SimulationManager : MonoBehaviour
 {
+    private static System.Collections.Generic.Dictionary<string, int> debugLogCounts = new System.Collections.Generic.Dictionary<string, int>();
+    private static System.Collections.Generic.Dictionary<string, bool> debugSummaryLogged = new System.Collections.Generic.Dictionary<string, bool>();
     [SerializeField] protected InputActionReference primaryRightHandButton = null;
 
 
@@ -759,6 +761,22 @@ public abstract partial class SimulationManager : MonoBehaviour
                 float yOffset = (0.0f + infoWorld.offsetYGeom[cptGeom]) / (0.0f + parameters.precision);
                 Vector3 polygonBasePosition = new Vector3(0f, yOffset, 0f);
 
+                Vector3 computedWorldAnchor = Vector3.zero;
+                if (pt != null && pt.Length >= 2)
+                {
+                    int pointCount = pt.Length / 2;
+                    if (pointCount > 0)
+                    {
+                        Vector3 sum = Vector3.zero;
+                        for (int ptIdx = 0; ptIdx < pointCount; ptIdx++)
+                        {
+                            Vector2 pt2d = converter.fromGAMACRS2D(pt[ptIdx * 2], pt[ptIdx * 2 + 1]);
+                            sum += new Vector3(pt2d.x, yOffset, pt2d.y);
+                        }
+                        computedWorldAnchor = sum / pointCount;
+                    }
+                }
+
                 if(initGame || !geometryMap.ContainsKey(name))
                 {
                     obj = polyGen.GeneratePolygons(false, name, pt, prop, parameters.precision);
@@ -789,7 +807,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                     }
                 }
                 
-                ApplyAgentVisualState(obj, prop, visualState, false, polygonBasePosition);
+                ApplyAgentVisualState(obj, prop, visualState, false, polygonBasePosition, computedWorldAnchor);
                 ApplyImmediateStreamingState(obj, prop, immediateStreamingCamera, immediateFrustumEnabled);
                 if(toRemove != null) toRemove.Remove(name);
                 cptGeom++;
@@ -1684,7 +1702,8 @@ public abstract partial class SimulationManager : MonoBehaviour
         PropertiesGAMA prop,
         GamaAgentVisualState visualState,
         bool prefabAgent,
-        Vector3 basePosition)
+        Vector3 basePosition,
+        Vector3? computedWorldAnchor = null)
     {
         if (obj == null)
         {
@@ -1702,27 +1721,182 @@ public abstract partial class SimulationManager : MonoBehaviour
             obj.transform.rotation = Quaternion.Euler(visualState.RotationOffsetEuler);
         }
 
-        if (visualState.HasColor)
+        Transform visualOverride = null;
+        if (!string.IsNullOrEmpty(visualState.PrefabResourcePath))
         {
-            bool isRealPrefab = prefabAgent && !GetPrefabSignature(obj).StartsWith("placeholder:");
-
-            // Only apply color if it's NOT a real prefab, OR if the user manually overrode the color
-            // OR if the color was explicitly sent via the agent's dynamic attributes (e.g. Red vs Blue in GAML)
-            if (!isRealPrefab || visualState.HasManualColorOverride || visualState.HasAttributeColor)
+            visualOverride = obj.transform.Find("VisualOverride");
+            bool needsNewInstantiate = false;
+            if (visualOverride != null)
             {
-                ChangeColor(obj, visualState.Color);
+                GamaRuntimePrefabSignature sig = visualOverride.GetComponent<GamaRuntimePrefabSignature>();
+                if (sig == null || sig.signature != visualState.PrefabResourcePath)
+                {
+                    UnityEngine.Object.Destroy(visualOverride.gameObject);
+                    visualOverride = null;
+                    needsNewInstantiate = true;
+                }
+            }
+            else
+            {
+                needsNewInstantiate = true;
+            }
+
+            if (needsNewInstantiate)
+            {
+                GameObject loadedPrefab = Resources.Load<GameObject>(visualState.PrefabResourcePath);
+                if (loadedPrefab != null)
+                {
+                    GameObject visual = Instantiate(loadedPrefab, obj.transform);
+                    visual.name = "VisualOverride";
+                    visual.transform.localRotation = Quaternion.identity;
+                    // Do NOT scale the visual to Vector3.one. Instead, we use a scale relative to the parent so that world scale is correct.
+                    // Wait, if the parent obj is scaled by `scale`, and we want the prefab to be scaled by `visualState.ScaleMultiplier`,
+                    // we need visual.localScale = (visualState.ScaleMultiplier / scale). But since `scale = baseScale * visualState.ScaleMultiplier`
+                    // and `baseScale = 1f` for geometries, `scale` IS `visualState.ScaleMultiplier`.
+                    // So `visual.localScale = Vector3.one` makes its world scale exactly `visualState.ScaleMultiplier`.
+                    // But if `baseScale` != 1f, `visual.localScale` should be 1f/baseScale so that its world scale is `visualState.ScaleMultiplier`.
+                    // Since it's a visual override, we just want it to be size 1 multiplied by ScaleMultiplier.
+                    float parentScale = Mathf.Max(0.0001f, scale);
+                    float targetWorldScale = Mathf.Max(0f, visualState.ScaleMultiplier);
+                    visual.transform.localScale = Vector3.one * (targetWorldScale / parentScale);
+                    
+                    GamaRuntimePrefabSignature sig = visual.AddComponent<GamaRuntimePrefabSignature>();
+                    sig.signature = visualState.PrefabResourcePath;
+                    visualOverride = visual.transform;
+                }
+                else
+                {
+                    Debug.LogWarning("[GAMA] Could not load override prefab from Resources: " + visualState.PrefabResourcePath);
+                }
+            }
+
+            if (visualOverride != null)
+            {
+                if (computedWorldAnchor.HasValue)
+                {
+                    visualOverride.position = computedWorldAnchor.Value;
+                }
+                else
+                {
+                    visualOverride.position = GetRuntimeAgentWorldAnchor(obj);
+                }
+                visualOverride.rotation = Quaternion.Euler(visualState.RotationOffsetEuler);
+
+                string speciesKey = prop != null ? prop.id : "unknown";
+                if (!debugLogCounts.ContainsKey(speciesKey)) debugLogCounts[speciesKey] = 0;
+
+                if (debugLogCounts[speciesKey] < 5)
+                {
+                    debugLogCounts[speciesKey]++;
+                    Debug.Log($"[GAMA][RUNTIME][PREFAB] species={speciesKey} id={obj.name} agentRootPos={obj.transform.position:F3} visualPos={visualOverride.position:F3} scale={visualOverride.localScale:F3} prefab={visualState.PrefabResourcePath}");
+                }
+
+                if (!debugSummaryLogged.ContainsKey(speciesKey))
+                {
+                    debugSummaryLogged[speciesKey] = true;
+                    Debug.Log($"[GAMA][RUNTIME][PREFAB] species={speciesKey} prefab={visualState.PrefabResourcePath} scale={visualState.ScaleMultiplier}");
+                }
             }
         }
 
-        SetRenderersEnabled(obj, visualState.Visible);
+        if (visualState.HasColor)
+        {
+            bool isRealPrefab = prefabAgent && !GetPrefabSignature(obj).StartsWith("placeholder:");
+            if (visualOverride != null) isRealPrefab = true;
+
+            if (!isRealPrefab || visualState.HasManualColorOverride || visualState.HasAttributeColor)
+            {
+                if (visualOverride != null)
+                {
+                    ChangeColor(visualOverride.gameObject, visualState.Color);
+                }
+                else
+                {
+                    ChangeColor(obj, visualState.Color);
+                }
+            }
+        }
+
+        SetRenderersEnabled(obj, visualState.Visible, visualOverride);
     }
 
-    private static void SetRenderersEnabled(GameObject obj, bool visible)
+    private static Vector3 GetRuntimeAgentWorldAnchor(GameObject agentRoot)
+    {
+        if (agentRoot == null) return Vector3.zero;
+
+        // 1. If position is meaningful (not exactly 0,0,0 or very close) and it's a prefab
+        if (agentRoot.transform.position.sqrMagnitude > 0.0001f)
+        {
+            return agentRoot.transform.position;
+        }
+
+        // 2. Try Renderer bounds (if the mesh is already updated)
+        MeshRenderer[] renderers = agentRoot.GetComponentsInChildren<MeshRenderer>(true);
+        if (renderers.Length > 0)
+        {
+            Bounds bounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+            {
+                bounds.Encapsulate(renderers[i].bounds);
+            }
+            if (bounds.extents.sqrMagnitude > 0.0001f)
+            {
+                return bounds.center;
+            }
+        }
+
+        // 3. Try MeshFilter bounds directly
+        MeshFilter[] filters = agentRoot.GetComponentsInChildren<MeshFilter>(true);
+        if (filters.Length > 0)
+        {
+            Bounds bounds = new Bounds();
+            bool hasBounds = false;
+            foreach (MeshFilter filter in filters)
+            {
+                if (filter.sharedMesh != null)
+                {
+                    Bounds localBounds = filter.sharedMesh.bounds;
+                    Vector3 worldCenter = filter.transform.TransformPoint(localBounds.center);
+                    if (!hasBounds)
+                    {
+                        bounds = new Bounds(worldCenter, Vector3.zero);
+                        hasBounds = true;
+                    }
+                    else
+                    {
+                        bounds.Encapsulate(worldCenter);
+                    }
+                }
+            }
+            if (hasBounds)
+            {
+                return bounds.center;
+            }
+        }
+
+        return agentRoot.transform.position;
+    }
+
+    private static void SetRenderersEnabled(GameObject obj, bool visible, Transform visualOverride)
     {
         Renderer[] renderers = obj.GetComponentsInChildren<Renderer>(true);
         for (int i = 0; i < renderers.Length; i++)
         {
-            renderers[i].enabled = visible;
+            if (visualOverride != null)
+            {
+                if (renderers[i].transform == visualOverride || renderers[i].transform.IsChildOf(visualOverride))
+                {
+                    renderers[i].enabled = visible;
+                }
+                else
+                {
+                    renderers[i].enabled = false;
+                }
+            }
+            else
+            {
+                renderers[i].enabled = visible;
+            }
         }
     }
 

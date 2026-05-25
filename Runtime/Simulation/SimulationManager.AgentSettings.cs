@@ -135,6 +135,10 @@ public abstract partial class SimulationManager
                 {
                     state.Visible = previewOverride.visibleInRuntime;
                 }
+                if (!string.IsNullOrEmpty(previewOverride.prefabResourcePath))
+                {
+                    state.PrefabResourcePath = previewOverride.prefabResourcePath;
+                }
             }
         }
 
@@ -595,6 +599,7 @@ public struct GamaAgentVisualState
     public Vector3 PositionOffset;
     public Vector3 RotationOffsetEuler;
     public bool Visible;
+    public string PrefabResourcePath;
 }
 
 public struct GamaAgentMatchContext
