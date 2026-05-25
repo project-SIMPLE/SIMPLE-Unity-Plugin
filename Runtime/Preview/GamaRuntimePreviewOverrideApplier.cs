@@ -84,13 +84,31 @@ public static class GamaRuntimePreviewOverrideApplier
             return;
         }
 
+        Dictionary<string, int> bestScoresBySpecies = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        string modelPath = session.modelPath ?? string.Empty;
+        string experimentName = session.experimentName ?? string.Empty;
+
         foreach (var e in asset.entries)
         {
             if (e == null) continue;
             if (string.IsNullOrWhiteSpace(e.speciesName) && string.IsNullOrWhiteSpace(e.speciesKey)) continue;
             
             string key = !string.IsNullOrWhiteSpace(e.speciesKey) ? e.speciesKey : e.speciesName;
-            overridesBySpecies[key.Trim()] = e;
+            key = key.Trim();
+            int score = e.GetMatchScore(
+                GamaSpeciesRenderOverrides.NormalizeKey(modelPath),
+                GamaSpeciesRenderOverrides.NormalizeKey(experimentName),
+                GamaSpeciesRenderOverrides.NormalizeKey(key));
+            if (score < 0)
+            {
+                continue;
+            }
+
+            if (!bestScoresBySpecies.TryGetValue(key, out int bestScore) || score > bestScore)
+            {
+                bestScoresBySpecies[key] = score;
+                overridesBySpecies[key] = e;
+            }
         }
 
         Debug.Log("[GAMA][RUNTIME][OVERRIDE] Loaded preview overrides: " + string.Join(",", overridesBySpecies.Keys));

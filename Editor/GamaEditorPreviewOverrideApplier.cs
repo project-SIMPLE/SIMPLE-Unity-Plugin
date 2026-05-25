@@ -78,21 +78,26 @@ public static class GamaEditorPreviewOverrideApplier
             list.Add(obj);
         }
 
-        int totalUpdated = 0;
-        foreach (GamaSpeciesRenderOverrideEntry entry in asset.entries)
-        {
-            if (entry == null)
-            {
-                continue;
-            }
+        string modelPath = session != null ? session.modelPath ?? string.Empty : string.Empty;
+        string experimentName = session != null ? session.experimentName ?? string.Empty : string.Empty;
 
-            string speciesName = entry.GetSpeciesName();
+        int totalUpdated = 0;
+        foreach (KeyValuePair<string, List<GamaPreviewObject>> pair in objectsBySpecies)
+        {
+            string speciesName = pair.Key;
             if (string.IsNullOrWhiteSpace(speciesName))
             {
                 continue;
             }
 
-            if (!objectsBySpecies.TryGetValue(speciesName, out List<GamaPreviewObject> list) || list.Count == 0)
+            if (!asset.TryGetOverride(modelPath, experimentName, speciesName, out GamaSpeciesRenderOverrideEntry entry) ||
+                entry == null)
+            {
+                continue;
+            }
+
+            List<GamaPreviewObject> list = pair.Value;
+            if (list == null || list.Count == 0)
             {
                 continue;
             }

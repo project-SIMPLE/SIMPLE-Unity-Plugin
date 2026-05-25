@@ -2881,13 +2881,14 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private GamaSpeciesRenderOverrideEntry PushAgentOverridesToAsset(GamaPanelAgentOverride agent)
     {
-        GamaSpeciesRenderOverrides asset = GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
+        GamaSpeciesRenderOverrides asset = ResolveSpeciesRenderOverridesAsset();
         if (asset == null || agent == null)
         {
             return null;
         }
 
-        GamaSpeciesRenderOverrideEntry entry = asset.GetOrCreateEntry(agent.Name);
+        ResolveCurrentPreviewOverrideContext(out string modelPath, out string experimentName);
+        GamaSpeciesRenderOverrideEntry entry = asset.GetOrCreateEntry(modelPath, experimentName, agent.Name);
 
         entry.color = agent.Color;
         entry.overrideColor = agent.OverrideColor;
@@ -2921,6 +2922,61 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorUtility.SetDirty(asset);
         AssetDatabase.SaveAssets();
         return entry;
+    }
+
+    private GamaSpeciesRenderOverrides ResolveSpeciesRenderOverridesAsset()
+    {
+        if (speciesRenderOverridesAsset == null)
+        {
+            speciesRenderOverridesAsset = GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
+        }
+
+        if (speciesRenderOverridesAsset != null)
+        {
+            string path = AssetDatabase.GetAssetPath(speciesRenderOverridesAsset);
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                EditorPrefs.SetString(SpeciesOverridesAssetPrefKey, path);
+            }
+        }
+
+        return speciesRenderOverridesAsset;
+    }
+
+    private void ResolveCurrentPreviewOverrideContext(out string modelPath, out string experimentName)
+    {
+        modelPath = string.Empty;
+        experimentName = string.Empty;
+
+        GameObject previewRoot = GameObject.Find(StaticPreviewRootName);
+        GamaPreviewSession session = previewRoot != null ? previewRoot.GetComponent<GamaPreviewSession>() : null;
+        if (session != null)
+        {
+            modelPath = session.modelPath ?? string.Empty;
+            experimentName = session.experimentName ?? string.Empty;
+            return;
+        }
+
+        modelPath = ResolvePreviewSessionModelPath();
+        experimentName = analysis != null && !string.IsNullOrWhiteSpace(analysis.Name)
+            ? analysis.Name
+            : (!string.IsNullOrWhiteSpace(gamaHeadlessBatchName) ? gamaHeadlessBatchName : string.Empty);
+    }
+
+    private void PushAllAgentOverridesToAsset()
+    {
+        if (agentOverrides == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < agentOverrides.Count; i++)
+        {
+            if (agentOverrides[i] != null)
+            {
+                PushAgentOverridesToAsset(agentOverrides[i]);
+            }
+        }
     }
 
     private void ApplyPrefabChangeToCurrentTarget(GamaPanelAgentOverride agent, GamaSpeciesRenderOverrideEntry entry)
@@ -2991,14 +3047,15 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         SimulationManager manager = UnityEngine.Object.FindFirstObjectByType<SimulationManager>(FindObjectsInactive.Include);
-        if (manager == null || speciesRenderOverridesAsset == null || speciesRenderOverridesAsset.entries == null)
+        GamaSpeciesRenderOverrides asset = ResolveSpeciesRenderOverridesAsset();
+        if (manager == null || asset == null || asset.entries == null)
         {
             return;
         }
 
-        for (int i = 0; i < speciesRenderOverridesAsset.entries.Count; i++)
+        for (int i = 0; i < asset.entries.Count; i++)
         {
-            GamaSpeciesRenderOverrideEntry entry = speciesRenderOverridesAsset.entries[i];
+            GamaSpeciesRenderOverrideEntry entry = asset.entries[i];
             string species = entry != null ? entry.GetSpeciesName() : string.Empty;
             if (!string.IsNullOrWhiteSpace(species))
             {
@@ -3440,6 +3497,9 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         try
         {
+            GamaSpeciesRenderOverrides asset = ResolveSpeciesRenderOverridesAsset();
+            PushAllAgentOverridesToAsset();
+            AssignOverridesAssetToCurrentPreviewSession(asset);
             GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
             ApplySpeciesRenderOverridesToSimulationManager();
             AssetDatabase.SaveAssets();
@@ -3454,6 +3514,24 @@ public sealed class GamaPanelWindow : EditorWindow
 
             Debug.LogWarning("[GAMA][PREVIEW] Validate Preview failed: " + ex);
         }
+    }
+
+    private void AssignOverridesAssetToCurrentPreviewSession(GamaSpeciesRenderOverrides asset)
+    {
+        if (asset == null)
+        {
+            return;
+        }
+
+        GameObject previewRoot = GameObject.Find(StaticPreviewRootName);
+        GamaPreviewSession session = previewRoot != null ? previewRoot.GetComponent<GamaPreviewSession>() : null;
+        if (session == null)
+        {
+            return;
+        }
+
+        session.speciesOverrides = asset;
+        EditorUtility.SetDirty(session);
     }
 
     private void DrawApplyControls()
@@ -3891,6 +3969,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
         int prefabN;
         int geomN;
+        GamaSpeciesRenderOverrides overridesAsset = ResolveSpeciesRenderOverridesAsset();
         if (!GamaEditorStaticPreviewFromJson.TryBuild(
                 manager,
                 precisionJson,
@@ -3900,7 +3979,7 @@ public sealed class GamaPanelWindow : EditorWindow
                 out prefabN,
                 out geomN,
                 out status,
-                speciesRenderOverridesAsset))
+                overridesAsset))
         {
             EditorUtility.DisplayDialog("Static preview", status, "OK");
             return true;
@@ -4159,7 +4238,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         PopulateSessionSpeciesSnapshot(root, session);
-        session.speciesOverrides = speciesRenderOverridesAsset;
+        session.speciesOverrides = ResolveSpeciesRenderOverridesAsset();
         PropagateSessionToSpeciesWizards(root, session);
         EditorUtility.SetDirty(session);
 

@@ -64,6 +64,43 @@ public class GamaSpeciesRenderOverrides : ScriptableObject
         return entry;
     }
 
+    public GamaSpeciesRenderOverrideEntry GetOrCreateEntry(
+        string modelPath,
+        string experimentName,
+        string speciesName)
+    {
+        string wantedModel = NormalizeKey(modelPath);
+        string wantedExperiment = NormalizeKey(experimentName);
+        string wantedSpecies = NormalizeKey(speciesName);
+
+        if (entries != null)
+        {
+            for (int i = 0; i < entries.Count; i++)
+            {
+                GamaSpeciesRenderOverrideEntry candidate = entries[i];
+                if (candidate == null)
+                {
+                    continue;
+                }
+
+                if (string.Equals(NormalizeKey(candidate.modelPath), wantedModel, StringComparison.Ordinal) &&
+                    string.Equals(NormalizeKey(candidate.experimentName), wantedExperiment, StringComparison.Ordinal) &&
+                    string.Equals(NormalizeKey(candidate.GetSpeciesName()), wantedSpecies, StringComparison.Ordinal))
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        GamaSpeciesRenderOverrideEntry entry = new GamaSpeciesRenderOverrideEntry();
+        entry.modelPath = modelPath ?? string.Empty;
+        entry.experimentName = experimentName ?? string.Empty;
+        entry.speciesName = string.IsNullOrWhiteSpace(speciesName) ? "unknown" : speciesName.Trim();
+        entry.speciesKey = entry.speciesName;
+        entries.Add(entry);
+        return entry;
+    }
+
     public void SetOrReplaceEntry(GamaSpeciesRenderOverrideEntry newEntry)
     {
         if (newEntry == null || string.IsNullOrWhiteSpace(newEntry.GetSpeciesName()))
