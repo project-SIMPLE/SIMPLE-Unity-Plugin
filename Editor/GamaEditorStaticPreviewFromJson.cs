@@ -11,6 +11,9 @@ using UnityEngine;
 internal static class GamaEditorStaticPreviewFromJson
 {
     private const bool VerbosePreviewBuildDebug = false;
+    private static readonly Dictionary<string, int> InvalidGeometryFallbackCounts =
+        new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
     public static bool TryBuild(
         SimulationManager simulationManager,
         string precisionJson,
@@ -346,7 +349,8 @@ internal static class GamaEditorStaticPreviewFromJson
                         yOffsetGeom = world.offsetYGeom[cptGeom] / (float)precision;
                     }
 
-                    if (polyGen == null)
+                    bool polygonInputValid = IsPreviewPolygonInputValid(rawGeom, converter);
+                    if (polygonInputValid && polyGen == null)
                     {
                         skippedGeometries++;
                         Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip geometry i=" + i + " name=" + name + " reason=polyGen null");
@@ -355,7 +359,9 @@ internal static class GamaEditorStaticPreviewFromJson
                     }
 
                     Vector3 polygonBasePosition = new Vector3(0f, yOffsetGeom, 0f);
-                    GameObject obj = polyGen.GeneratePolygons(true, name, ptArr, prop, precision);
+                    GameObject obj = polygonInputValid
+                        ? polyGen.GeneratePolygons(true, name, ptArr, prop, precision)
+                        : CreateInvalidGeometryFallbackObject(name, speciesKey, rawGeom, converter, yOffsetGeom, visualState);
                     if (obj == null)
                     {
                         skippedGeometries++;
@@ -593,11 +599,14 @@ internal static class GamaEditorStaticPreviewFromJson
             GameObject speciesGo = new GameObject(key);
             Undo.RegisterCreatedObjectUndo(speciesGo, "GAMA species parent");
             speciesGo.transform.SetParent(gamaRoot, false);
-            GamaSpeciesWizard wizard = speciesGo.AddComponent<GamaSpeciesWizard>();
-            if (wizard != null)
+            using (GamaSpeciesWizard.SuppressAssetWrites())
             {
-                wizard.speciesName = key;
-                wizard.overridesAsset = speciesOverrides;
+                GamaSpeciesWizard wizard = speciesGo.AddComponent<GamaSpeciesWizard>();
+                if (wizard != null)
+                {
+                    wizard.speciesName = key;
+                    wizard.overridesAsset = speciesOverrides;
+                }
             }
             if (cache != null) cache[key] = speciesGo.transform;
             return speciesGo.transform;
@@ -675,6 +684,149 @@ internal static class GamaEditorStaticPreviewFromJson
         }
 
         return Vector3.zero;
+    }
+
+    private static GameObject CreateInvalidGeometryFallbackObject(
+        string name,
+        string speciesKey,
+        IList<int> rawGeom,
+        CoordinateConverter converter,
+        float yOffset,
+        GamaAgentVisualState visualState)
+    {
+        GameObject root = new GameObject(string.IsNullOrWhiteSpace(name) ? "InvalidGeometryFallback" : name);
+        GameObject fallback = GameObject.CreatePrimitive(ResolveFallbackPrimitive(speciesKey));
+        fallback.name = "Visual";
+        fallback.transform.SetParent(root.transform, false);
+        fallback.transform.localPosition = ResolveRawGeometryAnchorLocal(rawGeom, converter, 0f);
+        fallback.transform.localRotation = Quaternion.identity;
+        fallback.transform.localScale = Vector3.one * 0.5f;
+
+        Collider collider = fallback.GetComponent<Collider>();
+        if (collider != null)
+        {
+            Undo.DestroyObjectImmediate(collider);
+        }
+
+        if (visualState.HasColor)
+        {
+            GamaVisualUtility.ApplyColor(fallback, visualState.Color);
+        }
+
+        SetRenderersEnabled(fallback, visualState.Visible);
+        LogInvalidGeometryFallback(speciesKey);
+        return root;
+    }
+
+    private static PrimitiveType ResolveFallbackPrimitive(string speciesKey)
+    {
+        if (!string.IsNullOrWhiteSpace(speciesKey))
+        {
+            string lower = speciesKey.ToLowerInvariant();
+            if (System.Text.RegularExpressions.Regex.IsMatch(
+                lower,
+                @"predator|prey|people|pedestrian|person|walker|car|vehicle|voiture|human|agent"))
+            {
+                return PrimitiveType.Capsule;
+            }
+        }
+
+        return PrimitiveType.Cube;
+    }
+
+    private static void LogInvalidGeometryFallback(string speciesKey)
+    {
+        string species = string.IsNullOrWhiteSpace(speciesKey) ? "unknown" : speciesKey.Trim();
+        int count = 0;
+        InvalidGeometryFallbackCounts.TryGetValue(species, out count);
+        count++;
+        InvalidGeometryFallbackCounts[species] = count;
+
+        if (count == 1 || count == 10 || count % 100 == 0)
+        {
+            Debug.LogWarning(
+                "[GAMA][PREVIEW][GEOMETRY] species=" + species +
+                " invalidPolygonFallback=" + count);
+        }
+    }
+
+    private static bool IsPreviewPolygonInputValid(IList<int> rawGeom, CoordinateConverter converter)
+    {
+        if (rawGeom == null || rawGeom.Count < 6)
+        {
+            return false;
+        }
+
+        int pointCount = rawGeom.Count / 2;
+        if (pointCount < 3)
+        {
+            return false;
+        }
+
+        List<Vector2> cleaned = new List<Vector2>(pointCount);
+        for (int i = 0; i < pointCount; i++)
+        {
+            Vector2 point = converter != null
+                ? converter.fromGAMACRS2D(rawGeom[i * 2], rawGeom[i * 2 + 1])
+                : new Vector2(rawGeom[i * 2], rawGeom[i * 2 + 1]);
+
+            if (float.IsNaN(point.x) || float.IsNaN(point.y) ||
+                float.IsInfinity(point.x) || float.IsInfinity(point.y))
+            {
+                return false;
+            }
+
+            if (cleaned.Count == 0 || Vector2.Distance(cleaned[cleaned.Count - 1], point) > 0.000001f)
+            {
+                cleaned.Add(point);
+            }
+        }
+
+        if (cleaned.Count > 1 && Vector2.Distance(cleaned[0], cleaned[cleaned.Count - 1]) <= 0.000001f)
+        {
+            cleaned.RemoveAt(cleaned.Count - 1);
+        }
+
+        if (cleaned.Count < 3)
+        {
+            return false;
+        }
+
+        float area = 0f;
+        for (int i = 0; i < cleaned.Count; i++)
+        {
+            Vector2 a = cleaned[i];
+            Vector2 b = cleaned[(i + 1) % cleaned.Count];
+            area += a.x * b.y - b.x * a.y;
+        }
+
+        return Mathf.Abs(area) > 0.000001f;
+    }
+
+    private static Vector3 ResolveRawGeometryAnchorLocal(
+        IList<int> rawGeom,
+        CoordinateConverter converter,
+        float yOffset)
+    {
+        if (rawGeom == null || rawGeom.Count < 2 || converter == null)
+        {
+            return Vector3.zero;
+        }
+
+        int pointCount = rawGeom.Count / 2;
+        if (pointCount <= 0)
+        {
+            return Vector3.zero;
+        }
+
+        Vector3 sum = Vector3.zero;
+        for (int i = 0; i < pointCount; i++)
+        {
+            Vector2 pt = converter.fromGAMACRS2D(rawGeom[i * 2], rawGeom[i * 2 + 1]);
+            sum += new Vector3(pt.x, yOffset, pt.y);
+        }
+
+        return sum / pointCount;
     }
 
     private static bool TryGetRendererAnchorLocal(GameObject obj, out Vector3 anchor)

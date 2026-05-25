@@ -20,6 +20,10 @@ public static class GamaRuntimePreviewOverrideApplier
     public static bool TryGetOverride(string speciesKey, out GamaSpeciesRenderOverrideEntry entry)
     {
         entry = null;
+        if (string.IsNullOrWhiteSpace(speciesKey))
+        {
+            return false;
+        }
 
         if (!initialized)
         {
@@ -44,6 +48,12 @@ public static class GamaRuntimePreviewOverrideApplier
             Debug.Log("[GAMA][RUNTIME][OVERRIDE] No override for species=" + speciesKey);
         }
         return found;
+    }
+
+    public static void RefreshNow()
+    {
+        initialized = true;
+        Initialize();
     }
 
     private static void Initialize()

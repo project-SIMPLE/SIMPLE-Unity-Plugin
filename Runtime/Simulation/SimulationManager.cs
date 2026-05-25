@@ -12,6 +12,33 @@ using UnityEditor;
 
 public abstract partial class SimulationManager : MonoBehaviour
 {
+    private sealed class RuntimeAgentRecord
+    {
+        public string Key;
+        public string SpeciesName;
+        public string AgentId;
+        public GameObject Root;
+        public GameObject VisualRoot;
+        public bool IsDynamic;
+        public int LastSeenTick;
+        public bool CurrentlyVisible = true;
+        public bool UsesPrefabOverride;
+        public Vector3 BasePosition;
+        public Quaternion BaseRotation = Quaternion.identity;
+        public bool HasBaseTransform;
+        public Vector3 VisualAnchor;
+        public bool HasVisualAnchor;
+        public Vector3 LastPositionOffset;
+        public Vector3 LastRotationOffsetEuler;
+    }
+
+    private sealed class RuntimeSyncCounters
+    {
+        public int Created;
+        public int Updated;
+        public int Removed;
+    }
+
     private static System.Collections.Generic.Dictionary<string, int> debugLogCounts = new System.Collections.Generic.Dictionary<string, int>();
     private static System.Collections.Generic.Dictionary<string, bool> debugSummaryLogged = new System.Collections.Generic.Dictionary<string, bool>();
     [SerializeField] protected InputActionReference primaryRightHandButton = null;
@@ -94,6 +121,12 @@ public abstract partial class SimulationManager : MonoBehaviour
     private Transform runtimeAgentsRoot;
     private Dictionary<string, Transform> runtimeSpeciesParents;
     protected Dictionary<string, List<object>> geometryMap;
+    private readonly Dictionary<string, RuntimeAgentRecord> runtimeAgentRecords =
+        new Dictionary<string, RuntimeAgentRecord>(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, RuntimeSyncCounters> runtimeSyncCountersBySpecies =
+        new Dictionary<string, RuntimeSyncCounters>(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> invalidGeometryFallbackCounts =
+        new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
     protected Dictionary<string, PropertiesGAMA> propertyMap = null;
     private static readonly HashSet<string> missingPrefabWarnings = new HashSet<string>();
     private readonly Dictionary<string, Vector3> previousPrefabPositions = new Dictionary<string, Vector3>();
@@ -118,6 +151,7 @@ public abstract partial class SimulationManager : MonoBehaviour
     private float agentUpdateBudgetLastDiagTime;
     private bool loggedMissingMainCameraForStreaming;
     private readonly Dictionary<string, int> missingAgentTickCounts = new Dictionary<string, int>();
+    private int runtimeLiveTickSerial;
 
     protected List<GameObject> SelectedObjects;
 
@@ -263,6 +297,10 @@ public abstract partial class SimulationManager : MonoBehaviour
         visualStateCache = new Dictionary<string, GamaAgentVisualState>(StringComparer.Ordinal);
         resolvedPrefabSignatures = new Dictionary<string, string>(StringComparer.Ordinal);
         runtimeSpeciesParents = new Dictionary<string, Transform>(StringComparer.OrdinalIgnoreCase);
+        runtimeAgentRecords.Clear();
+        runtimeSyncCountersBySpecies.Clear();
+        invalidGeometryFallbackCounts.Clear();
+        runtimeLiveTickSerial = 0;
 
         geometryMap = new Dictionary<string, List<object>>();
         handleGeometriesRequested = false;
@@ -399,11 +437,8 @@ public abstract partial class SimulationManager : MonoBehaviour
     {
 
         foreach (String n in infoAnimation.names) {
-            if (!geometryMap.ContainsKey(n)) continue;            
-            List<object> o = geometryMap[n];
-            
-            if (o == null && o.Count == 0) continue;
-            GameObject obj = (GameObject)o[0];
+            GameObject obj;
+            if (!TryGetRuntimeAgentObjectByAgentId(n, out obj)) continue;
 
             Animator m_animator = obj.GetComponent<Animator>();
             if (m_animator == null)
@@ -669,8 +704,6 @@ public abstract partial class SimulationManager : MonoBehaviour
             playerMovement(true);
         }
 
-        if(toRemove != null) foreach (string n in infoWorld.keepNames) toRemove.Remove(n);
-
         Camera immediateStreamingCamera = GetPrefabStreamingCamera();
         bool immediateFrustumEnabled = streamPrefabsByCameraView && immediateStreamingCamera != null;
         if (immediateFrustumEnabled)
@@ -684,12 +717,24 @@ public abstract partial class SimulationManager : MonoBehaviour
         int cptPrefab = budgetedPass ? pendingWorldPrefabIndex : 0;
         int cptGeom = budgetedPass ? pendingWorldGeomIndex : 0;
         int processedAgentCount = 0;
-     
+        if (!initGame && startAgentIndex == 0)
+        {
+            runtimeLiveTickSerial++;
+            runtimeSyncCountersBySpecies.Clear();
+        }
+
+        if (toRemove != null) RemoveKeptRuntimeAgentNames(toRemove, infoWorld.keepNames);
+
         for (int i = startAgentIndex; i < infoWorld.names.Count; i++)
         {
             string name = infoWorld.names[i];
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = "agent_" + i;
+            }
+
             string propId = infoWorld.propertyID[i];
-           
+
             PropertiesGAMA prop = null;
             if (propertyMap == null || !propertyMap.TryGetValue(propId, out prop) || prop == null)
             {
@@ -697,20 +742,23 @@ public abstract partial class SimulationManager : MonoBehaviour
             }
             Attributes attributes = infoWorld.GetAttributesAt(i);
             GamaAgentVisualState visualState = ResolveAgentVisualState(name, prop, attributes);
+            string speciesName = ResolveRuntimeSpeciesName(prop, propId);
+            string agentKey = MakeRuntimeAgentKey(speciesName, name);
+            bool dynamicUpdate = !initGame;
 
             GameObject obj = null;
 
             if (prop.hasPrefab)
             {
                 string desiredPrefabSignature = ResolvePrefabSignature(prop, attributes);
-                if (initGame || !geometryMap.ContainsKey(name))
+                if (initGame || !geometryMap.ContainsKey(agentKey))
                 {
-                    obj = instantiatePrefab(name, prop, attributes, desiredPrefabSignature, initGame);
-         
+                    obj = instantiatePrefab(name, agentKey, speciesName, prop, attributes, desiredPrefabSignature, initGame);
+
                 }
                 else
                 {
-                    List<object> o = geometryMap[name];
+                    List<object> o = geometryMap[agentKey];
                     GameObject obj2 = (GameObject)o[0];
                     PropertiesGAMA p = (PropertiesGAMA)o[1];
                     if (p == prop && !NeedsPrefabRebuild(obj2, desiredPrefabSignature))
@@ -721,30 +769,37 @@ public abstract partial class SimulationManager : MonoBehaviour
                     {
 
                         obj2.transform.position = new Vector3(0, -100, 0);
-                        geometryMap.Remove(name);
-                        previousPrefabPositions.Remove(name);
-                        previousPrefabPropertyIds.Remove(name);
+                        geometryMap.Remove(agentKey);
+                        previousPrefabPositions.Remove(agentKey);
+                        previousPrefabPropertyIds.Remove(agentKey);
+                        UnregisterRuntimeAgent(agentKey);
                         if (toFollow != null && toFollow.Contains(obj2))
                             toFollow.Remove(obj2);
 
                         ReleasePrefabInstance(obj2);
-                        obj = instantiatePrefab(name, prop, attributes, desiredPrefabSignature, initGame);
+                        obj = instantiatePrefab(name, agentKey, speciesName, prop, attributes, desiredPrefabSignature, initGame);
 
                     }
 
                 }
                 List<int> pt = infoWorld.pointsLoc[cptPrefab].c;
-                Vector3 pos = converter.fromGAMACRS(pt[0], pt[1], pt[2]);
-                pos.y += prop.yOffsetF;
-                pos += visualState.PositionOffset;
-                Quaternion rotation = ResolvePrefabRotation(name, prop, visualState, pt, pos, obj);
+                Vector3 basePos = converter.fromGAMACRS(pt[0], pt[1], pt[2]);
+                basePos.y += prop.yOffsetF;
+                Vector3 pos = basePos + visualState.PositionOffset;
+                Quaternion baseRotation = ResolvePrefabHeadingRotation(agentKey, prop, pt, basePos);
+                Quaternion rotation = ComposePrefabRuntimeRotation(baseRotation, visualState, obj);
                 obj.transform.SetPositionAndRotation(pos, rotation);
-                previousPrefabPositions[name] = pos;
-                previousPrefabPropertyIds[name] = prop.id ?? string.Empty;
+                previousPrefabPositions[agentKey] = basePos;
+                previousPrefabPropertyIds[agentKey] = prop.id ?? string.Empty;
                 ApplyAgentVisualState(obj, prop, visualState, true, Vector3.zero);
                 ApplyImmediateStreamingState(obj, prop, immediateStreamingCamera, immediateFrustumEnabled);
                 //obj.SetActive(true);
-                if(toRemove != null) toRemove.Remove(name);
+                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, basePos, baseRotation, basePos);
+                if(toRemove != null)
+                {
+                    toRemove.Remove(agentKey);
+                    toRemove.Remove(name);
+                }
                 cptPrefab++;
 
             }
@@ -760,6 +815,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                 int[] pt = infoWorld.pointsGeom[cptGeom].c.ToArray();
                 float yOffset = (0.0f + infoWorld.offsetYGeom[cptGeom]) / (0.0f + parameters.precision);
                 Vector3 polygonBasePosition = new Vector3(0f, yOffset, 0f);
+                bool polygonInputValid = IsRuntimePolygonInputValid(pt);
 
                 Vector3 computedWorldAnchor = Vector3.zero;
                 if (pt != null && pt.Length >= 2)
@@ -777,39 +833,63 @@ public abstract partial class SimulationManager : MonoBehaviour
                     }
                 }
 
-                if(initGame || !geometryMap.ContainsKey(name))
+                if(initGame || !geometryMap.ContainsKey(agentKey))
                 {
-                    obj = polyGen.GeneratePolygons(false, name, pt, prop, parameters.precision);
+                    obj = polygonInputValid
+                        ? polyGen.GeneratePolygons(false, name, pt, prop, parameters.precision)
+                        : new GameObject(name);
                    if(prop.hasCollider)
                     {
-                        MeshCollider mc = obj.AddComponent<MeshCollider>();
-                        mc.sharedMesh = obj.GetComponent<MeshFilter>().sharedMesh;
-                        if (prop.isGrabable) mc.convex = true;
+                        MeshFilter meshFilter = obj.GetComponent<MeshFilter>();
+                        if (meshFilter != null && meshFilter.sharedMesh != null)
+                        {
+                            MeshCollider mc = obj.AddComponent<MeshCollider>();
+                            mc.sharedMesh = meshFilter.sharedMesh;
+                            if (prop.isGrabable) mc.convex = true;
+                        }
                     }
                     instantiateGO(obj, name, prop);
-                    ParentRuntimeAgent(obj, prop.id);
+                    ParentRuntimeAgent(obj, speciesName);
                     if (geometryMap != null)
                     {
-                        geometryMap[name] = new List<object> { obj, prop };
+                        geometryMap[agentKey] = new List<object> { obj, prop };
                     }
-                    
+
                 }
                 else
                 {
-                    List<object> o = geometryMap[name];
+                    List<object> o = geometryMap[agentKey];
                     GameObject obj2 = (GameObject)o[0];
                     PropertiesGAMA p = (PropertiesGAMA)o[1];
                     if (p == prop)
                     {
                         obj = obj2;
-                        polyGen.UpdatePolygon(obj, pt);
-                        if(prop.hasCollider) obj.GetComponent<MeshCollider>().sharedMesh = obj.GetComponent<MeshFilter>().sharedMesh;
+                        if (polygonInputValid)
+                        {
+                            polyGen.UpdatePolygon(obj, pt);
+                        }
+
+                        if(prop.hasCollider)
+                        {
+                            MeshCollider collider = obj.GetComponent<MeshCollider>();
+                            MeshFilter meshFilter = obj.GetComponent<MeshFilter>();
+                            if (collider != null && meshFilter != null)
+                            {
+                                collider.sharedMesh = meshFilter.sharedMesh;
+                            }
+                        }
                     }
                 }
-                
+
                 ApplyAgentVisualState(obj, prop, visualState, false, polygonBasePosition, computedWorldAnchor);
+                HandleInvalidDynamicGeometryFallback(obj, speciesName, visualState, computedWorldAnchor, dynamicUpdate, !polygonInputValid);
                 ApplyImmediateStreamingState(obj, prop, immediateStreamingCamera, immediateFrustumEnabled);
-                if(toRemove != null) toRemove.Remove(name);
+                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, polygonBasePosition, Quaternion.identity, computedWorldAnchor);
+                if(toRemove != null)
+                {
+                    toRemove.Remove(agentKey);
+                    toRemove.Remove(name);
+                }
                 cptGeom++;
             }
 
@@ -1062,6 +1142,8 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     private GameObject instantiatePrefab(
         string name,
+        string runtimeKey,
+        string speciesName,
         PropertiesGAMA prop,
         Attributes attributes,
         string prefabSignature,
@@ -1116,7 +1198,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         List<object> pL = new List<object> { obj, prop };
         if (geometryMap != null)
         {
-            geometryMap[name] = pL;
+            geometryMap[string.IsNullOrWhiteSpace(runtimeKey) ? name : runtimeKey] = pL;
         }
 
         if (!pooledInstance)
@@ -1124,7 +1206,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             instantiateGO(obj, name, prop);
         }
 
-        ParentRuntimeAgent(obj, prop.id);
+        ParentRuntimeAgent(obj, string.IsNullOrWhiteSpace(speciesName) ? prop.id : speciesName);
 
         return obj;
     }
@@ -1176,6 +1258,171 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
 
         obj.transform.SetParent(speciesParent, true);
+    }
+
+    private static string ResolveRuntimeSpeciesName(PropertiesGAMA prop, string propertyId)
+    {
+        if (prop != null)
+        {
+            if (!string.IsNullOrWhiteSpace(prop.tag))
+            {
+                return prop.tag.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(prop.id))
+            {
+                return prop.id.Trim();
+            }
+        }
+
+        return string.IsNullOrWhiteSpace(propertyId) ? "unknown" : propertyId.Trim();
+    }
+
+    private static string MakeRuntimeAgentKey(string speciesName, string agentId)
+    {
+        string species = string.IsNullOrWhiteSpace(speciesName) ? "unknown" : speciesName.Trim();
+        string id = string.IsNullOrWhiteSpace(agentId) ? "unknown" : agentId.Trim();
+        return species + "::" + id;
+    }
+
+    private void RemoveKeptRuntimeAgentNames(HashSet<string> removalSet, List<string> keepNames)
+    {
+        if (removalSet == null || keepNames == null || keepNames.Count == 0)
+        {
+            return;
+        }
+
+        for (int i = 0; i < keepNames.Count; i++)
+        {
+            string keepName = keepNames[i];
+            if (string.IsNullOrWhiteSpace(keepName))
+            {
+                continue;
+            }
+
+            removalSet.Remove(keepName);
+            foreach (RuntimeAgentRecord record in runtimeAgentRecords.Values)
+            {
+                if (record == null)
+                {
+                    continue;
+                }
+
+                if (string.Equals(record.AgentId, keepName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(record.Key, keepName, StringComparison.OrdinalIgnoreCase))
+                {
+                    removalSet.Remove(record.Key);
+                }
+            }
+        }
+    }
+
+    private void RegisterRuntimeAgent(
+        string key,
+        string speciesName,
+        string agentId,
+        GameObject root,
+        bool dynamicUpdate,
+        GamaAgentVisualState visualState,
+        Vector3? basePosition = null,
+        Quaternion? baseRotation = null,
+        Vector3? visualAnchor = null)
+    {
+        if (string.IsNullOrWhiteSpace(key) || root == null)
+        {
+            return;
+        }
+
+        RuntimeAgentRecord record;
+        bool created = !runtimeAgentRecords.TryGetValue(key, out record) || record == null;
+        if (created)
+        {
+            record = new RuntimeAgentRecord();
+            runtimeAgentRecords[key] = record;
+        }
+
+        record.Key = key;
+        record.SpeciesName = string.IsNullOrWhiteSpace(speciesName) ? "unknown" : speciesName.Trim();
+        record.AgentId = string.IsNullOrWhiteSpace(agentId) ? key : agentId.Trim();
+        record.Root = root;
+        record.VisualRoot = ResolveRuntimeVisualRoot(root);
+        record.IsDynamic = record.IsDynamic || dynamicUpdate;
+        if (basePosition.HasValue)
+        {
+            record.BasePosition = basePosition.Value;
+            record.HasBaseTransform = true;
+        }
+        if (baseRotation.HasValue)
+        {
+            record.BaseRotation = baseRotation.Value;
+            record.HasBaseTransform = true;
+        }
+        if (visualAnchor.HasValue)
+        {
+            record.VisualAnchor = visualAnchor.Value;
+            record.HasVisualAnchor = true;
+        }
+        if (dynamicUpdate)
+        {
+            record.LastSeenTick = runtimeLiveTickSerial;
+            RuntimeSyncCounters counters = GetRuntimeSyncCounters(record.SpeciesName);
+            if (created)
+            {
+                counters.Created++;
+            }
+            else
+            {
+                counters.Updated++;
+            }
+        }
+
+        record.CurrentlyVisible = visualState.Visible && root.activeSelf;
+        record.UsesPrefabOverride = visualState.PrefabOverride != null ||
+                                    !string.IsNullOrWhiteSpace(visualState.PrefabResourcePath);
+        record.LastPositionOffset = visualState.PositionOffset;
+        record.LastRotationOffsetEuler = visualState.RotationOffsetEuler;
+        missingAgentTickCounts.Remove(key);
+    }
+
+    private static GameObject ResolveRuntimeVisualRoot(GameObject root)
+    {
+        if (root == null)
+        {
+            return null;
+        }
+
+        Transform visualOverride = root.transform.Find("VisualOverride");
+        if (visualOverride != null)
+        {
+            return visualOverride.gameObject;
+        }
+
+        Transform fallback = root.transform.Find("InvalidGeometryFallback");
+        return fallback != null ? fallback.gameObject : root;
+    }
+
+    private void UnregisterRuntimeAgent(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return;
+        }
+
+        runtimeAgentRecords.Remove(key);
+        missingAgentTickCounts.Remove(key);
+    }
+
+    private RuntimeSyncCounters GetRuntimeSyncCounters(string speciesName)
+    {
+        string species = string.IsNullOrWhiteSpace(speciesName) ? "unknown" : speciesName.Trim();
+        RuntimeSyncCounters counters;
+        if (!runtimeSyncCountersBySpecies.TryGetValue(species, out counters) || counters == null)
+        {
+            counters = new RuntimeSyncCounters();
+            runtimeSyncCountersBySpecies[species] = counters;
+        }
+
+        return counters;
     }
 
     private static void WarnMissingPrefabOnce(PropertiesGAMA prop, string sampleAgentName)
@@ -1485,6 +1732,50 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
     }
 
+    private bool TryGetRuntimeAgentObjectByAgentId(string agentId, out GameObject obj)
+    {
+        obj = null;
+        if (string.IsNullOrWhiteSpace(agentId))
+        {
+            return false;
+        }
+
+        List<object> legacyEntry;
+        if (geometryMap != null &&
+            geometryMap.TryGetValue(agentId, out legacyEntry) &&
+            TryReadRuntimeObject(legacyEntry, out obj))
+        {
+            return true;
+        }
+
+        foreach (RuntimeAgentRecord record in runtimeAgentRecords.Values)
+        {
+            if (record == null ||
+                !string.Equals(record.AgentId, agentId, StringComparison.OrdinalIgnoreCase) ||
+                record.Root == null)
+            {
+                continue;
+            }
+
+            obj = record.Root;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryReadRuntimeObject(List<object> entry, out GameObject obj)
+    {
+        obj = null;
+        if (entry == null || entry.Count == 0)
+        {
+            return false;
+        }
+
+        obj = entry[0] as GameObject;
+        return obj != null;
+    }
+
     /// <returns>Whether the agent satisfies frustum (+ optional hysteresis distance) constraints.</returns>
     private bool PrefabPassesStreamingHeuristics(GameObject obj, Camera cam, bool applyDistance)
     {
@@ -1561,6 +1852,16 @@ public abstract partial class SimulationManager : MonoBehaviour
         Vector3 currentPosition,
         GameObject prefabInstance)
     {
+        Quaternion headingRotation = ResolvePrefabHeadingRotation(agentName, prop, pointData, currentPosition);
+        return ComposePrefabRuntimeRotation(headingRotation, visualState, prefabInstance);
+    }
+
+    private Quaternion ResolvePrefabHeadingRotation(
+        string agentName,
+        PropertiesGAMA prop,
+        List<int> pointData,
+        Vector3 currentPosition)
+    {
         int rawHeading = pointData != null && pointData.Count > 3 ? pointData[3] : 0;
         float heading = DecodeGamaAngle(rawHeading);
 
@@ -1570,7 +1871,15 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
 
         float rotation = prop.rotationCoeffF * heading + prop.rotationOffsetF;
-        return Quaternion.AngleAxis(rotation, Vector3.up) *
+        return Quaternion.AngleAxis(rotation, Vector3.up);
+    }
+
+    private static Quaternion ComposePrefabRuntimeRotation(
+        Quaternion headingRotation,
+        GamaAgentVisualState visualState,
+        GameObject prefabInstance)
+    {
+        return headingRotation *
                Quaternion.Euler(visualState.RotationOffsetEuler) *
                GetPrefabBaseRotation(prefabInstance);
     }
@@ -1713,7 +2022,13 @@ public abstract partial class SimulationManager : MonoBehaviour
         int precision = parameters != null ? parameters.precision : 1;
         float baseScale = prefabAgent && prop != null ? prop.GetUnityScale(precision) : 1f;
         float scale = Mathf.Max(0f, baseScale * visualState.ScaleMultiplier);
-        obj.transform.localScale = new Vector3(scale, scale, scale);
+        bool hasVisualOverridePrefab = !prefabAgent &&
+                                       (visualState.PrefabOverride != null ||
+                                        !string.IsNullOrEmpty(visualState.PrefabResourcePath));
+        bool keepLogicalRootScaleStable = hasVisualOverridePrefab && IsVegetationCell(prop, obj);
+        obj.transform.localScale = keepLogicalRootScaleStable
+            ? Vector3.one
+            : new Vector3(scale, scale, scale);
 
         if (!prefabAgent)
         {
@@ -1722,14 +2037,26 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
 
         Transform visualOverride = null;
-        if (!string.IsNullOrEmpty(visualState.PrefabResourcePath))
+        if (prefabAgent)
+        {
+            Transform staleVisualOverride = obj.transform.Find("VisualOverride");
+            if (staleVisualOverride != null)
+            {
+                UnityEngine.Object.Destroy(staleVisualOverride.gameObject);
+            }
+        }
+
+        if (hasVisualOverridePrefab)
         {
             visualOverride = obj.transform.Find("VisualOverride");
+            string visualSignature = visualState.PrefabOverride != null
+                ? "object:" + visualState.PrefabOverride.GetInstanceID()
+                : "resources:" + visualState.PrefabResourcePath;
             bool needsNewInstantiate = false;
             if (visualOverride != null)
             {
                 GamaRuntimePrefabSignature sig = visualOverride.GetComponent<GamaRuntimePrefabSignature>();
-                if (sig == null || sig.signature != visualState.PrefabResourcePath)
+                if (sig == null || sig.signature != visualSignature)
                 {
                     UnityEngine.Object.Destroy(visualOverride.gameObject);
                     visualOverride = null;
@@ -1743,25 +2070,17 @@ public abstract partial class SimulationManager : MonoBehaviour
 
             if (needsNewInstantiate)
             {
-                GameObject loadedPrefab = Resources.Load<GameObject>(visualState.PrefabResourcePath);
+                GameObject loadedPrefab = visualState.PrefabOverride != null
+                    ? visualState.PrefabOverride
+                    : Resources.Load<GameObject>(visualState.PrefabResourcePath);
                 if (loadedPrefab != null)
                 {
                     GameObject visual = Instantiate(loadedPrefab, obj.transform);
                     visual.name = "VisualOverride";
                     visual.transform.localRotation = Quaternion.identity;
-                    // Do NOT scale the visual to Vector3.one. Instead, we use a scale relative to the parent so that world scale is correct.
-                    // Wait, if the parent obj is scaled by `scale`, and we want the prefab to be scaled by `visualState.ScaleMultiplier`,
-                    // we need visual.localScale = (visualState.ScaleMultiplier / scale). But since `scale = baseScale * visualState.ScaleMultiplier`
-                    // and `baseScale = 1f` for geometries, `scale` IS `visualState.ScaleMultiplier`.
-                    // So `visual.localScale = Vector3.one` makes its world scale exactly `visualState.ScaleMultiplier`.
-                    // But if `baseScale` != 1f, `visual.localScale` should be 1f/baseScale so that its world scale is `visualState.ScaleMultiplier`.
-                    // Since it's a visual override, we just want it to be size 1 multiplied by ScaleMultiplier.
-                    float parentScale = Mathf.Max(0.0001f, scale);
-                    float targetWorldScale = Mathf.Max(0f, visualState.ScaleMultiplier);
-                    visual.transform.localScale = Vector3.one * (targetWorldScale / parentScale);
-                    
+
                     GamaRuntimePrefabSignature sig = visual.AddComponent<GamaRuntimePrefabSignature>();
-                    sig.signature = visualState.PrefabResourcePath;
+                    sig.signature = visualSignature;
                     visualOverride = visual.transform;
                 }
                 else
@@ -1774,13 +2093,14 @@ public abstract partial class SimulationManager : MonoBehaviour
             {
                 if (computedWorldAnchor.HasValue)
                 {
-                    visualOverride.position = computedWorldAnchor.Value;
+                    visualOverride.position = computedWorldAnchor.Value + visualState.PositionOffset;
                 }
                 else
                 {
-                    visualOverride.position = GetRuntimeAgentWorldAnchor(obj);
+                    visualOverride.position = ResolveCurrentVisualWorldAnchor(obj);
                 }
                 visualOverride.rotation = Quaternion.Euler(visualState.RotationOffsetEuler);
+                visualOverride.localScale = ResolveVisualOverrideLocalScale(scale, visualState, keepLogicalRootScaleStable);
 
                 string speciesKey = prop != null ? prop.id : "unknown";
                 if (!debugLogCounts.ContainsKey(speciesKey)) debugLogCounts[speciesKey] = 0;
@@ -1788,13 +2108,24 @@ public abstract partial class SimulationManager : MonoBehaviour
                 if (debugLogCounts[speciesKey] < 5)
                 {
                     debugLogCounts[speciesKey]++;
-                    Debug.Log($"[GAMA][RUNTIME][PREFAB] species={speciesKey} id={obj.name} agentRootPos={obj.transform.position:F3} visualPos={visualOverride.position:F3} scale={visualOverride.localScale:F3} prefab={visualState.PrefabResourcePath}");
+                    Debug.Log($"[GAMA][RUNTIME][PREFAB] species={speciesKey} id={obj.name} agentRootPos={obj.transform.position:F3} visualPos={visualOverride.position:F3} scale={visualOverride.localScale:F3} prefab={visualSignature}");
                 }
 
                 if (!debugSummaryLogged.ContainsKey(speciesKey))
                 {
                     debugSummaryLogged[speciesKey] = true;
-                    Debug.Log($"[GAMA][RUNTIME][PREFAB] species={speciesKey} prefab={visualState.PrefabResourcePath} scale={visualState.ScaleMultiplier}");
+                    Debug.Log($"[GAMA][RUNTIME][PREFAB] species={speciesKey} prefab={visualSignature} scale={visualState.ScaleMultiplier}");
+                }
+
+                if (keepLogicalRootScaleStable)
+                {
+                    string scaleLogKey = "visual-scale:" + speciesKey;
+                    if (!debugLogCounts.ContainsKey(scaleLogKey)) debugLogCounts[scaleLogKey] = 0;
+                    if (debugLogCounts[scaleLogKey] < 5)
+                    {
+                        debugLogCounts[scaleLogKey]++;
+                        Debug.Log($"[GAMA][RUNTIME][SCALE] species={speciesKey} id={obj.name} parentScale={obj.transform.localScale:F3} visualScale={visualOverride.localScale:F3}");
+                    }
                 }
             }
         }
@@ -1818,6 +2149,171 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
 
         SetRenderersEnabled(obj, visualState.Visible, visualOverride);
+    }
+
+    private static Vector3 ResolveVisualOverrideLocalScale(
+        float rootScale,
+        GamaAgentVisualState visualState,
+        bool keepLogicalRootScaleStable)
+    {
+        if (keepLogicalRootScaleStable)
+        {
+            return Vector3.one * Mathf.Max(0f, rootScale);
+        }
+
+        float parentScale = Mathf.Max(0.0001f, rootScale);
+        float targetWorldScale = Mathf.Max(0f, visualState.ScaleMultiplier);
+        return Vector3.one * (targetWorldScale / parentScale);
+    }
+
+    private static bool IsVegetationCell(PropertiesGAMA prop, GameObject obj)
+    {
+        return ContainsVegetationCell(prop != null ? prop.id : null) ||
+               ContainsVegetationCell(prop != null ? prop.tag : null) ||
+               ContainsVegetationCell(prop != null ? prop.prefab : null) ||
+               ContainsVegetationCell(obj != null ? obj.name : null);
+    }
+
+    private static bool ContainsVegetationCell(string value)
+    {
+        return !string.IsNullOrWhiteSpace(value) &&
+               value.IndexOf("vegetation_cell", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static Vector3 ResolveRuntimeBasePosition(RuntimeAgentRecord record, GameObject root)
+    {
+        if (record != null && record.HasBaseTransform)
+        {
+            return record.BasePosition;
+        }
+
+        if (root == null)
+        {
+            return Vector3.zero;
+        }
+
+        Vector3 lastOffset = record != null ? record.LastPositionOffset : Vector3.zero;
+        return root.transform.position - lastOffset;
+    }
+
+    private static Quaternion ResolveRuntimeBaseRotation(RuntimeAgentRecord record)
+    {
+        if (record != null && record.HasBaseTransform)
+        {
+            return record.BaseRotation;
+        }
+
+        return Quaternion.identity;
+    }
+
+    public void ApplyRuntimeSpeciesOverrideNow(string speciesName)
+    {
+        if (string.IsNullOrWhiteSpace(speciesName))
+        {
+            return;
+        }
+
+        GamaRuntimePreviewOverrideApplier.RefreshNow();
+
+        List<string> matchingKeys = new List<string>();
+        foreach (KeyValuePair<string, RuntimeAgentRecord> pair in runtimeAgentRecords)
+        {
+            RuntimeAgentRecord record = pair.Value;
+            if (record == null ||
+                record.Root == null ||
+                !string.Equals(record.SpeciesName, speciesName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            matchingKeys.Add(pair.Key);
+        }
+
+        int updated = 0;
+        for (int i = 0; i < matchingKeys.Count; i++)
+        {
+            string key = matchingKeys[i];
+            RuntimeAgentRecord record;
+            if (!runtimeAgentRecords.TryGetValue(key, out record) || record == null || record.Root == null)
+            {
+                continue;
+            }
+
+            List<object> entry;
+            if (geometryMap == null ||
+                !geometryMap.TryGetValue(key, out entry) ||
+                entry == null ||
+                entry.Count < 2)
+            {
+                continue;
+            }
+
+            PropertiesGAMA prop = entry[1] as PropertiesGAMA;
+            if (prop == null)
+            {
+                continue;
+            }
+
+            GamaAgentVisualState visualState = ResolveAgentVisualState(record.AgentId, prop, null);
+            GameObject root = record.Root;
+            Vector3 basePosition = ResolveRuntimeBasePosition(record, root);
+            Quaternion baseRotation = ResolveRuntimeBaseRotation(record);
+
+            if (prop.hasPrefab)
+            {
+                string desiredSignature = ResolvePrefabSignature(prop, null);
+                if (NeedsPrefabRebuild(root, desiredSignature))
+                {
+                    if (toFollow != null && toFollow.Contains(root))
+                    {
+                        toFollow.Remove(root);
+                    }
+
+                    ReleasePrefabInstance(root);
+                    root = instantiatePrefab(record.AgentId, key, record.SpeciesName, prop, null, desiredSignature, initGame: false);
+                    entry[0] = root;
+                    record.Root = root;
+                    record.VisualRoot = ResolveRuntimeVisualRoot(root);
+                }
+
+                root.transform.SetPositionAndRotation(
+                    basePosition + visualState.PositionOffset,
+                    ComposePrefabRuntimeRotation(baseRotation, visualState, root));
+                ApplyAgentVisualState(root, prop, visualState, true, Vector3.zero);
+            }
+            else
+            {
+                Vector3? visualAnchor = record.HasVisualAnchor ? record.VisualAnchor : (Vector3?)null;
+                ApplyAgentVisualState(root, prop, visualState, false, basePosition, visualAnchor);
+            }
+
+            ApplyImmediateStreamingState(root, prop, GetPrefabStreamingCamera(), frustumReady: false);
+            record.CurrentlyVisible = visualState.Visible && root.activeSelf;
+            record.UsesPrefabOverride = visualState.PrefabOverride != null ||
+                                        !string.IsNullOrWhiteSpace(visualState.PrefabResourcePath);
+            record.BasePosition = basePosition;
+            record.BaseRotation = baseRotation;
+            record.HasBaseTransform = true;
+            if (!prop.hasPrefab && !record.HasVisualAnchor)
+            {
+                Vector3 fallbackAnchor = ResolveCurrentVisualWorldAnchor(root);
+                if (fallbackAnchor.sqrMagnitude > 0.000001f)
+                {
+                    record.VisualAnchor = fallbackAnchor - visualState.PositionOffset;
+                    record.HasVisualAnchor = true;
+                }
+            }
+            record.LastPositionOffset = visualState.PositionOffset;
+            record.LastRotationOffsetEuler = visualState.RotationOffsetEuler;
+            if (prop.hasPrefab)
+            {
+                previousPrefabPositions[key] = basePosition;
+                previousPrefabPropertyIds[key] = prop.id ?? string.Empty;
+            }
+            updated++;
+        }
+
+        Debug.Log("[GAMA][RUNTIME][OVERRIDE] refreshed species=" + speciesName + " agents=" + updated);
     }
 
     private static Vector3 GetRuntimeAgentWorldAnchor(GameObject agentRoot)
@@ -1875,6 +2371,269 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
 
         return agentRoot.transform.position;
+    }
+
+    private static Vector3 ResolveCurrentVisualWorldAnchor(GameObject agentRoot)
+    {
+        if (agentRoot == null)
+        {
+            return Vector3.zero;
+        }
+
+        Transform visualOverride = agentRoot.transform.Find("VisualOverride");
+        if (TryGetRendererBoundsCenter(visualOverride, out Vector3 visualCenter))
+        {
+            return visualCenter;
+        }
+
+        Transform invalidFallback = agentRoot.transform.Find("InvalidGeometryFallback");
+        if (TryGetRendererBoundsCenter(invalidFallback, out Vector3 fallbackCenter))
+        {
+            return fallbackCenter;
+        }
+
+        return GetRuntimeAgentWorldAnchor(agentRoot);
+    }
+
+    private static bool TryGetRendererBoundsCenter(Transform root, out Vector3 center)
+    {
+        center = Vector3.zero;
+        if (root == null)
+        {
+            return false;
+        }
+
+        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+        bool hasBounds = false;
+        Bounds bounds = default;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null || renderer.bounds.size.sqrMagnitude <= 0.000001f)
+            {
+                continue;
+            }
+
+            if (!hasBounds)
+            {
+                bounds = renderer.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        if (!hasBounds)
+        {
+            return false;
+        }
+
+        center = bounds.center;
+        return true;
+    }
+
+    private void HandleInvalidDynamicGeometryFallback(
+        GameObject obj,
+        string speciesName,
+        GamaAgentVisualState visualState,
+        Vector3 computedWorldAnchor,
+        bool dynamicUpdate,
+        bool forceFallback)
+    {
+        if (obj == null)
+        {
+            return;
+        }
+
+        bool originalGeometryValid = HasValidOriginalGeometryMesh(obj);
+        Transform existingFallback = obj.transform.Find("InvalidGeometryFallback");
+
+        if (!dynamicUpdate ||
+            visualState.PrefabOverride != null ||
+            !string.IsNullOrWhiteSpace(visualState.PrefabResourcePath) ||
+            (!forceFallback && originalGeometryValid))
+        {
+            if (existingFallback != null)
+            {
+                UnityEngine.Object.Destroy(existingFallback.gameObject);
+            }
+
+            return;
+        }
+
+        Transform fallback = existingFallback;
+        if (fallback == null)
+        {
+            GameObject fallbackObj = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            fallbackObj.name = "InvalidGeometryFallback";
+            Collider collider = fallbackObj.GetComponent<Collider>();
+            if (collider != null)
+            {
+                UnityEngine.Object.Destroy(collider);
+            }
+
+            fallbackObj.transform.SetParent(obj.transform, true);
+            fallback = fallbackObj.transform;
+        }
+
+        SetOriginalGeometryRenderersEnabled(obj.transform, fallback, false);
+        bool hasComputedAnchor = computedWorldAnchor.sqrMagnitude > 0.000001f;
+        fallback.position = hasComputedAnchor
+            ? computedWorldAnchor + visualState.PositionOffset
+            : GetRuntimeAgentWorldAnchor(obj);
+        fallback.rotation = Quaternion.Euler(visualState.RotationOffsetEuler);
+        float parentScale = Mathf.Max(0.0001f, visualState.ScaleMultiplier);
+        fallback.localScale = Vector3.one * (Mathf.Max(0.2f, visualState.ScaleMultiplier) / parentScale);
+        ChangeColor(fallback.gameObject, visualState.HasColor ? visualState.Color : new Color32(255, 80, 80, 255));
+
+        Renderer[] renderers = fallback.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i] != null)
+            {
+                renderers[i].enabled = visualState.Visible;
+            }
+        }
+
+        LogInvalidGeometryFallback(speciesName);
+    }
+
+    private bool IsRuntimePolygonInputValid(int[] points)
+    {
+        if (points == null || points.Length < 6)
+        {
+            return false;
+        }
+
+        int pointCount = points.Length / 2;
+        if (pointCount < 3)
+        {
+            return false;
+        }
+
+        List<Vector2> cleaned = new List<Vector2>(pointCount);
+        for (int i = 0; i < pointCount; i++)
+        {
+            Vector2 point = converter != null
+                ? converter.fromGAMACRS2D(points[i * 2], points[i * 2 + 1])
+                : new Vector2(points[i * 2], points[i * 2 + 1]);
+
+            if (float.IsNaN(point.x) || float.IsNaN(point.y) ||
+                float.IsInfinity(point.x) || float.IsInfinity(point.y))
+            {
+                return false;
+            }
+
+            if (cleaned.Count == 0 || Vector2.Distance(cleaned[cleaned.Count - 1], point) > 0.000001f)
+            {
+                cleaned.Add(point);
+            }
+        }
+
+        if (cleaned.Count > 1 && Vector2.Distance(cleaned[0], cleaned[cleaned.Count - 1]) <= 0.000001f)
+        {
+            cleaned.RemoveAt(cleaned.Count - 1);
+        }
+
+        if (cleaned.Count < 3)
+        {
+            return false;
+        }
+
+        float area = 0f;
+        for (int i = 0; i < cleaned.Count; i++)
+        {
+            Vector2 a = cleaned[i];
+            Vector2 b = cleaned[(i + 1) % cleaned.Count];
+            area += a.x * b.y - b.x * a.y;
+        }
+
+        return Mathf.Abs(area) > 0.000001f;
+    }
+
+    private static void SetOriginalGeometryRenderersEnabled(Transform root, Transform fallbackRoot, bool enabled)
+    {
+        if (root == null)
+        {
+            return;
+        }
+
+        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null)
+            {
+                continue;
+            }
+
+            if (fallbackRoot != null && (renderer.transform == fallbackRoot || renderer.transform.IsChildOf(fallbackRoot)))
+            {
+                continue;
+            }
+
+            renderer.enabled = enabled;
+        }
+    }
+
+    private static bool HasValidOriginalGeometryMesh(GameObject obj)
+    {
+        if (obj == null)
+        {
+            return false;
+        }
+
+        MeshFilter[] meshFilters = obj.GetComponentsInChildren<MeshFilter>(true);
+        for (int i = 0; i < meshFilters.Length; i++)
+        {
+            MeshFilter filter = meshFilters[i];
+            if (filter == null || IsRuntimeAuxiliaryVisual(filter.transform))
+            {
+                continue;
+            }
+
+            Mesh mesh = filter.sharedMesh;
+            if (mesh != null && mesh.vertexCount > 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsRuntimeAuxiliaryVisual(Transform transform)
+    {
+        Transform current = transform;
+        while (current != null)
+        {
+            if (current.name == "VisualOverride" || current.name == "InvalidGeometryFallback")
+            {
+                return true;
+            }
+
+            current = current.parent;
+        }
+
+        return false;
+    }
+
+    private void LogInvalidGeometryFallback(string speciesName)
+    {
+        string species = string.IsNullOrWhiteSpace(speciesName) ? "unknown" : speciesName.Trim();
+        int count = 0;
+        invalidGeometryFallbackCounts.TryGetValue(species, out count);
+        count++;
+        invalidGeometryFallbackCounts[species] = count;
+
+        if (count == 1 || count == 10 || count % 100 == 0)
+        {
+            Debug.LogWarning(
+                "[GAMA][RUNTIME][GEOMETRY] species=" + species +
+                " invalidPolygonFallback=" + count);
+        }
     }
 
     private static void SetRenderersEnabled(GameObject obj, bool visible, Transform visualOverride)
@@ -1981,7 +2740,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             }
 
             bool keepLoaded = keepSelectedPrefabsLoaded && IsSelectedPrefab(obj);
-            bool applyDistance = prop.hasPrefab;
+            bool applyDistance = true;
             bool wantActive = keepLoaded || PrefabPassesStreamingHeuristics(obj, streamingCamera, applyDistance);
             SetAgentStreamingActive(obj, prop, wantActive);
             processed++;
@@ -2034,6 +2793,51 @@ public abstract partial class SimulationManager : MonoBehaviour
             " max_per_tick=" + maxAgentUpdatesPerTick);
     }
 
+    private void EmitRuntimeSyncSummaryIfNeeded()
+    {
+        if (!logAgentUpdateBudgetStats || runtimeSyncCountersBySpecies.Count == 0)
+        {
+            return;
+        }
+
+        foreach (KeyValuePair<string, RuntimeSyncCounters> pair in runtimeSyncCountersBySpecies)
+        {
+            RuntimeSyncCounters counters = pair.Value;
+            if (counters == null)
+            {
+                continue;
+            }
+
+            int active = CountActiveDynamicAgents(pair.Key);
+            Debug.Log(
+                "[GAMA][RUNTIME][SYNC] tick=" + runtimeLiveTickSerial +
+                " species=" + pair.Key +
+                " active=" + active +
+                " created=" + counters.Created +
+                " updated=" + counters.Updated +
+                " removed=" + counters.Removed);
+        }
+    }
+
+    private int CountActiveDynamicAgents(string speciesName)
+    {
+        int count = 0;
+        foreach (RuntimeAgentRecord record in runtimeAgentRecords.Values)
+        {
+            if (record == null || !record.IsDynamic)
+            {
+                continue;
+            }
+
+            if (string.Equals(record.SpeciesName, speciesName, StringComparison.OrdinalIgnoreCase))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
     private void SetAllPrefabStreamingActive(bool active)
     {
         foreach (KeyValuePair<string, List<object>> entry in geometryMap)
@@ -2072,7 +2876,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
 
         bool needFrustum = streamPrefabsByCameraView;
-        bool needDistance = prop.hasPrefab && enablePrefabRenderDistance && globalPrefabRenderDistance > Mathf.Epsilon;
+        bool needDistance = enablePrefabRenderDistance && globalPrefabRenderDistance > Mathf.Epsilon;
         if ((needFrustum || needDistance) && streamingCamera == null)
         {
             // Keep current state when no valid game camera is available.
@@ -2084,7 +2888,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             return;
         }
 
-        bool applyDistance = prop.hasPrefab;
+        bool applyDistance = true;
         bool wantActive = PrefabPassesStreamingHeuristics(obj, streamingCamera, applyDistance);
         SetAgentStreamingActive(obj, prop, wantActive);
     }
@@ -2191,6 +2995,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                 previousPrefabPositions.Remove(id);
                 previousPrefabPropertyIds.Remove(id);
                 missingAgentTickCounts.Remove(id);
+                UnregisterRuntimeAgent(id);
                 continue;
             }
 
@@ -2202,10 +3007,18 @@ public abstract partial class SimulationManager : MonoBehaviour
                 previousPrefabPositions.Remove(id);
                 previousPrefabPropertyIds.Remove(id);
                 missingAgentTickCounts.Remove(id);
+                UnregisterRuntimeAgent(id);
                 continue;
             }
 
-            bool shouldCullFromMissingData = prop != null && (prop.hasPrefab || removeMissingGeometryAgents);
+            RuntimeAgentRecord record;
+            bool isDynamicAgent =
+                runtimeAgentRecords.TryGetValue(id, out record) &&
+                record != null &&
+                record.IsDynamic;
+            bool shouldCullFromMissingData =
+                isDynamicAgent ||
+                (record == null && prop != null && (prop.hasPrefab || removeMissingGeometryAgents));
             if (!shouldCullFromMissingData)
             {
                 // Roads/buildings are handled by camera streaming only; partial data ticks must not hide them.
@@ -2227,6 +3040,11 @@ public abstract partial class SimulationManager : MonoBehaviour
             previousPrefabPositions.Remove(id);
             previousPrefabPropertyIds.Remove(id);
             missingAgentTickCounts.Remove(id);
+            if (record != null)
+            {
+                GetRuntimeSyncCounters(record.SpeciesName).Removed++;
+            }
+            UnregisterRuntimeAgent(id);
             if (toFollow.Contains(obj))
                 toFollow.Remove(obj);
             ReleasePrefabInstance(obj);
@@ -2242,6 +3060,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
         toRemove.Clear();
         pendingWorldUpdateRemovalPass = false;
+        EmitRuntimeSyncSummaryIfNeeded();
     }
 
     protected virtual void ManageAttributes(List<Attributes> attributes)
