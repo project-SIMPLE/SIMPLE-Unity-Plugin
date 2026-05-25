@@ -838,6 +838,7 @@ public sealed class GamaPanelWindow : EditorWindow
         {
             if (GUILayout.Button("Generate Preview from GAMA", GUILayout.Height(34f)))
             {
+                PrepareCleanSceneBeforeGamaPreview();
                 captureManagedFromUnity = true;
                 captureUseExternalMiddleware = true;
                 captureUseLocalMiddleware = false;
@@ -2637,86 +2638,103 @@ public sealed class GamaPanelWindow : EditorWindow
         Repaint();
     }
 
+
+    private void ClearStaticPreviewBeforeNewPreview()
+    {
+        GameObject previewRoot = GameObject.Find(StaticPreviewRootName);
+        if (previewRoot != null)
+        {
+            DestroyImmediate(previewRoot);
+        }
+
+        GameObject runtimeRoot = GameObject.Find("[GAMA] Runtime Live Agents");
+        if (runtimeRoot != null)
+        {
+            DestroyImmediate(runtimeRoot);
+        }
+
+        if (agentOverrides != null)
+        {
+            agentOverrides.Clear();
+        }
+
+        Repaint();
+    }
+
+    private void SynchronizeAgentRowsWithCurrentPreview()
+    {
+        if (agentOverrides == null || agentOverrides.Count == 0)
+        {
+            return;
+        }
+
+        GameObject previewRoot = GameObject.Find(StaticPreviewRootName);
+        if (previewRoot == null)
+        {
+            return;
+        }
+
+        Transform gamaRoot = FindChildRecursive(previewRoot.transform, "GAMA");
+        Transform speciesContainer = gamaRoot != null ? gamaRoot : previewRoot.transform;
+
+        HashSet<string> currentSpecies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (int i = 0; i < speciesContainer.childCount; i++)
+        {
+            Transform child = speciesContainer.GetChild(i);
+            if (child == null)
+            {
+                continue;
+            }
+
+            if (child.name == "Preview_PlayerSpawn" || child.name == "Visual")
+            {
+                continue;
+            }
+
+            currentSpecies.Add(child.name);
+        }
+
+        for (int i = agentOverrides.Count - 1; i >= 0; i--)
+        {
+            GamaPanelAgentOverride agent = agentOverrides[i];
+            if (agent == null || !currentSpecies.Contains(agent.Name))
+            {
+                agentOverrides.RemoveAt(i);
+            }
+        }
+    }
+
+    private void PrepareCleanSceneBeforeGamaPreview()
+    {
+        ClearStaticPreviewBeforeNewPreview();
+
+        try
+        {
+            GAMAMenu.SetupScene();
+            Debug.Log("[GAMA][PREVIEW] Scene reset with Setup Scene before generating preview.");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[GAMA][PREVIEW] Setup Scene before preview failed: " + ex);
+        }
+
+        ClearStaticPreviewBeforeNewPreview();
+    }
+
     private void DrawAgentSettings()
     {
-        EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Agents and Species", EditorStyles.boldLabel);
-        if (agentOverrides.Count == 0)
+        SynchronizeAgentRowsWithCurrentPreview();
+
+        if (agentOverrides == null || agentOverrides.Count == 0)
         {
             EditorGUILayout.HelpBox("No species or create statements were detected in the experiment file.", MessageType.Warning);
             return;
         }
 
         EditorGUILayout.HelpBox(
-            "Prefab overrides are applied to the static preview. For Play Mode, use prefabs located under a Resources folder when possible.",
+            "Assign a prefab to a species if its GAMA geometry is missing or hard to see. You can adjust color, scale and visibility here.",
             MessageType.Info);
-        EditorGUILayout.HelpBox(
-            "Large species can contain thousands of agents. Prefab changes rebuild visuals, while color, scale and visibility changes are applied as lightweight updates.",
-            MessageType.None);
-
-        EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
-        GUILayout.Label("Agent / Species", GUILayout.Width(180f));
-        GUILayout.Label("Count", GUILayout.Width(70f));
-        GUILayout.Label("Prefab", GUILayout.Width(160f));
-        GUILayout.Label("Color", GUILayout.Width(80f));
-        GUILayout.Label("Reset", GUILayout.Width(58f));
-        GUILayout.Label("Scale", GUILayout.Width(60f));
-        GUILayout.Label("Visible", GUILayout.Width(50f));
-        EditorGUILayout.EndHorizontal();
-
-        agentsScroll = EditorGUILayout.BeginScrollView(agentsScroll, GUILayout.MinHeight(160f), GUILayout.MaxHeight(260f));
-        for (int i = 0; i < agentOverrides.Count; i++)
-        {
-            GamaPanelAgentOverride agent = agentOverrides[i];
-            EditorGUILayout.BeginHorizontal("box");
-            EditorGUILayout.LabelField(agent.Name, GUILayout.Width(180f));
-            EditorGUILayout.LabelField(agent.CountExpression, GUILayout.Width(70f));
-
-            GameObject editedPrefab = (GameObject)EditorGUILayout.ObjectField(agent.PrefabOverride, typeof(GameObject), false, GUILayout.Width(160f));
-            if (editedPrefab != agent.PrefabOverride)
-            {
-                agent.PrefabOverride = editedPrefab;
-                GamaSpeciesRenderOverrideEntry entry = PushAgentOverridesToAsset(agent);
-                GamaEditorPreviewOverrideApplier.ApplyPrefabVisualToPreviewSpecies(agent.Name, entry);
-            }
-
-            Color editedColor = EditorGUILayout.ColorField(agent.Color, GUILayout.Width(80f));
-            if (editedColor != agent.Color)
-            {
-                agent.Color = editedColor;
-                agent.OverrideColor = true;
-                GamaSpeciesRenderOverrideEntry entry = PushAgentOverridesToAsset(agent);
-                GamaEditorPreviewOverrideApplier.ApplyColorToPreviewSpecies(agent.Name, entry);
-            }
-
-            if (GUILayout.Button("Reset", GUILayout.Width(58f)))
-            {
-                agent.ResetColorToDefault();
-                GamaSpeciesRenderOverrideEntry entry = PushAgentOverridesToAsset(agent);
-                GamaEditorPreviewOverrideApplier.ApplyColorToPreviewSpecies(agent.Name, entry);
-            }
-
-            float editedScale = EditorGUILayout.DelayedFloatField(agent.ScaleMultiplier, GUILayout.Width(60f));
-            if (Mathf.Abs(editedScale - agent.ScaleMultiplier) > 0.0001f)
-            {
-                agent.ScaleMultiplier = Mathf.Max(0.0001f, editedScale);
-                agent.OverrideScale = Math.Abs(agent.ScaleMultiplier - 1f) > 0.0001f;
-                GamaSpeciesRenderOverrideEntry entry = PushAgentOverridesToAsset(agent);
-                GamaEditorPreviewOverrideApplier.ApplyScaleToPreviewSpecies(agent.Name, entry);
-            }
-
-            bool editedVisible = EditorGUILayout.Toggle(agent.Visible, GUILayout.Width(50f));
-            if (editedVisible != agent.Visible)
-            {
-                agent.Visible = editedVisible;
-                agent.OverrideVisibility = !agent.Visible;
-                GamaSpeciesRenderOverrideEntry entry = PushAgentOverridesToAsset(agent);
-                GamaEditorPreviewOverrideApplier.ApplyVisibilityToPreviewSpecies(agent.Name, entry);
-            }
-
-            EditorGUILayout.EndHorizontal();
-        }
-        EditorGUILayout.EndScrollView();
 
         if (HasNonResourcesPrefabOverride())
         {
@@ -2724,63 +2742,134 @@ public sealed class GamaPanelWindow : EditorWindow
                 "Editor prefab overrides are used for static preview. To use them in Play Mode, place the prefab under a Resources folder or provide a Resources path.",
                 MessageType.Warning);
         }
+
+        EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+        GUILayout.Label("Agent / Species", GUILayout.Width(180f));
+        GUILayout.Label("Count", GUILayout.Width(70f));
+        GUILayout.Label("Prefab", GUILayout.Width(210f));
+        GUILayout.Label("Color", GUILayout.Width(100f));
+        GUILayout.Label("Scale", GUILayout.Width(70f));
+        GUILayout.Label("Visible", GUILayout.Width(60f));
+        GUILayout.Label("Reset", GUILayout.Width(70f));
+        GUILayout.FlexibleSpace();
+        EditorGUILayout.EndHorizontal();
+
+        agentsScroll = EditorGUILayout.BeginScrollView(
+            agentsScroll,
+            GUILayout.MinHeight(160f),
+            GUILayout.MaxHeight(260f));
+
+        for (int i = 0; i < agentOverrides.Count; i++)
+        {
+            GamaPanelAgentOverride agent = agentOverrides[i];
+            EnsureAgentUiDefaults(agent);
+
+            EditorGUILayout.BeginHorizontal("box");
+
+            EditorGUILayout.LabelField(agent.Name, GUILayout.Width(180f));
+            EditorGUILayout.LabelField(agent.CountExpression, GUILayout.Width(70f));
+
+            GameObject editedPrefab = (GameObject)EditorGUILayout.ObjectField(
+                agent.PrefabOverride,
+                typeof(GameObject),
+                false,
+                GUILayout.Width(210f));
+
+            if (editedPrefab != agent.PrefabOverride)
+            {
+                agent.PrefabOverride = editedPrefab;
+                PushAgentOverridesToAsset(agent);
+                GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
+            }
+
+            Color editedColor = EditorGUILayout.ColorField(agent.Color, GUILayout.Width(100f));
+            if (editedColor != agent.Color)
+            {
+                agent.Color = editedColor;
+                agent.OverrideColor = true;
+                PushAgentOverridesToAsset(agent);
+                GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
+            }
+
+            float editedScale = EditorGUILayout.DelayedFloatField(agent.ScaleMultiplier, GUILayout.Width(70f));
+            editedScale = Mathf.Max(0.0001f, editedScale);
+
+            if (Mathf.Abs(editedScale - agent.ScaleMultiplier) > 0.0001f)
+            {
+                agent.ScaleMultiplier = editedScale;
+                agent.OverrideScale = Mathf.Abs(agent.ScaleMultiplier - 1f) > 0.0001f;
+                PushAgentOverridesToAsset(agent);
+                GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
+            }
+
+            bool editedVisible = EditorGUILayout.Toggle(agent.Visible, GUILayout.Width(60f));
+            if (editedVisible != agent.Visible)
+            {
+                agent.Visible = editedVisible;
+                agent.OverrideVisibility = true;
+                PushAgentOverridesToAsset(agent);
+                GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
+            }
+
+            if (GUILayout.Button("Reset", GUILayout.Width(70f)))
+            {
+                ResetAgentOverridesToDefault(agent);
+            }
+
+            GUILayout.FlexibleSpace();
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        EditorGUILayout.EndScrollView();
+
+        EditorGUILayout.HelpBox(
+            "Scale uses 1 as default. Reset restores the species prefab, color, scale and visibility to the imported GAMA/default values.",
+            MessageType.None);
     }
 
     private GamaSpeciesRenderOverrideEntry PushAgentOverridesToAsset(GamaPanelAgentOverride agent)
     {
         GamaSpeciesRenderOverrides asset = GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
-        if (asset != null)
+        if (asset == null || agent == null)
         {
-            GamaSpeciesRenderOverrideEntry entry = asset.GetOrCreateEntry(agent.Name);
-            entry.color = agent.Color;
-
-            if (agent.OverrideColor)
-            {
-                entry.overrideColor = true;
-            }
-            else
-            {
-                entry.overrideColor = false;
-            }
-
-            if (agent.OverrideScale)
-            {
-                entry.scaleMultiplier = agent.ScaleMultiplier;
-            }
-            else
-            {
-                entry.scaleMultiplier = 1f;
-            }
-
-            if (agent.OverrideVisibility)
-            {
-                entry.overridePreviewVisibility = true;
-                entry.visibleInPreview = agent.Visible;
-                entry.overrideRuntimeVisibility = true;
-                entry.visibleInRuntime = agent.Visible;
-                entry.overrideVisibility = true;
-                entry.visible = agent.Visible;
-            }
-            else
-            {
-                entry.overridePreviewVisibility = false;
-                entry.visibleInPreview = true;
-                entry.overrideRuntimeVisibility = false;
-                entry.visibleInRuntime = true;
-                entry.overrideVisibility = false;
-                entry.visible = true;
-            }
-
-            entry.prefabOverride = agent.PrefabOverride;
-            entry.prefabResourcePath = TryGetResourcesPath(agent.PrefabOverride, out string resourcesPath)
-                ? resourcesPath
-                : string.Empty;
-
-            EditorUtility.SetDirty(asset);
-            return entry;
+            return null;
         }
 
-        return null;
+        GamaSpeciesRenderOverrideEntry entry = asset.GetOrCreateEntry(agent.Name);
+
+        entry.color = agent.Color;
+        entry.overrideColor = agent.OverrideColor;
+
+        entry.scaleMultiplier = agent.OverrideScale ? agent.ScaleMultiplier : 1f;
+
+        if (agent.OverrideVisibility)
+        {
+            entry.overridePreviewVisibility = true;
+            entry.visibleInPreview = agent.Visible;
+            entry.overrideRuntimeVisibility = true;
+            entry.visibleInRuntime = agent.Visible;
+            entry.overrideVisibility = true;
+            entry.visible = agent.Visible;
+        }
+        else
+        {
+            entry.overridePreviewVisibility = false;
+            entry.visibleInPreview = true;
+            entry.overrideRuntimeVisibility = false;
+            entry.visibleInRuntime = true;
+            entry.overrideVisibility = false;
+            entry.visible = true;
+        }
+
+        entry.prefabOverride = agent.PrefabOverride;
+        entry.prefabResourcePath = TryGetResourcesPath(agent.PrefabOverride, out string resourcesPath)
+            ? resourcesPath
+            : string.Empty;
+
+        EditorUtility.SetDirty(asset);
+        AssetDatabase.SaveAssets();
+        return entry;
     }
 
     private bool HasNonResourcesPrefabOverride()
@@ -2842,6 +2931,396 @@ public sealed class GamaPanelWindow : EditorWindow
         return !string.IsNullOrWhiteSpace(resourcesPath);
     }
 
+
+
+    private void ResetAllAgentOverridesToDefault()
+    {
+        if (agentOverrides == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < agentOverrides.Count; i++)
+        {
+            GamaPanelAgentOverride agent = agentOverrides[i];
+            if (agent == null)
+            {
+                continue;
+            }
+
+            agent.PrefabOverride = null;
+            agent.ResetColorToDefault();
+            agent.ScaleMultiplier = 1f;
+            agent.OverrideScale = false;
+            agent.Visible = true;
+            agent.OverrideVisibility = false;
+
+            PushAgentOverridesToAsset(agent);
+        }
+
+        GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
+        Repaint();
+    }
+    private void EnsureAgentUiDefaults(GamaPanelAgentOverride agent)
+    {
+        if (agent == null)
+        {
+            return;
+        }
+
+        if (agent.ScaleMultiplier <= 0f)
+        {
+            agent.ScaleMultiplier = 1f;
+        }
+
+        if (TryReadSpeciesPreviewPrefab(agent.Name, out GameObject previewPrefab) ||
+            TryResolvePrefabHintToAsset(agent.PrefabHint, out previewPrefab))
+        {
+            agent.DefaultPrefabOverride = previewPrefab;
+
+            if (agent.PrefabOverride == null)
+            {
+                agent.PrefabOverride = previewPrefab;
+            }
+        }
+
+        if (!agent.DefaultsResolved)
+        {
+            agent.DefaultsResolved = true;
+
+            if (TryReadSpeciesPreviewColor(agent.Name, out Color previewColor))
+            {
+                agent.DefaultColor = previewColor;
+                if (!agent.OverrideColor)
+                {
+                    agent.Color = previewColor;
+                }
+            }
+            else if (agent.DefaultColor.a <= 0f)
+            {
+                agent.DefaultColor = agent.Color;
+            }
+        }
+        else if (!agent.OverrideColor && TryReadSpeciesPreviewColor(agent.Name, out Color updatedPreviewColor))
+        {
+            agent.DefaultColor = updatedPreviewColor;
+            agent.Color = updatedPreviewColor;
+        }
+    }
+
+
+
+    private void ResetAgentOverridesToDefault(GamaPanelAgentOverride agent)
+    {
+        if (agent == null)
+        {
+            return;
+        }
+
+        EnsureAgentUiDefaults(agent);
+
+        agent.PrefabOverride = agent.DefaultPrefabOverride;
+        agent.Color = agent.DefaultColor;
+        agent.OverrideColor = false;
+        agent.ScaleMultiplier = 1f;
+        agent.OverrideScale = false;
+        agent.Visible = true;
+        agent.OverrideVisibility = false;
+
+        PushAgentOverridesToAsset(agent);
+        GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
+        Repaint();
+    }
+
+
+    private bool TryReadSpeciesPreviewPrefab(string speciesName, out GameObject prefab)
+    {
+        prefab = null;
+
+        if (string.IsNullOrWhiteSpace(speciesName))
+        {
+            return false;
+        }
+
+        GameObject previewRoot = GameObject.Find(StaticPreviewRootName);
+        if (previewRoot == null)
+        {
+            return false;
+        }
+
+        Transform speciesRoot = FindChildRecursive(previewRoot.transform, speciesName);
+        if (speciesRoot == null)
+        {
+            return false;
+        }
+
+        Transform[] children = speciesRoot.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < children.Length; i++)
+        {
+            Transform child = children[i];
+            if (child == null)
+            {
+                continue;
+            }
+
+            GameObject sourcePrefab = PrefabUtility.GetCorrespondingObjectFromSource(child.gameObject);
+            if (sourcePrefab == null)
+            {
+                continue;
+            }
+
+            string assetPath = AssetDatabase.GetAssetPath(sourcePrefab);
+            if (!string.IsNullOrWhiteSpace(assetPath) &&
+                assetPath.EndsWith(".prefab", System.StringComparison.OrdinalIgnoreCase))
+            {
+                prefab = sourcePrefab;
+                return true;
+            }
+        }
+
+        return false;
+    }
+    private bool TryResolvePrefabHintToAsset(string prefabHint, out GameObject prefab)
+    {
+        prefab = null;
+
+        if (string.IsNullOrWhiteSpace(prefabHint) || prefabHint.Trim() == "-")
+        {
+            return false;
+        }
+
+        string hint = prefabHint.Trim().Replace("\\", "/");
+
+        if (hint.EndsWith(".prefab", System.StringComparison.OrdinalIgnoreCase))
+        {
+            GameObject direct = AssetDatabase.LoadAssetAtPath<GameObject>(hint);
+            if (direct != null)
+            {
+                prefab = direct;
+                return true;
+            }
+        }
+
+        string noExtension = hint;
+        if (noExtension.EndsWith(".prefab", System.StringComparison.OrdinalIgnoreCase))
+        {
+            noExtension = noExtension.Substring(0, noExtension.Length - ".prefab".Length);
+        }
+
+        int resourcesIndex = noExtension.IndexOf("/Resources/", System.StringComparison.OrdinalIgnoreCase);
+        if (resourcesIndex >= 0)
+        {
+            string resourcePath = noExtension.Substring(resourcesIndex + "/Resources/".Length);
+            GameObject resourcePrefab = Resources.Load<GameObject>(resourcePath);
+            if (resourcePrefab != null)
+            {
+                prefab = resourcePrefab;
+                return true;
+            }
+        }
+
+        GameObject directResourcePrefab = Resources.Load<GameObject>(noExtension);
+        if (directResourcePrefab != null)
+        {
+            prefab = directResourcePrefab;
+            return true;
+        }
+
+        string fileName = noExtension;
+        int slash = fileName.LastIndexOf("/");
+        if (slash >= 0)
+        {
+            fileName = fileName.Substring(slash + 1);
+        }
+
+        string[] guids = AssetDatabase.FindAssets(fileName + " t:Prefab");
+        for (int i = 0; i < guids.Length; i++)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guids[i]);
+            GameObject candidate = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            if (candidate != null)
+            {
+                prefab = candidate;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryReadSpeciesPreviewColor(string speciesName, out Color color)
+    {
+        color = Color.white;
+
+        if (string.IsNullOrWhiteSpace(speciesName))
+        {
+            return false;
+        }
+
+        GameObject previewRoot = GameObject.Find(StaticPreviewRootName);
+        if (previewRoot == null)
+        {
+            return false;
+        }
+
+        Transform speciesRoot = FindChildRecursive(previewRoot.transform, speciesName);
+        if (speciesRoot == null)
+        {
+            return false;
+        }
+
+        Renderer[] renderers = speciesRoot.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null || renderer.sharedMaterial == null)
+            {
+                continue;
+            }
+
+            Material material = renderer.sharedMaterial;
+            if (material.HasProperty("_BaseColor"))
+            {
+                color = material.GetColor("_BaseColor");
+                return true;
+            }
+
+            if (material.HasProperty("_Color"))
+            {
+                color = material.GetColor("_Color");
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private Transform FindChildRecursive(Transform root, string childName)
+    {
+        if (root == null)
+        {
+            return null;
+        }
+
+        if (root.name == childName)
+        {
+            return root;
+        }
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform found = FindChildRecursive(root.GetChild(i), childName);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+    private void DrawPreviewValidationControls()
+    {
+        GameObject previewRoot = GameObject.Find(StaticPreviewRootName);
+        bool hasPreview = previewRoot != null;
+
+        EditorGUILayout.Space(8f);
+        EditorGUILayout.BeginVertical("box");
+
+        EditorGUILayout.LabelField("GAMA Preview Status", EditorStyles.boldLabel);
+
+        if (hasPreview)
+        {
+            GamaPreviewObject[] previewObjs = previewRoot.GetComponentsInChildren<GamaPreviewObject>(true);
+            int totalObjects = previewObjs.Length;
+            int missingMeshCount = 0;
+
+            foreach (GamaPreviewObject obj in previewObjs)
+            {
+                if (obj == null)
+                {
+                    continue;
+                }
+
+                MeshFilter meshFilter = obj.GetComponentInChildren<MeshFilter>();
+                if (meshFilter == null || meshFilter.sharedMesh == null)
+                {
+                    Transform visual = obj.transform.Find("Visual");
+                    if (visual == null)
+                    {
+                        missingMeshCount++;
+                    }
+                }
+            }
+
+            if (missingMeshCount > 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "Warning: " + missingMeshCount + " of " + totalObjects + " preview agent(s) have no visible 3D mesh. " +
+                    "You can assign a custom Unity prefab for them in the Agents and Species table above.",
+                    MessageType.Warning);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(
+                    "Active Preview: " + totalObjects + " agents are currently displayed in the scene.",
+                    MessageType.Info);
+            }
+        }
+        else
+        {
+            EditorGUILayout.HelpBox(
+                "Generate a preview before validating this step.",
+                MessageType.None);
+        }
+
+        EditorGUILayout.HelpBox(
+            "These settings are shared with the Game Manager. You can still adjust species appearance later from the Simulation Manager Inspector.",
+            MessageType.Info);
+
+        EditorGUILayout.BeginHorizontal();
+
+        using (new EditorGUI.DisabledScope(!hasPreview))
+        {
+            if (GUILayout.Button("Validate Preview and Close Panel", GUILayout.Height(30f)))
+            {
+                ValidatePreviewAndClosePanel();
+            }
+
+            if (GUILayout.Button("Clear Preview", GUILayout.Height(30f), GUILayout.Width(130f)))
+            {
+                ClearStaticPreview();
+            }
+
+            if (GUILayout.Button("Force Refresh Visuals", GUILayout.Height(30f), GUILayout.Width(150f)))
+            {
+                GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
+            }
+        }
+
+        EditorGUILayout.EndHorizontal();
+        EditorGUILayout.EndVertical();
+    }
+
+    private void ValidatePreviewAndClosePanel()
+    {
+        try
+        {
+            GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
+            ApplySpeciesRenderOverridesToSimulationManager();
+            AssetDatabase.SaveAssets();
+            Close();
+        }
+        catch (Exception ex)
+        {
+            EditorUtility.DisplayDialog(
+                "Validate Preview",
+                "Could not validate the preview settings: " + ex.Message,
+                "OK");
+
+            Debug.LogWarning("[GAMA][PREVIEW] Validate Preview failed: " + ex);
+        }
+    }
+
     private void DrawApplyControls()
     {
         EditorGUILayout.Space();
@@ -2865,66 +3344,6 @@ public sealed class GamaPanelWindow : EditorWindow
                 ApplyExperimentSettingsToScene();
             }
         }
-    }
-
-    private void DrawPreviewValidationControls()
-    {
-        GameObject previewRoot = GameObject.Find(StaticPreviewRootName);
-        if (previewRoot == null) return;
-
-        EditorGUILayout.Space(8f);
-        EditorGUILayout.BeginVertical("box");
-
-        EditorGUILayout.LabelField("GAMA Preview Status", EditorStyles.boldLabel);
-
-        GamaPreviewObject[] previewObjs = previewRoot.GetComponentsInChildren<GamaPreviewObject>(true);
-        int totalObjects = previewObjs.Length;
-        int missingMeshCount = 0;
-
-        foreach (GamaPreviewObject obj in previewObjs)
-        {
-            if (obj == null) continue;
-            MeshFilter mf = obj.GetComponentInChildren<MeshFilter>();
-            if (mf == null || mf.sharedMesh == null)
-            {
-                Transform visual = obj.transform.Find("Visual");
-                if (visual == null)
-                {
-                    missingMeshCount++;
-                }
-            }
-        }
-
-        if (missingMeshCount > 0)
-        {
-            EditorGUILayout.HelpBox(
-                $"Warning: {missingMeshCount} of {totalObjects} preview agent(s) have no visible 3D mesh. " +
-                "You can assign a custom Unity Prefab for them in the 'Agents and Species' table above.",
-                MessageType.Warning);
-        }
-        else
-        {
-            EditorGUILayout.HelpBox(
-                $"Active Preview: {totalObjects} agents are currently displayed in the scene.",
-                MessageType.Info);
-        }
-
-        EditorGUILayout.BeginHorizontal();
-        if (GUILayout.Button("Close / Clear Preview", GUILayout.Height(30f)))
-        {
-            ClearStaticPreview();
-        }
-
-        if (GUILayout.Button("Force Refresh Visuals", GUILayout.Height(30f)))
-        {
-            if (speciesRenderOverridesAsset != null)
-            {
-                GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
-            }
-        }
-        EditorGUILayout.EndHorizontal();
-
-        EditorGUILayout.EndVertical();
     }
 
     private void DrawWorkspaceExperimentList()
@@ -4300,29 +4719,43 @@ internal sealed class GamaPanelAgentOverride
         Name = source.Name;
         CountExpression = source.CountExpression;
         PrefabHint = source.PrefabHint;
+
         DefaultColor = source.HasColor ? source.Color : GetDefaultAgentColor(source.Name);
         Color = DefaultColor;
+
         ScaleMultiplier = source.SuggestedScale > 0f ? source.SuggestedScale : 1f;
         Visible = true;
+
+        PrefabOverride = null;
+        DefaultPrefabOverride = null;
+        DefaultsResolved = false;
 
         OverrideColor = false;
         OverrideScale = source.SuggestedScale > 0f && Math.Abs(source.SuggestedScale - 1f) > 0.001f;
         OverrideVisibility = false;
-        PrefabOverride = null;
     }
 
     public string Name { get; private set; }
     public string CountExpression { get; private set; }
     public string PrefabHint { get; private set; }
+
     public GameObject PrefabOverride;
+    public GameObject DefaultPrefabOverride;
+
     public bool OverrideColor;
     public Color DefaultColor;
+    public bool DefaultsResolved;
     public Color Color;
+
     public bool OverrideScale;
     public float ScaleMultiplier;
     public bool OverrideVisibility;
     public bool Visible;
-    public bool HasAnyOverride { get { return OverrideColor || OverrideScale || OverrideVisibility || PrefabOverride != null; } }
+
+    public bool HasAnyOverride
+    {
+        get { return OverrideColor || OverrideScale || OverrideVisibility || PrefabOverride != null; }
+    }
 
     public void ResetColorToDefault()
     {
