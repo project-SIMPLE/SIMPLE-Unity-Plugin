@@ -75,6 +75,34 @@ public class GamaSpeciesWizard : MonoBehaviour
 #if UNITY_EDITOR
     public static Action OnWizardSettingsChanged;
     public static Func<GamaSpeciesRenderOverrides> GetDefaultOverridesAsset;
+    private static int suppressAssetWriteDepth;
+
+    public static IDisposable SuppressAssetWrites()
+    {
+        suppressAssetWriteDepth++;
+        return new SuppressAssetWriteScope();
+    }
+
+    private static bool AssetWritesSuppressed
+    {
+        get { return suppressAssetWriteDepth > 0; }
+    }
+
+    private sealed class SuppressAssetWriteScope : IDisposable
+    {
+        private bool disposed;
+
+        public void Dispose()
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            suppressAssetWriteDepth = Math.Max(0, suppressAssetWriteDepth - 1);
+            disposed = true;
+        }
+    }
 
     private void OnValidate()
     {
@@ -84,7 +112,10 @@ public class GamaSpeciesWizard : MonoBehaviour
             overridesAsset = GetDefaultOverridesAsset.Invoke();
         }
 
-        SaveCurrentSettingsToAsset();
+        if (!AssetWritesSuppressed)
+        {
+            SaveCurrentSettingsToAsset();
+        }
 
         if (OnWizardSettingsChanged != null)
         {
@@ -171,6 +202,13 @@ public class GamaSpeciesWizard : MonoBehaviour
 
     public void SaveCurrentSettingsToAsset()
     {
+#if UNITY_EDITOR
+        if (AssetWritesSuppressed)
+        {
+            return;
+        }
+#endif
+
         if (overridesAsset == null || string.IsNullOrWhiteSpace(speciesName))
         {
             return;

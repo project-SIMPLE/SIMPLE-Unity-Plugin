@@ -230,6 +230,7 @@ public class SimulationManagerInspector : Editor
         }
 
         bool assetChanged = false;
+        List<string> changedSpecies = new List<string>();
 
         // Draw each species entry
         for (int i = 0; i < count; i++)
@@ -309,6 +310,16 @@ public class SimulationManagerInspector : Editor
             if (EditorGUI.EndChangeCheck())
             {
                 assetChanged = true;
+                if (!changedSpecies.Contains(speciesName))
+                {
+                    changedSpecies.Add(speciesName);
+                }
+
+                if (tag != null && !string.IsNullOrWhiteSpace(tag.stringValue) && !changedSpecies.Contains(tag.stringValue))
+                {
+                    changedSpecies.Add(tag.stringValue);
+                }
+
                 Debug.Log($"[GAMA][OVERRIDES] GameManager editing species={speciesName} scale={overrideEntry.scaleMultiplier}");
             }
 
@@ -321,6 +332,35 @@ public class SimulationManagerInspector : Editor
         {
             EditorUtility.SetDirty(asset);
             GamaEditorPreviewOverrideApplier.ScheduleApplyOverridesToCurrentPreview();
+            ApplyRuntimeOverridesIfPlaying(changedSpecies);
+        }
+    }
+
+    private void ApplyRuntimeOverridesIfPlaying(List<string> speciesNames)
+    {
+        if (!EditorApplication.isPlaying || speciesNames == null || speciesNames.Count == 0)
+        {
+            return;
+        }
+
+        GamaRuntimePreviewOverrideApplier.RefreshNow();
+        SimulationManager manager = target as SimulationManager;
+        if (manager == null)
+        {
+            manager = Object.FindFirstObjectByType<SimulationManager>(FindObjectsInactive.Include);
+        }
+
+        if (manager == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < speciesNames.Count; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(speciesNames[i]))
+            {
+                manager.ApplyRuntimeSpeciesOverrideNow(speciesNames[i]);
+            }
         }
     }
 }

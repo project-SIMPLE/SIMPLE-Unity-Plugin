@@ -308,8 +308,8 @@ public static class GamaEditorPreviewOverrideApplier
         }
 
         Vector3 worldAnchor = GetPreviewObjectWorldAnchor(previewObj);
-        visual.position = worldAnchor;
-        visual.rotation = previewObj.transform.rotation;
+        visual.position = worldAnchor + entry.positionOffset;
+        visual.rotation = previewObj.transform.rotation * Quaternion.Euler(entry.rotationOffsetEuler);
         visual.localScale = Vector3.one * Mathf.Max(0.0001f, entry.scaleMultiplier);
         EditorUtility.SetDirty(visual);
     }

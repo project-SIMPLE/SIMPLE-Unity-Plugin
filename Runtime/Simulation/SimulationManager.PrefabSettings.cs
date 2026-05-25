@@ -554,7 +554,7 @@ public class GamaPrefabPropertyBinding
             if (previewOverride.prefabOverride != null)
             {
                 prefab = previewOverride.prefabOverride;
-                signature = "property:" + propertyId;
+                signature = "property:" + propertyId + ":" + prefab.GetInstanceID();
                 return true;
             }
 
@@ -562,7 +562,7 @@ public class GamaPrefabPropertyBinding
                 settings != null &&
                 settings.TryResolveResourcesPath(previewOverride.prefabResourcePath, out prefab))
             {
-                signature = "property-resources:" + propertyId;
+                signature = "property-resources:" + propertyId + ":" + SimulationManager.NormalizeKey(previewOverride.prefabResourcePath);
                 return true;
             }
         }
@@ -570,7 +570,7 @@ public class GamaPrefabPropertyBinding
         if (unityPrefab != null)
         {
             prefab = unityPrefab;
-            signature = "property:" + propertyId;
+            signature = "property:" + propertyId + ":" + unityPrefab.GetInstanceID();
             return true;
         }
 
@@ -578,7 +578,7 @@ public class GamaPrefabPropertyBinding
             settings != null &&
             settings.TryResolveResourcesPath(unityResourcesPath, out prefab))
         {
-            signature = "property-resources:" + propertyId;
+            signature = "property-resources:" + propertyId + ":" + SimulationManager.NormalizeKey(unityResourcesPath);
             return true;
         }
 
