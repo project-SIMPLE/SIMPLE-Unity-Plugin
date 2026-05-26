@@ -15,6 +15,21 @@ public class GamaSpeciesRenderOverrides : ScriptableObject
         string speciesName,
         out GamaSpeciesRenderOverrideEntry entry)
     {
+        return TryGetOverride(modelPath, experimentName, speciesName, out entry, out _);
+    }
+
+    public bool TryGetOverride(
+        string modelPath,
+        string experimentName,
+        string speciesName,
+        out GamaSpeciesRenderOverrideEntry entry,
+        bool exactContextOnly)
+    {
+        if (!exactContextOnly)
+        {
+            return TryGetOverride(modelPath, experimentName, speciesName, out entry);
+        }
+
         entry = null;
         if (entries == null || entries.Count == 0 || string.IsNullOrWhiteSpace(speciesName))
         {
@@ -24,8 +39,6 @@ public class GamaSpeciesRenderOverrides : ScriptableObject
         string wantedModel = NormalizeKey(modelPath);
         string wantedExperiment = NormalizeKey(experimentName);
         string wantedSpecies = NormalizeKey(speciesName);
-
-        int bestScore = int.MinValue;
         for (int i = 0; i < entries.Count; i++)
         {
             GamaSpeciesRenderOverrideEntry candidate = entries[i];
@@ -34,7 +47,45 @@ public class GamaSpeciesRenderOverrides : ScriptableObject
                 continue;
             }
 
-            int score = candidate.GetMatchScore(wantedModel, wantedExperiment, wantedSpecies);
+            if (string.Equals(NormalizeKey(candidate.modelPath), wantedModel, StringComparison.Ordinal) &&
+                string.Equals(NormalizeKey(candidate.experimentName), wantedExperiment, StringComparison.Ordinal) &&
+                string.Equals(NormalizeKey(candidate.GetSpeciesName()), wantedSpecies, StringComparison.Ordinal))
+            {
+                entry = candidate;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool TryGetOverride(
+        string modelPath,
+        string experimentName,
+        string speciesName,
+        out GamaSpeciesRenderOverrideEntry entry,
+        out int bestScore)
+    {
+        entry = null;
+        bestScore = int.MinValue;
+        if (entries == null || entries.Count == 0 || string.IsNullOrWhiteSpace(speciesName))
+        {
+            return false;
+        }
+
+        string wantedModel = NormalizeKey(modelPath);
+        string wantedExperiment = NormalizeKey(experimentName);
+        string wantedSpecies = NormalizeKey(speciesName);
+
+        for (int i = 0; i < entries.Count; i++)
+        {
+            GamaSpeciesRenderOverrideEntry candidate = entries[i];
+            if (candidate == null)
+            {
+                continue;
+            }
+
+            int score = candidate.GetSelectionScore(wantedModel, wantedExperiment, wantedSpecies);
             if (score > bestScore)
             {
                 bestScore = score;
@@ -47,6 +98,7 @@ public class GamaSpeciesRenderOverrides : ScriptableObject
 
     public bool TryGetOverride(string speciesName, out GamaSpeciesRenderOverrideEntry entry)
     {
+        // Legacy/global lookup only. Active preview and runtime contexts should use the model/experiment overload.
         return TryGetOverride(string.Empty, string.Empty, speciesName, out entry);
     }
 
@@ -169,18 +221,21 @@ public class GamaSpeciesRenderOverrideEntry
     public Material materialOverride;
     public bool overrideColor;
     public Color color = Color.white;
+    public bool overrideScaleMultiplier;
+    public bool overridePositionOffset;
+    public bool overrideRotationOffset;
     public Vector3 positionOffset;
     public Vector3 rotationOffsetEuler;
     public float scaleMultiplier = 1f;
-    public bool overridePreviewVisibility = true;
+    public bool overridePreviewVisibility;
     public bool visibleInPreview = true;
-    public bool overrideRuntimeVisibility = true;
+    public bool overrideRuntimeVisibility;
     public bool visibleInRuntime = true;
     public GamaSpeciesRenderMode renderMode = GamaSpeciesRenderMode.Default;
     public string notesDebug = string.Empty;
 
     [Header("Legacy runtime visibility")]
-    public bool overrideVisibility = true;
+    public bool overrideVisibility;
     public bool visible = true;
 
     public string GetSpeciesName()
@@ -224,15 +279,147 @@ public class GamaSpeciesRenderOverrideEntry
         return score;
     }
 
+    public int GetSelectionScore(string wantedModel, string wantedExperiment, string wantedSpecies)
+    {
+        int matchScore = GetMatchScore(wantedModel, wantedExperiment, wantedSpecies);
+        if (matchScore < 0)
+        {
+            return -1;
+        }
+
+        int score = matchScore * 100 + GetOverrideMeaningScore();
+        if (HasAnyOverride)
+        {
+            score += 1000;
+        }
+
+        if (HasStrongRuntimeOverride())
+        {
+            score += 10000;
+        }
+
+        return score;
+    }
+
+    public int GetOverrideMeaningScore()
+    {
+        int score = 0;
+        if (prefabOverride != null || !string.IsNullOrWhiteSpace(prefabResourcePath))
+        {
+            score += 100;
+        }
+
+        if (materialOverride != null)
+        {
+            score += 70;
+        }
+
+        if (overrideColor)
+        {
+            score += 60;
+        }
+
+        if (UsesScaleOverride())
+        {
+            score += 80;
+        }
+
+        if (UsesPositionOffsetOverride() || UsesRotationOffsetOverride())
+        {
+            score += 40;
+        }
+
+        if (UsesPreviewVisibilityOverride() || UsesRuntimeVisibilityOverride())
+        {
+            score += 20;
+        }
+
+        return score;
+    }
+
+    public bool HasStrongRuntimeOverride()
+    {
+        return prefabOverride != null ||
+               materialOverride != null ||
+               !string.IsNullOrWhiteSpace(prefabResourcePath) ||
+               UsesScaleOverride() ||
+               UsesPositionOffsetOverride() ||
+               UsesRotationOffsetOverride() ||
+               UsesRuntimeVisibilityOverride();
+    }
+
     public bool HasAnyOverride =>
         prefabOverride != null ||
         materialOverride != null ||
         !string.IsNullOrWhiteSpace(prefabResourcePath) ||
         overrideColor ||
+        overrideScaleMultiplier ||
+        overridePositionOffset ||
+        overrideRotationOffset ||
         overrideVisibility ||
         overridePreviewVisibility ||
         overrideRuntimeVisibility ||
         positionOffset.sqrMagnitude > 0.0001f ||
         rotationOffsetEuler.sqrMagnitude > 0.0001f ||
         Math.Abs(scaleMultiplier - 1f) > 0.0001f;
+
+    public bool UsesScaleOverride()
+    {
+        return overrideScaleMultiplier || Math.Abs(scaleMultiplier - 1f) > 0.0001f;
+    }
+
+    public bool UsesPositionOffsetOverride()
+    {
+        return overridePositionOffset || positionOffset.sqrMagnitude > 0.0001f;
+    }
+
+    public bool UsesRotationOffsetOverride()
+    {
+        return overrideRotationOffset || rotationOffsetEuler.sqrMagnitude > 0.0001f;
+    }
+
+    public float GetEffectiveScaleMultiplier()
+    {
+        return UsesScaleOverride() ? Mathf.Max(0f, scaleMultiplier) : 1f;
+    }
+
+    public Vector3 GetEffectivePositionOffset()
+    {
+        return UsesPositionOffsetOverride() ? positionOffset : Vector3.zero;
+    }
+
+    public Vector3 GetEffectiveRotationOffsetEuler()
+    {
+        return UsesRotationOffsetOverride() ? rotationOffsetEuler : Vector3.zero;
+    }
+
+    public bool UsesPreviewVisibilityOverride()
+    {
+        return overridePreviewVisibility || overrideVisibility;
+    }
+
+    public bool UsesRuntimeVisibilityOverride()
+    {
+        return overrideRuntimeVisibility || overrideVisibility;
+    }
+
+    public bool GetEffectivePreviewVisible()
+    {
+        if (overridePreviewVisibility)
+        {
+            return visibleInPreview;
+        }
+
+        return overrideVisibility ? visible : true;
+    }
+
+    public bool GetEffectiveRuntimeVisible()
+    {
+        if (overrideRuntimeVisibility)
+        {
+            return visibleInRuntime;
+        }
+
+        return overrideVisibility ? visible : true;
+    }
 }

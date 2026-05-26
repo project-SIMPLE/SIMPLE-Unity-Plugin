@@ -6,6 +6,8 @@ using System.Collections.Generic;
 [CanEditMultipleObjects]
 public class SimulationManagerInspector : Editor
 {
+    private const string StaticPreviewRootName = "[GAMA] Static Experiment Preview";
+
     private bool showSpeciesPanel = true;
     private bool showRenderingSettings = true;
     private bool showPreviewAndPlaySettings = true;
@@ -222,12 +224,16 @@ public class SimulationManagerInspector : Editor
             return;
         }
 
-        GamaSpeciesRenderOverrides asset = GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
-        if (asset == null)
+        if (!TryResolvePreviewOverrideContext(
+                out GamaSpeciesRenderOverrides asset,
+                out string modelPath,
+                out string experimentName))
         {
             EditorGUILayout.HelpBox("Could not load shared GAMA Species Render Overrides asset.", MessageType.Error);
             return;
         }
+
+        AssignOverrideContextToTargetManager(asset, modelPath, experimentName);
 
         bool assetChanged = false;
         List<string> changedSpecies = new List<string>();
@@ -240,87 +246,76 @@ public class SimulationManagerInspector : Editor
 
             SerializedProperty propertyId = entry.FindPropertyRelative("propertyId");
             SerializedProperty tag = entry.FindPropertyRelative("tag");
-            SerializedProperty prefab = entry.FindPropertyRelative("prefab");
+            SerializedProperty importedVisible = entry.FindPropertyRelative("importedVisible");
             SerializedProperty importedColor = entry.FindPropertyRelative("importedColor");
-            SerializedProperty importedBaseScale = entry.FindPropertyRelative("importedBaseScale");
 
             string speciesName = propertyId != null ? propertyId.stringValue : "(unknown)";
             string tagStr = tag != null && !string.IsNullOrEmpty(tag.stringValue) ? " [" + tag.stringValue + "]" : "";
+            Color defaultColor = importedColor != null ? importedColor.colorValue : Color.white;
+            bool defaultVisible = importedVisible == null || importedVisible.boolValue;
 
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
             // Species header
             EditorGUILayout.LabelField(speciesName + tagStr, EditorStyles.boldLabel);
 
-            // GAMA Attributes (read-only)
             EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField("GAMA Attributes", EditorStyles.miniBoldLabel);
-            EditorGUI.indentLevel++;
-            EditorGUI.BeginDisabledGroup(true);
-            if (prefab != null)
-            {
-                EditorGUILayout.TextField("GAMA Prefab", prefab.stringValue);
-            }
-            if (importedColor != null)
-            {
-                EditorGUILayout.ColorField("GAMA Color", importedColor.colorValue);
-            }
-            if (importedBaseScale != null)
-            {
-                EditorGUILayout.FloatField("GAMA Base Scale", importedBaseScale.floatValue);
-            }
-            EditorGUI.EndDisabledGroup();
-            EditorGUI.indentLevel--;
-
-            // Unity Overrides
-            EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField("Unity Overrides", EditorStyles.miniBoldLabel);
+            EditorGUILayout.LabelField("Agent Attributes", EditorStyles.miniBoldLabel);
             EditorGUI.indentLevel++;
             
-            GamaSpeciesRenderOverrideEntry overrideEntry = asset.GetOrCreateEntry(speciesName);
+            GamaSpeciesRenderOverrideEntry overrideEntry = asset.GetOrCreateEntry(modelPath, experimentName, speciesName);
 
             EditorGUI.BeginChangeCheck();
 
-            // Prefab overrides
-            overrideEntry.prefabOverride = (GameObject)EditorGUILayout.ObjectField("Prefab Override", overrideEntry.prefabOverride, typeof(GameObject), false);
-            overrideEntry.prefabResourcePath = EditorGUILayout.TextField("Resources Path Override", overrideEntry.prefabResourcePath);
+            GameObject editedPrefab = (GameObject)EditorGUILayout.ObjectField("Prefab Override", overrideEntry.prefabOverride, typeof(GameObject), false);
+            if (editedPrefab != overrideEntry.prefabOverride)
+            {
+                overrideEntry.prefabOverride = editedPrefab;
+                overrideEntry.prefabResourcePath = TryGetResourcesPath(editedPrefab, out string resourcesPath)
+                    ? resourcesPath
+                    : string.Empty;
+            }
 
-            // Color override
-            overrideEntry.overrideColor = EditorGUILayout.Toggle("Override Color", overrideEntry.overrideColor);
-            EditorGUI.BeginDisabledGroup(!overrideEntry.overrideColor);
-            overrideEntry.color = EditorGUILayout.ColorField("Color", overrideEntry.color);
-            EditorGUI.EndDisabledGroup();
+            Color editedColor = EditorGUILayout.ColorField("Color", overrideEntry.overrideColor ? overrideEntry.color : defaultColor);
+            overrideEntry.overrideColor = !ColorsApproximately(editedColor, defaultColor);
+            overrideEntry.color = overrideEntry.overrideColor ? editedColor : defaultColor;
 
-            // Scale override
-            overrideEntry.scaleMultiplier = EditorGUILayout.FloatField("Scale Multiplier", overrideEntry.scaleMultiplier);
-            overrideEntry.scaleMultiplier = Mathf.Max(0f, overrideEntry.scaleMultiplier);
+            float editedScale = EditorGUILayout.DelayedFloatField("Scale Multiplier", overrideEntry.GetEffectiveScaleMultiplier());
+            editedScale = Mathf.Max(0.0001f, editedScale);
+            overrideEntry.overrideScaleMultiplier = Mathf.Abs(editedScale - 1f) > 0.0001f;
+            overrideEntry.scaleMultiplier = overrideEntry.overrideScaleMultiplier ? editedScale : 1f;
 
-            // Position override
-            overrideEntry.positionOffset = EditorGUILayout.Vector3Field("Position Offset", overrideEntry.positionOffset);
+            overrideEntry.positionOffset = EditorGUILayout.Vector3Field("Position Offset", overrideEntry.GetEffectivePositionOffset());
+            overrideEntry.overridePositionOffset = overrideEntry.positionOffset.sqrMagnitude > 0.0001f;
 
-            // Rotation override
-            overrideEntry.rotationOffsetEuler = EditorGUILayout.Vector3Field("Rotation Offset", overrideEntry.rotationOffsetEuler);
+            overrideEntry.rotationOffsetEuler = EditorGUILayout.Vector3Field("Rotation Offset", overrideEntry.GetEffectiveRotationOffsetEuler());
+            overrideEntry.overrideRotationOffset = overrideEntry.rotationOffsetEuler.sqrMagnitude > 0.0001f;
 
-            // Visibility override
-            overrideEntry.overrideRuntimeVisibility = EditorGUILayout.Toggle("Override Visibility", overrideEntry.overrideRuntimeVisibility);
-            EditorGUI.BeginDisabledGroup(!overrideEntry.overrideRuntimeVisibility);
-            overrideEntry.visibleInRuntime = EditorGUILayout.Toggle("Visible", overrideEntry.visibleInRuntime);
-            EditorGUI.EndDisabledGroup();
+            bool editedVisible = EditorGUILayout.Toggle("Visible", overrideEntry.UsesRuntimeVisibilityOverride() ? overrideEntry.GetEffectiveRuntimeVisible() : defaultVisible);
+            bool visibilityDiffersFromDefault = editedVisible != defaultVisible;
+            overrideEntry.overridePreviewVisibility = visibilityDiffersFromDefault;
+            overrideEntry.visibleInPreview = editedVisible;
+            overrideEntry.overrideRuntimeVisibility = visibilityDiffersFromDefault;
+            overrideEntry.visibleInRuntime = editedVisible;
+            overrideEntry.overrideVisibility = visibilityDiffersFromDefault;
+            overrideEntry.visible = editedVisible;
 
-            if (EditorGUI.EndChangeCheck())
+            bool rowChanged = EditorGUI.EndChangeCheck();
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Reset to GAMA attributes", GUILayout.Width(180f)))
+            {
+                ResetSpeciesOverrideEntry(overrideEntry, defaultColor, defaultVisible);
+                rowChanged = true;
+            }
+            EditorGUILayout.EndHorizontal();
+
+            if (rowChanged)
             {
                 assetChanged = true;
-                if (!changedSpecies.Contains(speciesName))
-                {
-                    changedSpecies.Add(speciesName);
-                }
-
-                if (tag != null && !string.IsNullOrWhiteSpace(tag.stringValue) && !changedSpecies.Contains(tag.stringValue))
-                {
-                    changedSpecies.Add(tag.stringValue);
-                }
-
-                Debug.Log($"[GAMA][OVERRIDES] GameManager editing species={speciesName} scale={overrideEntry.scaleMultiplier}");
+                TrackChangedSpecies(changedSpecies, speciesName, tag != null ? tag.stringValue : string.Empty);
+                Debug.Log($"[GAMA][OVERRIDES] GameManager editing species={speciesName} scale={overrideEntry.GetEffectiveScaleMultiplier()}");
             }
 
             EditorGUI.indentLevel--;
@@ -331,9 +326,204 @@ public class SimulationManagerInspector : Editor
         if (assetChanged)
         {
             EditorUtility.SetDirty(asset);
+            AssetDatabase.SaveAssets();
             GamaEditorPreviewOverrideApplier.ScheduleApplyOverridesToCurrentPreview();
             ApplyRuntimeOverridesIfPlaying(changedSpecies);
         }
+    }
+
+    private void AssignOverrideContextToTargetManager(
+        GamaSpeciesRenderOverrides asset,
+        string modelPath,
+        string experimentName)
+    {
+        SimulationManager manager = target as SimulationManager;
+        if (manager == null || asset == null)
+        {
+            return;
+        }
+
+        if (manager.SetSpeciesRenderOverridesContext(asset, modelPath, experimentName))
+        {
+            EditorUtility.SetDirty(manager);
+        }
+    }
+
+    private static void TrackChangedSpecies(List<string> changedSpecies, string speciesName, string tag)
+    {
+        if (changedSpecies == null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(speciesName) && !changedSpecies.Contains(speciesName))
+        {
+            changedSpecies.Add(speciesName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(tag) && !changedSpecies.Contains(tag))
+        {
+            changedSpecies.Add(tag);
+        }
+    }
+
+    private static bool ColorsApproximately(Color a, Color b)
+    {
+        return Mathf.Abs(a.r - b.r) < 0.001f &&
+               Mathf.Abs(a.g - b.g) < 0.001f &&
+               Mathf.Abs(a.b - b.b) < 0.001f &&
+               Mathf.Abs(a.a - b.a) < 0.001f;
+    }
+
+    private static bool TryGetResourcesPath(GameObject prefab, out string resourcesPath)
+    {
+        resourcesPath = string.Empty;
+        if (prefab == null)
+        {
+            return false;
+        }
+
+        string assetPath = AssetDatabase.GetAssetPath(prefab);
+        if (string.IsNullOrWhiteSpace(assetPath))
+        {
+            return false;
+        }
+
+        assetPath = assetPath.Replace('\\', '/');
+        const string resourcesSegment = "/Resources/";
+        int resourcesIndex = assetPath.IndexOf(resourcesSegment, System.StringComparison.OrdinalIgnoreCase);
+        if (resourcesIndex >= 0)
+        {
+            resourcesPath = assetPath.Substring(resourcesIndex + resourcesSegment.Length);
+        }
+        else if (assetPath.StartsWith("Resources/", System.StringComparison.OrdinalIgnoreCase))
+        {
+            resourcesPath = assetPath.Substring("Resources/".Length);
+        }
+        else
+        {
+            return false;
+        }
+
+        const string prefabExtension = ".prefab";
+        if (resourcesPath.EndsWith(prefabExtension, System.StringComparison.OrdinalIgnoreCase))
+        {
+            resourcesPath = resourcesPath.Substring(0, resourcesPath.Length - prefabExtension.Length);
+        }
+
+        resourcesPath = resourcesPath.Trim('/');
+        return !string.IsNullOrWhiteSpace(resourcesPath);
+    }
+
+    private static void ResetSpeciesOverrideEntry(
+        GamaSpeciesRenderOverrideEntry entry,
+        Color defaultColor,
+        bool defaultVisible)
+    {
+        if (entry == null)
+        {
+            return;
+        }
+
+        entry.prefabOverride = null;
+        entry.materialOverride = null;
+        entry.prefabResourcePath = string.Empty;
+
+        entry.overrideColor = false;
+        entry.color = defaultColor;
+
+        entry.overrideScaleMultiplier = false;
+        entry.scaleMultiplier = 1f;
+
+        entry.overridePositionOffset = false;
+        entry.positionOffset = Vector3.zero;
+
+        entry.overrideRotationOffset = false;
+        entry.rotationOffsetEuler = Vector3.zero;
+
+        entry.overridePreviewVisibility = false;
+        entry.visibleInPreview = defaultVisible;
+        entry.overrideRuntimeVisibility = false;
+        entry.visibleInRuntime = defaultVisible;
+        entry.overrideVisibility = false;
+        entry.visible = defaultVisible;
+
+        entry.renderMode = GamaSpeciesRenderMode.Default;
+        entry.notesDebug = string.Empty;
+    }
+
+    private static bool TryResolvePreviewOverrideContext(
+        out GamaSpeciesRenderOverrides asset,
+        out string modelPath,
+        out string experimentName)
+    {
+        asset = null;
+        modelPath = string.Empty;
+        experimentName = string.Empty;
+
+        SimulationManager manager = UnityEngine.Object.FindFirstObjectByType<SimulationManager>(FindObjectsInactive.Include);
+        if (manager != null &&
+            manager.TryGetSpeciesRenderOverridesContext(out asset, out modelPath, out experimentName) &&
+            asset != null &&
+            (!EditorApplication.isPlaying || !string.IsNullOrWhiteSpace(modelPath) || !string.IsNullOrWhiteSpace(experimentName)))
+        {
+            return true;
+        }
+
+        GamaPreviewSession session = FindCurrentPreviewSession();
+        if (session != null)
+        {
+            asset = session.speciesOverrides != null
+                ? session.speciesOverrides
+                : GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
+
+            if (asset != null && session.speciesOverrides == null)
+            {
+                session.speciesOverrides = asset;
+                EditorUtility.SetDirty(session);
+            }
+
+            modelPath = session.modelPath ?? string.Empty;
+            experimentName = session.experimentName ?? string.Empty;
+            return asset != null;
+        }
+
+        asset = GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
+        return asset != null;
+    }
+
+    private static GamaPreviewSession FindCurrentPreviewSession()
+    {
+        GamaPreviewSession[] sessions = UnityEngine.Object.FindObjectsByType<GamaPreviewSession>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+
+        GamaPreviewSession fallback = null;
+        for (int i = 0; i < sessions.Length; i++)
+        {
+            GamaPreviewSession session = sessions[i];
+            if (session == null)
+            {
+                continue;
+            }
+
+            if (session.useThisPreviewForPlay && !session.stale)
+            {
+                return session;
+            }
+
+            if (fallback == null)
+            {
+                fallback = session;
+            }
+
+            if (!session.stale && session.gameObject != null && session.gameObject.name == StaticPreviewRootName)
+            {
+                fallback = session;
+            }
+        }
+
+        return fallback;
     }
 
     private void ApplyRuntimeOverridesIfPlaying(List<string> speciesNames)

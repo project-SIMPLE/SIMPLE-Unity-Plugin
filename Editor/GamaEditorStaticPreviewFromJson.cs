@@ -13,6 +13,8 @@ internal static class GamaEditorStaticPreviewFromJson
     private const bool VerbosePreviewBuildDebug = false;
     private static readonly Dictionary<string, int> InvalidGeometryFallbackCounts =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> OverridePickLogKeys =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     public static bool TryBuild(
         SimulationManager simulationManager,
@@ -23,7 +25,9 @@ internal static class GamaEditorStaticPreviewFromJson
         out int prefabCount,
         out int geometryCount,
         out string error,
-        GamaSpeciesRenderOverrides speciesOverrides = null)
+        GamaSpeciesRenderOverrides speciesOverrides = null,
+        string modelPath = "",
+        string experimentName = "")
     {
         prefabCount = 0;
         geometryCount = 0;
@@ -47,7 +51,9 @@ internal static class GamaEditorStaticPreviewFromJson
                 out prefabCount,
                 out geometryCount,
                 out error,
-                speciesOverrides);
+                speciesOverrides,
+                modelPath,
+                experimentName);
         }
         catch (Exception ex)
         {
@@ -66,11 +72,14 @@ internal static class GamaEditorStaticPreviewFromJson
         out int prefabCount,
         out int geometryCount,
         out string error,
-        GamaSpeciesRenderOverrides speciesOverrides)
+        GamaSpeciesRenderOverrides speciesOverrides,
+        string modelPath,
+        string experimentName)
     {
         prefabCount = 0;
         geometryCount = 0;
         error = string.Empty;
+        OverridePickLogKeys.Clear();
 
         if (parent == null)
         {
@@ -312,7 +321,7 @@ internal static class GamaEditorStaticPreviewFromJson
                         marker.SetVisualAnchorLocal(Vector3.zero);
                         marker.CaptureBaseTransformIfNeeded();
                     }
-                    if (speciesOverrides != null) { ApplySpeciesOverrideIfAny(marker, speciesKey, speciesOverrides); }
+                    if (speciesOverrides != null) { ApplySpeciesOverrideIfAny(marker, speciesKey, speciesOverrides, modelPath, experimentName); }
                     builtAgents++;
                     cptPrefab++;
                 }
@@ -380,7 +389,7 @@ internal static class GamaEditorStaticPreviewFromJson
                         marker.SetVisualAnchorLocal(ResolvePreviewAnchorLocal(obj, rawGeom, converter, yOffsetGeom));
                         marker.CaptureBaseTransformIfNeeded();
                     }
-                    if (speciesOverrides != null) { ApplySpeciesOverrideIfAny(marker, speciesKey, speciesOverrides); }
+                    if (speciesOverrides != null) { ApplySpeciesOverrideIfAny(marker, speciesKey, speciesOverrides, modelPath, experimentName); }
 
                     if (prop.hasCollider && obj.GetComponent<MeshCollider>() == null)
                     {
@@ -621,17 +630,40 @@ internal static class GamaEditorStaticPreviewFromJson
     private static void ApplySpeciesOverrideIfAny(
         GamaPreviewObject marker,
         string speciesKey,
-        GamaSpeciesRenderOverrides speciesOverrides)
+        GamaSpeciesRenderOverrides speciesOverrides,
+        string modelPath,
+        string experimentName)
     {
         if (marker == null || speciesOverrides == null || string.IsNullOrWhiteSpace(speciesKey))
         {
             return;
         }
 
-        if (speciesOverrides.TryGetOverride(speciesKey, out GamaSpeciesRenderOverrideEntry entry) && entry != null)
+        if (speciesOverrides.TryGetOverride(modelPath, experimentName, speciesKey, out GamaSpeciesRenderOverrideEntry entry, true) && entry != null)
         {
+            LogPreviewOverridePickOnce(speciesKey, modelPath, experimentName, entry);
             marker.ApplySpeciesOverride(entry);
         }
+    }
+
+    private static void LogPreviewOverridePickOnce(
+        string speciesKey,
+        string modelPath,
+        string experimentName,
+        GamaSpeciesRenderOverrideEntry entry)
+    {
+        string logKey = GamaSpeciesRenderOverrides.NormalizeKey(modelPath) + "|" +
+            GamaSpeciesRenderOverrides.NormalizeKey(experimentName) + "|" +
+            GamaSpeciesRenderOverrides.NormalizeKey(speciesKey);
+        if (!OverridePickLogKeys.Add(logKey))
+        {
+            return;
+        }
+
+        Debug.Log("[GAMA][PREVIEW][OVERRIDE_PICK] species=" + speciesKey +
+                  " model=" + (modelPath ?? string.Empty) +
+                  " experiment=" + (experimentName ?? string.Empty) +
+                  " scale=" + (entry != null ? entry.GetEffectiveScaleMultiplier() : 1f));
     }
 
     private static GamaPreviewObject AddPreviewObjectIdentity(GameObject obj, string speciesKey, string agentId, string geometryHash)

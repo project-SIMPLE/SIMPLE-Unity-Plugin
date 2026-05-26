@@ -13,6 +13,9 @@ public abstract partial class SimulationManager
 
     [Header("Defaults imported from GAMA properties")]
     [SerializeField] private List<GamaAgentPropertySettings> propertySettings = new List<GamaAgentPropertySettings>();
+    [SerializeField, HideInInspector] private GamaSpeciesRenderOverrides speciesRenderOverrides;
+    [SerializeField, HideInInspector] private string speciesRenderOverridesModelPath = string.Empty;
+    [SerializeField, HideInInspector] private string speciesRenderOverridesExperimentName = string.Empty;
 
     [Header("Ordered rule overrides")]
     [SerializeField] private bool applyRuleOverrides = true;
@@ -111,7 +114,11 @@ public abstract partial class SimulationManager
         if (Application.isPlaying)
         {
             GamaSpeciesRenderOverrideEntry previewOverride;
-            if (GamaRuntimePreviewOverrideApplier.TryGetOverride(property != null ? property.id : string.Empty, out previewOverride))
+            if (GamaRuntimePreviewOverrideApplier.TryGetOverrideForProperty(
+                    property != null ? property.id : string.Empty,
+                    property != null ? property.tag : string.Empty,
+                    property != null ? property.prefab : string.Empty,
+                    out previewOverride))
             {
                 if (previewOverride.overrideColor)
                 {
@@ -119,21 +126,21 @@ public abstract partial class SimulationManager
                     state.HasColor = true;
                     state.HasManualColorOverride = true;
                 }
-                if (Math.Abs(previewOverride.scaleMultiplier - 1f) > 0.0001f)
+                if (previewOverride.UsesScaleOverride())
                 {
-                    state.ScaleMultiplier *= Mathf.Max(0f, previewOverride.scaleMultiplier);
+                    state.ScaleMultiplier *= previewOverride.GetEffectiveScaleMultiplier();
                 }
-                if (previewOverride.positionOffset.sqrMagnitude > 0.0001f)
+                if (previewOverride.UsesPositionOffsetOverride())
                 {
-                    state.PositionOffset += previewOverride.positionOffset;
+                    state.PositionOffset += previewOverride.GetEffectivePositionOffset();
                 }
-                if (previewOverride.rotationOffsetEuler.sqrMagnitude > 0.0001f)
+                if (previewOverride.UsesRotationOffsetOverride())
                 {
-                    state.RotationOffsetEuler += previewOverride.rotationOffsetEuler;
+                    state.RotationOffsetEuler += previewOverride.GetEffectiveRotationOffsetEuler();
                 }
-                if (previewOverride.overrideVisibility || previewOverride.overrideRuntimeVisibility)
+                if (previewOverride.UsesRuntimeVisibilityOverride())
                 {
-                    state.Visible = previewOverride.visibleInRuntime;
+                    state.Visible = previewOverride.GetEffectiveRuntimeVisible();
                 }
                 if (!string.IsNullOrEmpty(previewOverride.prefabResourcePath))
                 {
@@ -147,6 +154,39 @@ public abstract partial class SimulationManager
         }
 
         return state;
+    }
+
+    public bool SetSpeciesRenderOverridesContext(
+        GamaSpeciesRenderOverrides asset,
+        string modelPath,
+        string experimentName)
+    {
+        modelPath = modelPath ?? string.Empty;
+        experimentName = experimentName ?? string.Empty;
+        if (speciesRenderOverrides == asset &&
+            string.Equals(speciesRenderOverridesModelPath, modelPath, StringComparison.Ordinal) &&
+            string.Equals(speciesRenderOverridesExperimentName, experimentName, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        speciesRenderOverrides = asset;
+        speciesRenderOverridesModelPath = modelPath;
+        speciesRenderOverridesExperimentName = experimentName;
+        Debug.Log("[GAMA][RUNTIME][CONTEXT] model=" + speciesRenderOverridesModelPath +
+                  " experiment=" + speciesRenderOverridesExperimentName);
+        return true;
+    }
+
+    public bool TryGetSpeciesRenderOverridesContext(
+        out GamaSpeciesRenderOverrides asset,
+        out string modelPath,
+        out string experimentName)
+    {
+        asset = speciesRenderOverrides;
+        modelPath = speciesRenderOverridesModelPath ?? string.Empty;
+        experimentName = speciesRenderOverridesExperimentName ?? string.Empty;
+        return asset != null;
     }
 
     public static GamaAgentVisualState CreateDefaultVisualState(PropertiesGAMA property, Attributes attributes, int precision)
@@ -256,7 +296,7 @@ public abstract partial class SimulationManager
         for (int i = 0; i < ruleSettings.Count; i++)
         {
             GamaAgentRuleSettings rule = ruleSettings[i];
-            if (rule == null || !rule.Enabled)
+            if (rule == null || !rule.Enabled || rule.IsLegacyGamaPanelGeneratedRule())
             {
                 continue;
             }
@@ -373,6 +413,9 @@ public class GamaAgentPropertySettings
 [Serializable]
 public class GamaAgentRuleSettings
 {
+    private const string LegacyGamaPanelGeneratedPrefix = "[Workspace Import]";
+    private const string LegacySpeciesOverridePrefix = "[Species Override]";
+
     [SerializeField] private bool enabled = true;
     [SerializeField] private string label = "Override";
     [SerializeField] private string propertyId;
@@ -438,6 +481,13 @@ public class GamaAgentRuleSettings
         }
 
         return cachedRegex != null && cachedRegex.IsMatch(context.AgentName ?? string.Empty);
+    }
+
+    public bool IsLegacyGamaPanelGeneratedRule()
+    {
+        return !string.IsNullOrWhiteSpace(label) &&
+               (label.StartsWith(LegacyGamaPanelGeneratedPrefix, StringComparison.Ordinal) ||
+                label.StartsWith(LegacySpeciesOverridePrefix, StringComparison.Ordinal));
     }
 
     private bool EnsureRegexCompiled()

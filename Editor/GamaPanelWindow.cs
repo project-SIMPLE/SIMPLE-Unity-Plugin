@@ -2757,9 +2757,13 @@ public sealed class GamaPanelWindow : EditorWindow
             }
 
             if (entry.positionOffset.sqrMagnitude > 0.0001f ||
-                entry.rotationOffsetEuler.sqrMagnitude > 0.0001f)
+                entry.rotationOffsetEuler.sqrMagnitude > 0.0001f ||
+                entry.overridePositionOffset ||
+                entry.overrideRotationOffset)
             {
+                entry.overridePositionOffset = false;
                 entry.positionOffset = Vector3.zero;
+                entry.overrideRotationOffset = false;
                 entry.rotationOffsetEuler = Vector3.zero;
                 changed = true;
             }
@@ -2889,10 +2893,15 @@ public sealed class GamaPanelWindow : EditorWindow
 
         ResolveCurrentPreviewOverrideContext(out string modelPath, out string experimentName);
         GamaSpeciesRenderOverrideEntry entry = asset.GetOrCreateEntry(modelPath, experimentName, agent.Name);
+        entry.modelPath = modelPath ?? string.Empty;
+        entry.experimentName = experimentName ?? string.Empty;
+        entry.speciesName = string.IsNullOrWhiteSpace(agent.Name) ? "unknown" : agent.Name.Trim();
+        entry.speciesKey = entry.speciesName;
 
         entry.color = agent.Color;
         entry.overrideColor = agent.OverrideColor;
 
+        entry.overrideScaleMultiplier = agent.OverrideScale;
         entry.scaleMultiplier = agent.OverrideScale ? agent.ScaleMultiplier : 1f;
 
         if (agent.OverrideVisibility)
@@ -2921,6 +2930,14 @@ public sealed class GamaPanelWindow : EditorWindow
 
         EditorUtility.SetDirty(asset);
         AssetDatabase.SaveAssets();
+        string prefabLog = !string.IsNullOrWhiteSpace(entry.prefabResourcePath)
+            ? entry.prefabResourcePath
+            : (entry.prefabOverride != null ? entry.prefabOverride.name : "none");
+        Debug.Log("[GAMA][PANEL][ASSET] write species=" + entry.speciesName +
+                  " model=" + entry.modelPath +
+                  " experiment=" + entry.experimentName +
+                  " prefab=" + prefabLog +
+                  " scale=" + entry.GetEffectiveScaleMultiplier());
         return entry;
     }
 
@@ -3035,6 +3052,11 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         manager.ApplyRuntimeSpeciesOverrideNow(agent.Name);
+        Debug.Log("[GAMA][PANEL][LIVE] species=" + agent.Name +
+                  " applied prefab=" + (agent.PrefabOverride != null ? agent.PrefabOverride.name : "none") +
+                  " color=" + agent.Color +
+                  " scale=" + agent.ScaleMultiplier.ToString(CultureInfo.InvariantCulture) +
+                  " visible=" + agent.Visible);
         return true;
     }
 
@@ -3197,6 +3219,64 @@ public sealed class GamaPanelWindow : EditorWindow
         {
             agent.DefaultColor = updatedPreviewColor;
             agent.Color = updatedPreviewColor;
+        }
+
+        if (!agent.StoredOverrideLoaded)
+        {
+            agent.StoredOverrideLoaded = true;
+            ApplyStoredAgentOverrideToRow(agent);
+        }
+    }
+
+    private void ApplyStoredAgentOverrideToRow(GamaPanelAgentOverride agent)
+    {
+        if (agent == null)
+        {
+            return;
+        }
+
+        GamaSpeciesRenderOverrides asset = ResolveSpeciesRenderOverridesAsset();
+        if (asset == null)
+        {
+            return;
+        }
+
+        ResolveCurrentPreviewOverrideContext(out string modelPath, out string experimentName);
+        if (!asset.TryGetOverride(modelPath, experimentName, agent.Name, out GamaSpeciesRenderOverrideEntry entry, true) ||
+            entry == null ||
+            !entry.HasAnyOverride)
+        {
+            return;
+        }
+
+        if (entry.prefabOverride != null)
+        {
+            agent.PrefabOverride = entry.prefabOverride;
+        }
+        else if (!string.IsNullOrWhiteSpace(entry.prefabResourcePath) &&
+                 TryResolvePrefabHintToAsset(entry.prefabResourcePath, out GameObject resourcePrefab))
+        {
+            agent.PrefabOverride = resourcePrefab;
+        }
+
+        if (entry.overrideColor)
+        {
+            agent.Color = entry.color;
+            agent.OverrideColor = true;
+        }
+
+        if (entry.UsesScaleOverride())
+        {
+            agent.ScaleMultiplier = Mathf.Max(0.0001f, entry.GetEffectiveScaleMultiplier());
+            agent.OverrideScale = Mathf.Abs(agent.ScaleMultiplier - 1f) > 0.0001f;
+        }
+
+        if (entry.UsesPreviewVisibilityOverride() || entry.UsesRuntimeVisibilityOverride())
+        {
+            agent.Visible = entry.UsesPreviewVisibilityOverride()
+                ? entry.GetEffectivePreviewVisible()
+                : entry.GetEffectiveRuntimeVisible();
+            agent.OverrideVisibility = true;
         }
     }
 
@@ -3531,7 +3611,10 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         session.speciesOverrides = asset;
+        session.useThisPreviewForPlay = true;
+        session.stale = false;
         EditorUtility.SetDirty(session);
+        EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
     }
 
     private void DrawApplyControls()
@@ -3754,12 +3837,21 @@ public sealed class GamaPanelWindow : EditorWindow
             return;
         }
 
+        GamaSpeciesRenderOverrides asset = ResolveSpeciesRenderOverridesAsset();
+        ResolveCurrentPreviewOverrideContext(out string modelPath, out string experimentName);
+        if (manager.SetSpeciesRenderOverridesContext(asset, modelPath, experimentName))
+        {
+            EditorUtility.SetDirty(manager);
+        }
+
         SerializedObject serializedManager = new SerializedObject(manager);
         SerializedProperty rules = serializedManager.FindProperty("ruleSettings");
         if (rules == null || !rules.isArray)
         {
             return;
         }
+
+        RemoveGeneratedAgentRulesForCurrentOverrides(rules);
 
         const string speciesRulePrefix = "[Species Override]";
         for (int i = rules.arraySize - 1; i >= 0; i--)
@@ -3798,55 +3890,57 @@ public sealed class GamaPanelWindow : EditorWindow
             return;
         }
 
-        if (replaceGeneratedRules)
+        RemoveGeneratedAgentRulesForCurrentOverrides(rules);
+    }
+
+    private void RemoveGeneratedAgentRulesForCurrentOverrides(SerializedProperty rules)
+    {
+        if (rules == null || !rules.isArray || agentOverrides == null || agentOverrides.Count == 0)
         {
-            for (int i = rules.arraySize - 1; i >= 0; i--)
+            return;
+        }
+
+        for (int i = rules.arraySize - 1; i >= 0; i--)
+        {
+            SerializedProperty rule = rules.GetArrayElementAtIndex(i);
+            if (IsGeneratedPanelRuleForCurrentOverride(rule))
             {
-                SerializedProperty rule = rules.GetArrayElementAtIndex(i);
-                SerializedProperty label = rule.FindPropertyRelative("label");
-                if (label != null && label.stringValue.StartsWith(GeneratedRulePrefix, StringComparison.Ordinal))
-                {
-                    rules.DeleteArrayElementAtIndex(i);
-                }
+                rules.DeleteArrayElementAtIndex(i);
             }
+        }
+    }
+
+    private bool IsGeneratedPanelRuleForCurrentOverride(SerializedProperty rule)
+    {
+        if (rule == null || agentOverrides == null)
+        {
+            return false;
+        }
+
+        SerializedProperty label = rule.FindPropertyRelative("label");
+        if (label == null || !label.stringValue.StartsWith(GeneratedRulePrefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        SerializedProperty agentNameContains = rule.FindPropertyRelative("agentNameContains");
+        string generatedAgentName = agentNameContains != null ? agentNameContains.stringValue : string.Empty;
+        if (string.IsNullOrWhiteSpace(generatedAgentName))
+        {
+            return false;
         }
 
         for (int i = 0; i < agentOverrides.Count; i++)
         {
             GamaPanelAgentOverride agent = agentOverrides[i];
-            if (!agent.HasAnyOverride)
+            if (agent != null &&
+                string.Equals(agent.Name, generatedAgentName, StringComparison.OrdinalIgnoreCase))
             {
-                continue;
+                return true;
             }
-
-            int index = rules.arraySize;
-            rules.InsertArrayElementAtIndex(index);
-            SerializedProperty rule = rules.GetArrayElementAtIndex(index);
-            SetRelativeBool(rule, "enabled", true);
-            SetRelativeString(rule, "label", GeneratedRulePrefix + " " + analysis.Name + " / " + agent.Name);
-            SetRelativeString(rule, "propertyId", string.Empty);
-            SetRelativeString(rule, "tag", string.Empty);
-            SetRelativeString(rule, "prefabContains", string.Empty);
-            SetRelativeString(rule, "agentNameContains", agent.Name);
-            SetRelativeString(rule, "agentNameRegex", string.Empty);
-
-            SerializedProperty manual = rule.FindPropertyRelative("manual");
-            if (manual == null)
-            {
-                continue;
-            }
-
-            SetRelativeBool(manual, "overrideColor", agent.OverrideColor);
-            SetRelativeColor(manual, "color", agent.Color);
-            SetRelativeBool(manual, "overrideScaleMultiplier", agent.OverrideScale);
-            SetRelativeFloat(manual, "scaleMultiplier", agent.ScaleMultiplier);
-            SetRelativeBool(manual, "overridePositionOffset", false);
-            SetRelativeVector3(manual, "positionOffset", Vector3.zero);
-            SetRelativeBool(manual, "overrideRotationOffset", false);
-            SetRelativeVector3(manual, "rotationOffsetEuler", Vector3.zero);
-            SetRelativeBool(manual, "overrideVisibility", agent.OverrideVisibility);
-            SetRelativeBool(manual, "visible", agent.Visible);
         }
+
+        return false;
     }
 
     private void RefreshCodeExampleScenes()
@@ -3970,6 +4064,10 @@ public sealed class GamaPanelWindow : EditorWindow
         int prefabN;
         int geomN;
         GamaSpeciesRenderOverrides overridesAsset = ResolveSpeciesRenderOverridesAsset();
+        string previewModelPath = ResolvePreviewSessionModelPath();
+        string previewExperimentName = analysis != null && !string.IsNullOrWhiteSpace(analysis.Name)
+            ? analysis.Name
+            : (!string.IsNullOrWhiteSpace(gamaHeadlessBatchName) ? gamaHeadlessBatchName : "unknown");
         if (!GamaEditorStaticPreviewFromJson.TryBuild(
                 manager,
                 precisionJson,
@@ -3979,7 +4077,9 @@ public sealed class GamaPanelWindow : EditorWindow
                 out prefabN,
                 out geomN,
                 out status,
-                overridesAsset))
+                overridesAsset,
+                previewModelPath,
+                previewExperimentName))
         {
             EditorUtility.DisplayDialog("Static preview", status, "OK");
             return true;
@@ -4352,7 +4452,7 @@ public sealed class GamaPanelWindow : EditorWindow
                 }
 
                 if (wizard.overridesAsset != null &&
-                    wizard.overridesAsset.TryGetOverride(session.modelPath, session.experimentName, wizard.speciesName, out GamaSpeciesRenderOverrideEntry entry) &&
+                    wizard.overridesAsset.TryGetOverride(session.modelPath, session.experimentName, wizard.speciesName, out GamaSpeciesRenderOverrideEntry entry, true) &&
                     entry != null)
                 {
                     wizard.PopulateFromEntry(entry);
@@ -4928,6 +5028,7 @@ internal sealed class GamaPanelAgentOverride
     public bool OverrideColor;
     public Color DefaultColor;
     public bool DefaultsResolved;
+    public bool StoredOverrideLoaded;
     public Color Color;
 
     public bool OverrideScale;

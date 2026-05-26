@@ -7,6 +7,7 @@ public static class GamaEditorPreviewOverrideApplier
     private const string PreviewRootName = "[GAMA] Static Experiment Preview";
     private const string VisualChildName = "Visual";
     private static readonly HashSet<string> MissingAnchorWarnings = new HashSet<string>();
+    private static readonly HashSet<string> OverridePickLogKeys = new HashSet<string>();
 
     [InitializeOnLoadMethod]
     private static void Init()
@@ -90,11 +91,20 @@ public static class GamaEditorPreviewOverrideApplier
                 continue;
             }
 
-            if (!asset.TryGetOverride(modelPath, experimentName, speciesName, out GamaSpeciesRenderOverrideEntry entry) ||
+            bool exactContext = session != null;
+            if (!asset.TryGetOverride(modelPath, experimentName, speciesName, out GamaSpeciesRenderOverrideEntry entry, exactContext) ||
                 entry == null)
             {
                 continue;
             }
+
+            string source = exactContext ? "context" : "contextless-fallback";
+            if (!exactContext)
+            {
+                Debug.LogWarning("[GAMA][OVERRIDE][WARN] contextless fallback used species=" + speciesName);
+            }
+
+            LogEditorOverridePickOnce(speciesName, modelPath, experimentName, entry, source);
 
             List<GamaPreviewObject> list = pair.Value;
             if (list == null || list.Count == 0)
@@ -169,11 +179,40 @@ public static class GamaEditorPreviewOverrideApplier
 
         if (entry == null)
         {
-            GamaSpeciesRenderOverrides asset = GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
-            if (asset == null || !asset.TryGetOverride(speciesName, out entry))
+            GamaPreviewSession session = root.GetComponent<GamaPreviewSession>();
+            GamaSpeciesRenderOverrides asset = session != null && session.speciesOverrides != null
+                ? session.speciesOverrides
+                : GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
+            string modelPath = session != null ? session.modelPath ?? string.Empty : string.Empty;
+            string experimentName = session != null ? session.experimentName ?? string.Empty : string.Empty;
+            bool exactContext = session != null;
+            if (asset == null ||
+                !asset.TryGetOverride(modelPath, experimentName, speciesName, out entry, exactContext) ||
+                entry == null)
             {
                 return;
             }
+
+            if (!exactContext)
+            {
+                Debug.LogWarning("[GAMA][OVERRIDE][WARN] contextless fallback used species=" + speciesName);
+            }
+
+            LogEditorOverridePickOnce(
+                speciesName,
+                modelPath,
+                experimentName,
+                entry,
+                exactContext ? "context" : "contextless-fallback");
+        }
+        else
+        {
+            LogEditorOverridePickOnce(
+                speciesName,
+                entry.modelPath ?? string.Empty,
+                entry.experimentName ?? string.Empty,
+                entry,
+                "provided");
         }
 
         GamaPreviewObject[] all = root.GetComponentsInChildren<GamaPreviewObject>(true);
@@ -203,6 +242,33 @@ public static class GamaEditorPreviewOverrideApplier
             SceneView.RepaintAll();
             EditorApplication.QueuePlayerLoopUpdate();
         }
+    }
+
+    private static void LogEditorOverridePickOnce(
+        string speciesName,
+        string modelPath,
+        string experimentName,
+        GamaSpeciesRenderOverrideEntry entry,
+        string source)
+    {
+        string logKey = GamaSpeciesRenderOverrides.NormalizeKey(modelPath) + "|" +
+            GamaSpeciesRenderOverrides.NormalizeKey(experimentName) + "|" +
+            GamaSpeciesRenderOverrides.NormalizeKey(speciesName) + "|" +
+            (source ?? string.Empty);
+        if (!OverridePickLogKeys.Add(logKey))
+        {
+            return;
+        }
+
+        string prefab = entry != null && !string.IsNullOrWhiteSpace(entry.prefabResourcePath)
+            ? entry.prefabResourcePath
+            : (entry != null && entry.prefabOverride != null ? entry.prefabOverride.name : "none");
+        Debug.Log("[GAMA][EDITOR][OVERRIDE_PICK] species=" + speciesName +
+                  " model=" + (modelPath ?? string.Empty) +
+                  " experiment=" + (experimentName ?? string.Empty) +
+                  " prefab=" + prefab +
+                  " scale=" + (entry != null ? entry.GetEffectiveScaleMultiplier() : 1f) +
+                  " source=" + source);
     }
 
     private static int ApplySpeciesVisualState(
@@ -313,9 +379,9 @@ public static class GamaEditorPreviewOverrideApplier
         }
 
         Vector3 worldAnchor = GetPreviewObjectWorldAnchor(previewObj);
-        visual.position = worldAnchor + entry.positionOffset;
-        visual.rotation = previewObj.transform.rotation * Quaternion.Euler(entry.rotationOffsetEuler);
-        visual.localScale = Vector3.one * Mathf.Max(0.0001f, entry.scaleMultiplier);
+        visual.position = worldAnchor + entry.GetEffectivePositionOffset();
+        visual.rotation = previewObj.transform.rotation * Quaternion.Euler(entry.GetEffectiveRotationOffsetEuler());
+        visual.localScale = Vector3.one * Mathf.Max(0.0001f, entry.GetEffectiveScaleMultiplier());
         EditorUtility.SetDirty(visual);
     }
 
@@ -461,17 +527,7 @@ public static class GamaEditorPreviewOverrideApplier
             return true;
         }
 
-        if (entry.overridePreviewVisibility)
-        {
-            return entry.visibleInPreview;
-        }
-
-        if (entry.overrideVisibility)
-        {
-            return entry.visible;
-        }
-
-        return true;
+        return entry.GetEffectivePreviewVisible();
     }
 
     private static bool IsMeshMissing(GamaPreviewObject previewObj)

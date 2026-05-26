@@ -211,6 +211,13 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     bool hasSimulator ;
     private ConnectionManager subscribedConnectionManager;
+    private const float ConnectionSubscribeRetryIntervalSeconds = 0.5f;
+    private const float SocketClosedWarningIntervalSeconds = 2f;
+    private float nextConnectionSubscribeRetryTime;
+    private float nextSocketClosedWarningTime;
+    private bool staticPreviewHiddenAfterRuntimeData;
+    private int runtimeFlowLogCount;
+    private int runtimeCreateLogCount;
 
     // ############################################ UNITY FUNCTIONS ############################################
     void Awake()
@@ -223,6 +230,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         connectionID["id"] = ConnectionManager.Instance != null ? ConnectionManager.Instance.GetConnectionId() : StaticInformation.getId();
         Debug.Log("[GAMA] SimulationManager initialized");
         Instance = this;
+        TrySubscribeConnectionManager();
         SelectedObjects = new List<GameObject>();
         // toDelete = new List<GameObject>();
 
@@ -256,39 +264,17 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     void OnEnable()
     {
-        if (subscribedConnectionManager != null)
-        {
-            return;
-        }
-
-        if (ConnectionManager.Instance == null)
-        {
-            return;
-        }
-
-        subscribedConnectionManager = ConnectionManager.Instance;
-        subscribedConnectionManager.OnServerMessageReceived += HandleServerMessageReceived;
-        subscribedConnectionManager.OnConnectionAttempted += HandleConnectionAttempted;
-        subscribedConnectionManager.OnConnectionStateChanged += HandleConnectionStateChanged;
-
+        TrySubscribeConnectionManager();
     }
 
     void OnDisable()
     {
-
-        if (subscribedConnectionManager == null)
-        {
-            return;
-        }
-
-        subscribedConnectionManager.OnServerMessageReceived -= HandleServerMessageReceived;
-        subscribedConnectionManager.OnConnectionAttempted -= HandleConnectionAttempted;
-        subscribedConnectionManager.OnConnectionStateChanged -= HandleConnectionStateChanged;
-        subscribedConnectionManager = null;
+        UnsubscribeConnectionEvents();
     }
 
     void OnDestroy()
     {
+        UnsubscribeConnectionEvents();
         DrainPrefabPools();
     }
 
@@ -301,26 +287,33 @@ public abstract partial class SimulationManager : MonoBehaviour
         runtimeSyncCountersBySpecies.Clear();
         invalidGeometryFallbackCounts.Clear();
         runtimeLiveTickSerial = 0;
+        runtimeFlowLogCount = 0;
+        runtimeCreateLogCount = 0;
+        staticPreviewHiddenAfterRuntimeData = false;
 
         geometryMap = new Dictionary<string, List<object>>();
         handleGeometriesRequested = false;
         // handlePlayerParametersRequested = false;
         handleGroundParametersRequested = false;
-        OnEnable();
+        TrySubscribeConnectionManager();
     }
 
 
     void FixedUpdate()
     {
+        TrySubscribeConnectionManager();
+
         if (ConnectionManager.Instance == null)
         {
             return;
         }
 
         if (sendMessageToReactivatePositionSent)
-        { 
-            ConnectionManager.Instance.SendExecutableAsk("player_position_updated", connectionID);
-            sendMessageToReactivatePositionSent = false;
+        {
+            if (TrySendExecutableAsk("player_position_updated", connectionID, "player position updated"))
+            {
+                sendMessageToReactivatePositionSent = false;
+            }
         }
 
         if (handleGroundParametersRequested)
@@ -381,8 +374,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             if (TimerSendInit <= 0)
             {
                 TimerSendInit = TimeSendInit;
-                if (ConnectionManager.Instance != null)
-                    ConnectionManager.Instance.SendExecutableAsk("send_init_data", connectionID);
+                TrySendExecutableAsk("send_init_data", connectionID, "initial data");
             }
         }
 
@@ -400,6 +392,8 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     private void Update()
     {
+        RetrySubscribeConnectionManagerIfNeeded();
+
         if (remainingTime > 0)
             remainingTime -= Time.deltaTime;
         if (TimerSendPosition > 0)
@@ -943,9 +937,8 @@ public abstract partial class SimulationManager : MonoBehaviour
                 if (!loadedAlready)
                 {
                     Debug.Log("[GAMA] Loading initial data from middleware");
-                    if (ConnectionManager.Instance != null)
-                        ConnectionManager.Instance.SendExecutableAsk("send_init_data", connectionID);
-                    
+                    TrySendExecutableAsk("send_init_data", connectionID, "initial data");
+
                     TimerSendInit = TimeSendInit;
                     loadedAlready = true;
                 }
@@ -953,9 +946,8 @@ public abstract partial class SimulationManager : MonoBehaviour
 
             case GameState.GAME:
                 loadedAlready = false;
-                if (ConnectionManager.Instance != null)
-                    ConnectionManager.Instance.SendExecutableAsk("player_ready_to_receive_geometries", connectionID);
-                
+                TrySendExecutableAsk("player_ready_to_receive_geometries", connectionID, "player ready");
+
                 break;
 
             case GameState.END:
@@ -1003,7 +995,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     private void UpdateGameToFollowPosition()
     {
-        if (toFollow.Count > 0 && ConnectionManager.Instance != null && converter != null)
+        if (toFollow.Count > 0 && converter != null && CanSendRuntimeAsk("followed geometry"))
         {
 
             String names = "";
@@ -1027,7 +1019,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             {"sep", sep}
             };
 
-            ConnectionManager.Instance.SendExecutableAsk("move_geoms_followed", args);
+            TrySendExecutableAsk("move_geoms_followed", args, "followed geometry");
 
         }
     }
@@ -1040,6 +1032,13 @@ public abstract partial class SimulationManager : MonoBehaviour
         {
             return;
         }
+
+        if (!CanSendRuntimeAsk("player position"))
+        {
+            TimerSendPosition = TimeSendPosition;
+            return;
+        }
+
         Vector2 vF = new Vector2(Camera.main.transform.forward.x, Camera.main.transform.forward.z);
         Vector2 vR = new Vector2(transform.forward.x, transform.forward.z);
         vF.Normalize();
@@ -1062,9 +1061,8 @@ public abstract partial class SimulationManager : MonoBehaviour
             {"z", "" +p[2]},
             {"angle", "" +angle}
         };
-        
-        if (ConnectionManager.Instance != null)
-            ConnectionManager.Instance.SendExecutableAsk("move_player_external", args);
+
+        TrySendExecutableAsk("move_player_external", args, "player position");
 
         TimerSendPosition = TimeSendPosition;
     }
@@ -1258,6 +1256,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
 
         obj.transform.SetParent(speciesParent, true);
+        HideStaticPreviewAfterRuntimeData();
     }
 
     private static string ResolveRuntimeSpeciesName(PropertiesGAMA prop, string propertyId)
@@ -1374,6 +1373,12 @@ public abstract partial class SimulationManager : MonoBehaviour
             {
                 counters.Updated++;
             }
+        }
+
+        if (created && runtimeCreateLogCount < 20)
+        {
+            Debug.Log("[GAMA][RUNTIME][CREATE] species=" + record.SpeciesName + " agent=" + record.AgentId);
+            runtimeCreateLogCount++;
         }
 
         record.CurrentlyVisible = visualState.Visible && root.activeSelf;
@@ -2085,7 +2090,19 @@ public abstract partial class SimulationManager : MonoBehaviour
                 }
                 else
                 {
-                    Debug.LogWarning("[GAMA] Could not load override prefab from Resources: " + visualState.PrefabResourcePath);
+                    string species = prop != null ? prop.id : "unknown";
+                    string warningKey = "missing-runtime-prefab:" + species + ":" + visualState.PrefabResourcePath;
+                    if (!debugLogCounts.ContainsKey(warningKey))
+                    {
+                        debugLogCounts[warningKey] = 0;
+                    }
+
+                    if (debugLogCounts[warningKey] < 1)
+                    {
+                        debugLogCounts[warningKey]++;
+                        Debug.LogWarning("[GAMA][RUNTIME][PREFAB] species=" + species +
+                                         " cannot load prefabResourcePath=" + visualState.PrefabResourcePath);
+                    }
                 }
             }
 
@@ -3085,24 +3102,48 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
     }
 
-    private void SubscribeConnectionEvents()
+    private bool TrySubscribeConnectionManager()
+    {
+        if (subscribedConnectionManager != null)
+        {
+            if (subscribedConnectionManager == ConnectionManager.Instance)
+            {
+                return true;
+            }
+
+            UnsubscribeConnectionEvents();
+        }
+
+        ConnectionManager manager = ConnectionManager.Instance;
+        if (manager == null)
+        {
+            return false;
+        }
+
+        subscribedConnectionManager = manager;
+        subscribedConnectionManager.OnServerMessageReceived += HandleServerMessageReceived;
+        subscribedConnectionManager.OnConnectionAttempted += HandleConnectionAttempted;
+        subscribedConnectionManager.OnConnectionStateChanged += HandleConnectionStateChanged;
+        connectionID["id"] = subscribedConnectionManager.GetConnectionId();
+        Debug.Log("[GAMA][RUNTIME][CONNECTION] subscribed to ConnectionManager");
+        return true;
+    }
+
+    private void RetrySubscribeConnectionManagerIfNeeded()
     {
         if (subscribedConnectionManager != null)
         {
             return;
         }
 
-        if (ConnectionManager.Instance == null)
+        float now = Time.unscaledTime;
+        if (now < nextConnectionSubscribeRetryTime)
         {
-
             return;
         }
 
-        subscribedConnectionManager = ConnectionManager.Instance;
-        subscribedConnectionManager.OnServerMessageReceived += HandleServerMessageReceived;
-        subscribedConnectionManager.OnConnectionAttempted += HandleConnectionAttempted;
-        subscribedConnectionManager.OnConnectionStateChanged += HandleConnectionStateChanged;
-
+        nextConnectionSubscribeRetryTime = now + ConnectionSubscribeRetryIntervalSeconds;
+        TrySubscribeConnectionManager();
     }
 
     private void UnsubscribeConnectionEvents()
@@ -3116,6 +3157,68 @@ public abstract partial class SimulationManager : MonoBehaviour
         subscribedConnectionManager.OnConnectionAttempted -= HandleConnectionAttempted;
         subscribedConnectionManager.OnConnectionStateChanged -= HandleConnectionStateChanged;
         subscribedConnectionManager = null;
+    }
+
+    private bool CanSendRuntimeAsk(string sendLabel)
+    {
+        TrySubscribeConnectionManager();
+        ConnectionManager manager = ConnectionManager.Instance;
+        if (manager != null && manager.CanSendRuntimeMessages)
+        {
+            return true;
+        }
+
+        float now = Time.unscaledTime;
+        if (now >= nextSocketClosedWarningTime)
+        {
+            string reason = manager == null ? "ConnectionManager missing" : "socket not open";
+            Debug.LogWarning("[GAMA][RUNTIME][CONNECTION] " + reason + "; skipping " + sendLabel + " send");
+            nextSocketClosedWarningTime = now + SocketClosedWarningIntervalSeconds;
+        }
+
+        return false;
+    }
+
+    private bool TrySendExecutableAsk(string action, Dictionary<string, string> arguments, string sendLabel)
+    {
+        if (!CanSendRuntimeAsk(sendLabel))
+        {
+            return false;
+        }
+
+        ConnectionManager.Instance.SendExecutableAsk(action, arguments);
+        return true;
+    }
+
+    private void HideStaticPreviewAfterRuntimeData()
+    {
+        if (staticPreviewHiddenAfterRuntimeData)
+        {
+            return;
+        }
+
+        GameObject previewRoot = GameObject.Find("[GAMA] Static Experiment Preview");
+        if (previewRoot == null || !previewRoot.activeSelf)
+        {
+            return;
+        }
+
+        previewRoot.SetActive(false);
+        staticPreviewHiddenAfterRuntimeData = true;
+        Debug.Log("[GAMA][RUNTIME] Static preview hidden after live runtime data arrived.");
+    }
+
+    private void LogRuntimeFlow(WorldJSONInfo world)
+    {
+        runtimeFlowLogCount++;
+        if (runtimeFlowLogCount > 20 && runtimeFlowLogCount % 100 != 0)
+        {
+            return;
+        }
+
+        int names = world != null && world.names != null ? world.names.Count : 0;
+        int propertyIds = world != null && world.propertyID != null ? world.propertyID.Count : 0;
+        Debug.Log("[GAMA][RUNTIME][FLOW] received json_output names=" + names + " propertyIDs=" + propertyIds);
     }
 
 
@@ -3360,6 +3463,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                 if (infoWorld == null)
                 {
                     infoWorld = WorldJSONInfo.CreateFromJSON(content);
+                    LogRuntimeFlow(infoWorld);
                 }
                 break;
             case "endOfGame":
@@ -3416,7 +3520,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         {
             return;
         }
-        ConnectionManager.Instance.SendExecutableAsk("ping_GAMA", connectionID);
+        TrySendExecutableAsk("ping_GAMA", connectionID, "ping");
         currentTimePing = maxTimePing;
 
     }
