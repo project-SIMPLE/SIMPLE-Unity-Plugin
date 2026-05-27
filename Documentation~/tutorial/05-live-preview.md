@@ -10,10 +10,13 @@ GAMA through `simple.webplatform`.
 3. Click **Validate Preview and Close Panel**.
 4. Press **Play** in Unity.
 
-> Screenshot to add: **Validate Preview and Close Panel** button in the GAMA
-> Panel.
+Validate the preview when the species settings are correct.
 
-> Screenshot to add: Unity Play button active with the scene running.
+![Validate Preview and Close Panel](../images/tutorial/05-validate-preview-button.png)
+
+Then press **Play** in Unity.
+
+![Press Play from the preview scene](../images/tutorial/05-press-play-from-preview.png)
 
 Runtime agents are created under:
 
@@ -21,8 +24,10 @@ Runtime agents are created under:
 [GAMA] Runtime Live Agents
 ```
 
-> Screenshot to add: Unity hierarchy showing `[GAMA] Runtime Live Agents` with
-> species children.
+When Play Mode works, the static preview objects are hidden and runtime objects
+are created.
+
+![Play Mode with runtime agents](../images/tutorial/05-play-mode-runtime-preview-hidden.png)
 
 ## Runtime Behavior
 

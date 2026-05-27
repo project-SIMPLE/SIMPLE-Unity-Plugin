@@ -20,9 +20,9 @@ For each species, configure:
 - **Visible**: show or hide the species.
 - **Reset to GAMA attributes**: restore default GAMA values for that species.
 
-> Screenshot to add: one complete species row in the GAMA Panel.
+The preview result lets you edit species settings directly.
 
-> Screenshot to add: the same species in the `Game Manager` inspector.
+![Species settings after capture](../images/tutorial/03-preview-captured-species-settings.png)
 
 ## Prefab Rules
 
@@ -46,7 +46,9 @@ Visual Prefabs/Character/Ghost
 > Screenshot to add: Unity Project window showing a prefab under
 > `Assets/Resources/...`.
 
-> Screenshot to add: Prefab Override field populated for one species.
+You can choose a prefab from the GAMA Panel.
+
+![Change a prefab from the GAMA Panel](../images/tutorial/04-change-prefab-from-gama-panel.png)
 
 ## Scale Rules
 

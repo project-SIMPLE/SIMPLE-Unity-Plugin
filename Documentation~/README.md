@@ -31,7 +31,7 @@ Store screenshots in [images](images/README.md).
 Use this convention when replacing screenshot placeholders:
 
 ```md
-![Short description](../images/tutorial/file-name.png)
+Image path example: ../images/tutorial/file-name.png
 ```
 
 If a step is easier to understand with motion, add a short GIF or video next to

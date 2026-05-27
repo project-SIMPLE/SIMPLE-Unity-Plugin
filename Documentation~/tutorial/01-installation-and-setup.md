@@ -3,6 +3,20 @@
 This chapter installs the SIMPLE Unity Plugin in a Unity project and prepares the
 scene for GAMA communication.
 
+## Create Or Open A Unity Project
+
+Start from a Unity 6 project.
+
+![Unity version and project creation](../images/tutorial/01-unity-version-create-project.png)
+
+Create a new project if needed.
+
+![Create a new Unity project](../images/tutorial/01-create-new-unity-project.png)
+
+After the project opens, you should be on the Unity home/editor screen.
+
+![Unity project home](../images/tutorial/01-unity-home.png)
+
 ## Install From GitHub
 
 1. Open Unity.
@@ -21,8 +35,21 @@ To install a specific branch:
 https://github.com/project-SIMPLE/SIMPLE-Unity-Plugin.git#branch-name
 ```
 
-> Screenshot to add: Unity Package Manager with **Add package from git URL...**
-> open and the package URL field visible.
+Open the Package Manager from Unity.
+
+![Open Package Manager from Unity](../images/tutorial/01-package-manager-menu.png)
+
+Click the **+** button.
+
+![Package Manager add button](../images/tutorial/01-package-manager-add-button.png)
+
+Paste the Git URL.
+
+![Add package from Git URL](../images/tutorial/01-package-manager-git-url.png)
+
+After installation, the package appears in the Package Manager.
+
+![Package installed](../images/tutorial/01-package-installed.png)
 
 ## Install From Local Disk
 
@@ -46,12 +73,26 @@ For local development:
    - a `Game Manager`;
    - required scene roots for preview and runtime objects.
 
-> Screenshot to add: the **GAMA > GAMA Panel** menu entry.
+Open the GAMA Panel from the Unity menu.
 
-> Screenshot to add: the GAMA Panel with the **Setup Scene** button visible.
+![Open the GAMA Panel menu](../images/tutorial/01-open-gama-panel-menu.gif)
 
-> Screenshot to add: Unity hierarchy after setup, showing player/camera,
-> `Connection Manager`, and `Game Manager`.
+The GAMA Panel opens with the main preview and setup controls.
+
+![GAMA Panel opened](../images/tutorial/01-gama-panel-open.png)
+
+Use **Setup Scene** when starting from an empty scene.
+
+![Setup Scene button](../images/tutorial/01-setup-scene-button.png)
+
+After setup, the scene contains the objects needed to communicate with the
+middleware.
+
+![Scene ready for middleware](../images/tutorial/01-scene-ready-for-middleware.png)
+
+The Unity project is ready for the preview workflow.
+
+![Unity project ready](../images/tutorial/01-unity-project-ready.png)
 
 ## Middleware Requirements
 

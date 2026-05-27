@@ -19,6 +19,12 @@ Documentation~/images/
 └── technical/
 ```
 
+Current tutorial screenshots are stored in:
+
+```text
+Documentation~/images/tutorial/
+```
+
 Screenshot guidelines:
 
 - Use PNG for static UI screenshots.

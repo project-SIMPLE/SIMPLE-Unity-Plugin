@@ -15,6 +15,14 @@ The linker declares:
 - the species or geometries to send to Unity;
 - optional runtime attributes sent with each agent.
 
+Open the target model in GAMA.
+
+![Open a new GAMA tab](../images/tutorial/02-gama-new-tab.png)
+
+Select an experiment that is ready to run.
+
+![Open a GAMA experiment](../images/tutorial/02-open-gama-experiment.png)
+
 > Screenshot to add: GAMA editor with the `unity_linker` species visible.
 
 > Screenshot to add: GAMA Model Outline showing `unity_linker`,

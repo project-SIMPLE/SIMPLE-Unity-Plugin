@@ -12,9 +12,21 @@ or selected in GAMA.
 5. Open **GAMA > GAMA Panel**.
 6. Click **Generate Preview from GAMA**.
 
-> Screenshot to add: GAMA with the target experiment opened or selected.
+Start the middleware before generating the preview.
 
-> Screenshot to add: GAMA Panel before clicking **Generate Preview from GAMA**.
+![Open the middleware](../images/tutorial/02-open-middleware.png)
+
+Open the preview workflow from the GAMA Panel.
+
+![Open GAMA Preview menu](../images/tutorial/03-open-gama-preview-menu.png)
+
+The preview page exposes the GAMA preview controls.
+
+![GAMA Preview page](../images/tutorial/03-gama-preview-page.png)
+
+Click **Generate Preview from GAMA**.
+
+![Generate Preview from GAMA button](../images/tutorial/03-generate-preview-button.png)
 
 Unity receives JSON output from the middleware and builds a static preview under:
 
@@ -22,7 +34,17 @@ Unity receives JSON output from the middleware and builds a static preview under
 [GAMA] Static Experiment Preview
 ```
 
-> Screenshot to add: Unity hierarchy showing `[GAMA] Static Experiment Preview`.
+During capture, the GAMA Panel shows that the preview is being built.
+
+![Preview building in the GAMA Panel](../images/tutorial/03-preview-building-panel.png)
+
+GAMA may start or update the experiment while Unity receives the preview data.
+
+![GAMA running during preview capture](../images/tutorial/03-gama-running-during-preview-capture.png)
+
+Wait until Unity finishes building the scene.
+
+![Wait while Unity builds the preview](../images/tutorial/03-wait-preview-building.png)
 
 ## Expected Result
 
@@ -35,9 +57,13 @@ The GAMA Panel should list detected species in a table similar to:
 Agent / Species | Count | Prefab | Color | Scale | Visible | Reset
 ```
 
-> Screenshot to add: Scene view with the generated static preview visible.
+The scene now contains the generated static preview.
 
-> Screenshot to add: GAMA Panel species table after preview generation.
+![Generated static preview scene](../images/tutorial/03-static-preview-scene-built.png)
+
+The GAMA Panel now contains the detected species settings.
+
+![Captured preview species settings](../images/tutorial/03-preview-captured-species-settings.png)
 
 ## Important Behavior
 
