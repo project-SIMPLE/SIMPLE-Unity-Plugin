@@ -6,6 +6,13 @@ It provides a lightweight Unity workflow to set up a scene, connect to the middl
 
 The current demo workflow is centered around the **GAMA Panel**, which groups scene setup, preview generation, species settings, and runtime visualization tools in one place.
 
+## Documentation
+
+- [Tutorial](Documentation~/tutorial/README.md)
+- [User guide draft](Documentation~/user-guide/README.md)
+- [Technical documentation draft](Documentation~/technical/README.md)
+- [Runtime architecture notes](Documentation~/gama-unity.md)
+
 ---
 
 ## Installation
