@@ -190,6 +190,7 @@ namespace ProjectSimple.GamaUnity.Runtime
 
             Camera camera = origin.Camera ?? player.GetComponentInChildren<Camera>(true) ?? Camera.main ?? Object.FindFirstObjectByType<Camera>();
             GameObject cameraObj;
+            bool existingCamera = camera != null;
             if (camera == null)
             {
                 cameraObj = new GameObject("Main Camera");
@@ -201,7 +202,8 @@ namespace ProjectSimple.GamaUnity.Runtime
             }
 
             cameraObj.name = "Main Camera";
-            cameraObj.transform.SetParent(cameraOffset.transform, false);
+            bool preserveExistingCameraWorldPose = existingCamera && cameraObj.transform.parent != cameraOffset.transform;
+            cameraObj.transform.SetParent(cameraOffset.transform, preserveExistingCameraWorldPose);
             GamaSceneUtility.TrySetTag(cameraObj, "MainCamera");
             GamaSceneUtility.GetOrAddComponent<AudioListener>(cameraObj);
             GamaSceneUtility.AddOptionalComponent(

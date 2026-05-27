@@ -30,6 +30,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         public bool HasVisualAnchor;
         public Vector3 LastPositionOffset;
         public Vector3 LastRotationOffsetEuler;
+        public Attributes LastAttributes;
     }
 
     private sealed class RuntimeSyncCounters
@@ -38,6 +39,44 @@ public abstract partial class SimulationManager : MonoBehaviour
         public int Updated;
         public int Removed;
     }
+
+    private enum LargeSpeciesMode
+    {
+        CachedObjects = 0,
+        BatchedMesh = 1
+    }
+
+    public enum PlayerPositionSource
+    {
+        MainCamera = 0,
+        XROriginRoot = 1,
+        FPSPlayerRoot = 2,
+        ExplicitTransform = 3
+    }
+
+    private sealed class RuntimeImportCounters
+    {
+        public int Created;
+        public int Updated;
+        public int SkippedUnchanged;
+        public int Deferred;
+    }
+
+    private sealed class RuntimeImportProfile
+    {
+        public bool IsInit;
+        public int MessageBytes;
+        public int NamesCount;
+        public int PointsLocCount;
+        public int PointsGeomCount;
+        public bool IsLarge;
+        public long ParseMs;
+        public float ApplyStartedAt = -1f;
+        public readonly Dictionary<string, int> CountsByPropertyId = new Dictionary<string, int>(StringComparer.Ordinal);
+        public readonly Dictionary<string, RuntimeImportCounters> ImportCountersByPropertyId = new Dictionary<string, RuntimeImportCounters>(StringComparer.Ordinal);
+    }
+
+    private const int PeopleAttributeDebugMaxLogs = 10;
 
     private static System.Collections.Generic.Dictionary<string, int> debugLogCounts = new System.Collections.Generic.Dictionary<string, int>();
     private static System.Collections.Generic.Dictionary<string, bool> debugSummaryLogged = new System.Collections.Generic.Dictionary<string, bool>();
@@ -76,10 +115,22 @@ public abstract partial class SimulationManager : MonoBehaviour
     [SerializeField, Min(0.5f)] protected float prefabStreamingStatsInterval = 3f;
 
     [Header("Agent update throttling")]
+    [SerializeField, Tooltip("Enable generic large import diagnostics, unchanged-object skipping, and frame-budgeted application.")]
+    protected bool enableIncrementalImport = true;
+    [SerializeField, Min(1), Tooltip("Species/property count at which an import is treated as large.")]
+    protected int largeSpeciesThreshold = 5000;
+    [SerializeField, Min(1), Tooltip("Geometry count at which an import is treated as large.")]
+    protected int largeGeometryThreshold = 5000;
+    [SerializeField, Min(1024), Tooltip("Raw json_output byte size at which an import is treated as large.")]
+    protected int hugeMessageByteThreshold = 2 * 1024 * 1024;
+    [SerializeField, Tooltip("Skip transform, mesh, material, and renderer work for agents whose import signature is unchanged.")]
+    protected bool skipUnchangedObjects = true;
+    [SerializeField, Tooltip("Current large-species rendering mode. BatchedMesh is reserved for a future combined-mesh path.")]
+    private LargeSpeciesMode largeSpeciesMode = LargeSpeciesMode.CachedObjects;
     [SerializeField, Tooltip("Limit how many agents are applied per tick to avoid long main-thread spikes.")]
     protected bool limitAgentUpdatesPerTick = true;
     [SerializeField, Min(1), Tooltip("Maximum number of agent entries processed each tick when applying world updates.")]
-    protected int maxAgentUpdatesPerTick = 1000;
+    protected int maxAgentUpdatesPerTick = 2000;
     [SerializeField] protected bool logAgentUpdateBudgetStats = false;
     [SerializeField, Min(0.5f)] protected float agentUpdateBudgetStatsInterval = 3f;
     [SerializeField, Tooltip("If false, non-prefab geometries (roads/buildings) are never destroyed when missing from a tick; they remain in hierarchy and only rendering is toggled by streaming.")]
@@ -97,7 +148,16 @@ public abstract partial class SimulationManager : MonoBehaviour
 
 
     protected Transform XROrigin;
-   
+
+    [Header("Outgoing Player Position")]
+    [SerializeField, Tooltip("When disabled, Play Mode keeps the player/camera pose already set in the Unity scene instead of snapping to the initial player position sent by GAMA.")]
+    private bool useGamaInitialPlayerPosition = false;
+    [SerializeField] private PlayerPositionSource playerPositionSource = PlayerPositionSource.MainCamera;
+    [SerializeField] private Transform explicitPlayerPositionSource;
+    [SerializeField] private bool logOutgoingPlayerPosition = true;
+    [SerializeField] private bool rejectSuspiciousPlayerPositions = true;
+    [SerializeField, Min(0f)] private float suspiciousTeleportDistance = 25f;
+
     // Z offset and scale
      protected float GamaCRSOffsetZ = 0.0f;
 
@@ -121,10 +181,14 @@ public abstract partial class SimulationManager : MonoBehaviour
     private Transform runtimeAgentsRoot;
     private Dictionary<string, Transform> runtimeSpeciesParents;
     protected Dictionary<string, List<object>> geometryMap;
+    private readonly HashSet<string> suppressedFollowedGeometryPropertyWarnings =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, RuntimeAgentRecord> runtimeAgentRecords =
         new Dictionary<string, RuntimeAgentRecord>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, RuntimeSyncCounters> runtimeSyncCountersBySpecies =
         new Dictionary<string, RuntimeSyncCounters>(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HashSet<string>> runtimeAttributeNamesBySpecies =
+        new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> invalidGeometryFallbackCounts =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
     protected Dictionary<string, PropertiesGAMA> propertyMap = null;
@@ -149,9 +213,19 @@ public abstract partial class SimulationManager : MonoBehaviour
     private int pendingWorldPrefabIndex;
     private int pendingWorldGeomIndex;
     private float agentUpdateBudgetLastDiagTime;
+    private int peopleAttributeDebugLogCount;
     private bool loggedMissingMainCameraForStreaming;
     private readonly Dictionary<string, int> missingAgentTickCounts = new Dictionary<string, int>();
+    private readonly Dictionary<string, int> lastImportSignatureByName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    private readonly RuntimeImportCounters detachedRuntimeImportCounters = new RuntimeImportCounters();
+    private RuntimeImportProfile currentImportProfile;
     private int runtimeLiveTickSerial;
+    private Vector3 lastOutgoingPlayerUnityPosition;
+    private bool hasLastOutgoingPlayerUnityPosition;
+    private float nextOutgoingPlayerPositionLogTime;
+    private float nextOutgoingPlayerWarningLogTime;
+    private const float OutgoingPlayerPositionLogIntervalSeconds = 1f;
+    private const float OutgoingPlayerWarningLogIntervalSeconds = 1f;
 
     protected List<GameObject> SelectedObjects;
 
@@ -218,6 +292,7 @@ public abstract partial class SimulationManager : MonoBehaviour
     private bool staticPreviewHiddenAfterRuntimeData;
     private int runtimeFlowLogCount;
     private int runtimeCreateLogCount;
+    private int runtimePerfLogCount;
 
     // ############################################ UNITY FUNCTIONS ############################################
     void Awake()
@@ -285,13 +360,19 @@ public abstract partial class SimulationManager : MonoBehaviour
         runtimeSpeciesParents = new Dictionary<string, Transform>(StringComparer.OrdinalIgnoreCase);
         runtimeAgentRecords.Clear();
         runtimeSyncCountersBySpecies.Clear();
+        runtimeAttributeNamesBySpecies.Clear();
         invalidGeometryFallbackCounts.Clear();
+        lastImportSignatureByName.Clear();
+        currentImportProfile = null;
         runtimeLiveTickSerial = 0;
         runtimeFlowLogCount = 0;
         runtimeCreateLogCount = 0;
-        staticPreviewHiddenAfterRuntimeData = false;
+            runtimePerfLogCount = 0;
+            peopleAttributeDebugLogCount = 0;
+            staticPreviewHiddenAfterRuntimeData = false;
+            hasLastOutgoingPlayerUnityPosition = false;
 
-        geometryMap = new Dictionary<string, List<object>>();
+            geometryMap = new Dictionary<string, List<object>>();
         handleGeometriesRequested = false;
         // handlePlayerParametersRequested = false;
         handleGroundParametersRequested = false;
@@ -329,10 +410,13 @@ public abstract partial class SimulationManager : MonoBehaviour
         {
 
             sendMessageToReactivatePositionSent = true;
-            GenerateGeometries(true, null);
-            handleGeometriesRequested = false;
-            UpdateGameState(GameState.GAME);
-         
+            bool initCompleted = GenerateGeometries(true, null);
+            if (initCompleted)
+            {
+                handleGeometriesRequested = false;
+                UpdateGameState(GameState.GAME);
+            }
+
 
         }
         if (infoWorld != null && !infoWorld.isInit && IsGameState(GameState.LOADING_DATA))
@@ -686,11 +770,29 @@ public abstract partial class SimulationManager : MonoBehaviour
     {
 
         SnapshotPrefabHeadingSources();
+        BeginImportApplyIfNeeded();
+
+        if (infoWorld == null || infoWorld.names == null || infoWorld.propertyID == null)
+        {
+            CompleteImportProfileIfNeeded(true);
+            infoWorld = null;
+            return true;
+        }
 
         if (infoWorld.position != null && infoWorld.position.Count > 1 && (initGame || !sendMessageToReactivatePositionSent))
         {
             Vector3 pos = converter.fromGAMACRS(infoWorld.position[0], infoWorld.position[1], infoWorld.position[2]);
-            XROrigin.localPosition = pos;
+            if (useGamaInitialPlayerPosition)
+            {
+                LogPlayerSetPosition("gama_world_position", XROrigin.localPosition, pos);
+                XROrigin.localPosition = pos;
+            }
+            else
+            {
+                Debug.Log("[GAMA][PLAYER][KEEP_POSITION] ignored GAMA initial player position=" + FormatVector(pos) +
+                          " current=" + FormatVector(XROrigin.localPosition));
+            }
+
             sendMessageToReactivatePositionSent = true;
             readyToSendPosition = true;
             TimerSendPosition = TimeSendPositionAfterMoving;
@@ -705,7 +807,11 @@ public abstract partial class SimulationManager : MonoBehaviour
             GeometryUtility.CalculateFrustumPlanes(immediateStreamingCamera, prefabStreamingPlanes);
         }
 
-        bool budgetedPass = !initGame && limitAgentUpdatesPerTick && maxAgentUpdatesPerTick > 0;
+        bool largeImport = currentImportProfile != null && currentImportProfile.IsLarge;
+        bool budgetedPass = enableIncrementalImport &&
+                            limitAgentUpdatesPerTick &&
+                            maxAgentUpdatesPerTick > 0 &&
+                            (!initGame || largeImport);
         int budget = budgetedPass ? maxAgentUpdatesPerTick : int.MaxValue;
         int startAgentIndex = budgetedPass ? pendingWorldAgentIndex : 0;
         int cptPrefab = budgetedPass ? pendingWorldPrefabIndex : 0;
@@ -735,8 +841,10 @@ public abstract partial class SimulationManager : MonoBehaviour
                 continue;
             }
             Attributes attributes = infoWorld.GetAttributesAt(i);
+            LogPeopleAttributeDebug(name, propId, attributes);
             GamaAgentVisualState visualState = ResolveAgentVisualState(name, prop, attributes);
             string speciesName = ResolveRuntimeSpeciesName(prop, propId);
+            RegisterObservedRuntimeAttributes(propId, speciesName, attributes);
             string agentKey = MakeRuntimeAgentKey(speciesName, name);
             bool dynamicUpdate = !initGame;
 
@@ -744,8 +852,34 @@ public abstract partial class SimulationManager : MonoBehaviour
 
             if (prop.hasPrefab)
             {
+                if (infoWorld.pointsLoc == null || cptPrefab >= infoWorld.pointsLoc.Count)
+                {
+                    continue;
+                }
+
+                GAMAPoint pointLoc = infoWorld.pointsLoc[cptPrefab];
                 string desiredPrefabSignature = ResolvePrefabSignature(prop, attributes);
-                if (initGame || !geometryMap.ContainsKey(agentKey))
+                int importSignature = ComputeImportSignature(
+                    agentKey,
+                    propId,
+                    pointLoc,
+                    null,
+                    0,
+                    attributes,
+                    visualState,
+                    desiredPrefabSignature);
+                bool existingBefore = geometryMap != null && geometryMap.ContainsKey(agentKey);
+                if (TrySkipUnchangedImport(agentKey, importSignature, propId, speciesName, name, prop, attributes, visualState, dynamicUpdate, toRemove, out obj))
+                {
+                    cptPrefab++;
+                    if (ShouldDeferImportAfterProcessed(budgetedPass, ref processedAgentCount, budget, i, cptPrefab, cptGeom))
+                    {
+                        return false;
+                    }
+                    continue;
+                }
+
+                if (!geometryMap.ContainsKey(agentKey))
                 {
                     obj = instantiatePrefab(name, agentKey, speciesName, prop, attributes, desiredPrefabSignature, initGame);
 
@@ -776,7 +910,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                     }
 
                 }
-                List<int> pt = infoWorld.pointsLoc[cptPrefab].c;
+                List<int> pt = pointLoc.c;
                 Vector3 basePos = converter.fromGAMACRS(pt[0], pt[1], pt[2]);
                 basePos.y += prop.yOffsetF;
                 Vector3 pos = basePos + visualState.PositionOffset;
@@ -788,17 +922,46 @@ public abstract partial class SimulationManager : MonoBehaviour
                 ApplyAgentVisualState(obj, prop, visualState, true, Vector3.zero);
                 ApplyImmediateStreamingState(obj, prop, immediateStreamingCamera, immediateFrustumEnabled);
                 //obj.SetActive(true);
-                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, basePos, baseRotation, basePos);
+                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, attributes, basePos, baseRotation, basePos);
                 if(toRemove != null)
                 {
                     toRemove.Remove(agentKey);
                     toRemove.Remove(name);
                 }
+                StoreImportSignature(agentKey, importSignature, propId, existingBefore);
                 cptPrefab++;
 
             }
             else
             {
+                if (infoWorld.pointsGeom == null || cptGeom >= infoWorld.pointsGeom.Count)
+                {
+                    continue;
+                }
+
+                GAMAPoint pointGeom = infoWorld.pointsGeom[cptGeom];
+                int rawOffsetY = infoWorld.offsetYGeom != null && cptGeom < infoWorld.offsetYGeom.Count
+                    ? infoWorld.offsetYGeom[cptGeom]
+                    : 0;
+                int importSignature = ComputeImportSignature(
+                    agentKey,
+                    propId,
+                    null,
+                    pointGeom,
+                    rawOffsetY,
+                    attributes,
+                    visualState,
+                    null);
+                bool existingBefore = geometryMap != null && geometryMap.ContainsKey(agentKey);
+                if (TrySkipUnchangedImport(agentKey, importSignature, propId, speciesName, name, prop, attributes, visualState, dynamicUpdate, toRemove, out obj))
+                {
+                    cptGeom++;
+                    if (ShouldDeferImportAfterProcessed(budgetedPass, ref processedAgentCount, budget, i, cptPrefab, cptGeom))
+                    {
+                        return false;
+                    }
+                    continue;
+                }
 
                 if (polyGen == null)
                 {
@@ -806,8 +969,8 @@ public abstract partial class SimulationManager : MonoBehaviour
                     polyGen.Init(converter);
                 }
 
-                int[] pt = infoWorld.pointsGeom[cptGeom].c.ToArray();
-                float yOffset = (0.0f + infoWorld.offsetYGeom[cptGeom]) / (0.0f + parameters.precision);
+                int[] pt = pointGeom.c.ToArray();
+                float yOffset = (0.0f + rawOffsetY) / (0.0f + parameters.precision);
                 Vector3 polygonBasePosition = new Vector3(0f, yOffset, 0f);
                 bool polygonInputValid = IsRuntimePolygonInputValid(pt);
 
@@ -827,7 +990,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                     }
                 }
 
-                if(initGame || !geometryMap.ContainsKey(agentKey))
+                if(!geometryMap.ContainsKey(agentKey))
                 {
                     obj = polygonInputValid
                         ? polyGen.GeneratePolygons(false, name, pt, prop, parameters.precision)
@@ -878,26 +1041,19 @@ public abstract partial class SimulationManager : MonoBehaviour
                 ApplyAgentVisualState(obj, prop, visualState, false, polygonBasePosition, computedWorldAnchor);
                 HandleInvalidDynamicGeometryFallback(obj, speciesName, visualState, computedWorldAnchor, dynamicUpdate, !polygonInputValid);
                 ApplyImmediateStreamingState(obj, prop, immediateStreamingCamera, immediateFrustumEnabled);
-                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, polygonBasePosition, Quaternion.identity, computedWorldAnchor);
+                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, attributes, polygonBasePosition, Quaternion.identity, computedWorldAnchor);
                 if(toRemove != null)
                 {
                     toRemove.Remove(agentKey);
                     toRemove.Remove(name);
                 }
+                StoreImportSignature(agentKey, importSignature, propId, existingBefore);
                 cptGeom++;
             }
 
-            if (budgetedPass)
+            if (ShouldDeferImportAfterProcessed(budgetedPass, ref processedAgentCount, budget, i, cptPrefab, cptGeom))
             {
-                processedAgentCount++;
-                if (processedAgentCount >= budget && i + 1 < infoWorld.names.Count)
-                {
-                    pendingWorldAgentIndex = i + 1;
-                    pendingWorldPrefabIndex = cptPrefab;
-                    pendingWorldGeomIndex = cptGeom;
-                    EmitAgentUpdateBudgetDiagnostic(processedAgentCount, infoWorld.names.Count, pendingWorldAgentIndex);
-                    return false;
-                }
+                return false;
             }
 
         }
@@ -913,6 +1069,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         if (initGame)
             AdditionalInitAfterGeomLoading();
 
+        CompleteImportProfileIfNeeded(true);
         infoWorld = null;
         return true;
     }
@@ -1028,32 +1185,36 @@ public abstract partial class SimulationManager : MonoBehaviour
     // ############################################ UPDATERS ############################################
     private void UpdatePlayerPosition()
     {
-        if (Camera.main == null || converter == null || parameters == null || XROrigin == null)
+        if (converter == null || parameters == null)
         {
+            LogOutgoingSkip("missing_converter_or_parameters", "move_player_external");
             return;
         }
 
-        if (!CanSendRuntimeAsk("player position"))
+        PlayerPositionSource resolvedSource;
+        Transform source = ResolvePlayerPositionSource(out resolvedSource);
+        if (source == null)
         {
-            TimerSendPosition = TimeSendPosition;
+            LogOutgoingSkip("no_player_position_source", "move_player_external");
             return;
         }
 
-        Vector2 vF = new Vector2(Camera.main.transform.forward.x, Camera.main.transform.forward.z);
-        Vector2 vR = new Vector2(transform.forward.x, transform.forward.z);
-        vF.Normalize();
-        vR.Normalize();
-        float c = vF.x * vR.x + vF.y * vR.y;
-        float s = vF.x * vR.y - vF.y * vR.x;
-        int angle = (int)(((s > 0) ? -1.0 : 1.0) * (180 / Math.PI) * Math.Acos(c) * parameters.precision);
+        Vector3 unityPos = source.position;
+        if (IsSuspiciousOutgoingPlayerPosition(source, resolvedSource, unityPos))
+        {
+            if (rejectSuspiciousPlayerPositions)
+            {
+                LogOutgoingSkip("suspicious_player_position", "move_player_external");
+                TimerSendPosition = TimeSendPosition;
+                return;
+            }
+        }
 
+        WarnIfRootAndCameraDiverge(resolvedSource, source);
 
-
-      //  Vector3 v = new Vector3(Camera.main.transform.position.x, Camera.main.transform.position.y - yOffsetCamera, Camera.main.transform.position.z);
-        Vector3 v = hasSimulator ? new Vector3(Camera.main.transform.localPosition.x + XROrigin.localPosition.x, Camera.main.transform.localPosition.y + XROrigin.localPosition.y,Camera.main.transform.localPosition.z + XROrigin.localPosition.z)
- : new Vector3(XROrigin.localPosition.x, XROrigin.localPosition.y, XROrigin.localPosition.z);
-
-        List<int> p = converter.toGAMACRS3D(v);
+        int angle = ResolveOutgoingPlayerAngle(source);
+        List<int> p = converter.toGAMACRS3D(unityPos);
+        LogOutgoingPlayerPosition(resolvedSource, unityPos, p, angle);
         Dictionary<string, string> args = new Dictionary<string, string> {
              {"id", ConnectionManager.Instance != null ? ConnectionManager.Instance.GetConnectionId() : StaticInformation.getId() },
             {"x", "" +p[0]},
@@ -1062,18 +1223,292 @@ public abstract partial class SimulationManager : MonoBehaviour
             {"angle", "" +angle}
         };
 
-        TrySendExecutableAsk("move_player_external", args, "player position");
+        if (TrySendExecutableAsk("move_player_external", args, "player position"))
+        {
+            lastOutgoingPlayerUnityPosition = unityPos;
+            hasLastOutgoingPlayerUnityPosition = true;
+        }
 
         TimerSendPosition = TimeSendPosition;
     }
-   
+
+    private Transform ResolvePlayerPositionSource(out PlayerPositionSource resolvedSource)
+    {
+        resolvedSource = playerPositionSource;
+
+        if (playerPositionSource == PlayerPositionSource.ExplicitTransform)
+        {
+            Transform explicitSource = ValidatePlayerPositionSource(explicitPlayerPositionSource);
+            if (explicitSource != null)
+            {
+                resolvedSource = PlayerPositionSource.ExplicitTransform;
+                return explicitSource;
+            }
+        }
+
+        if (playerPositionSource == PlayerPositionSource.MainCamera)
+        {
+            Transform cameraSource = Camera.main != null ? ValidatePlayerPositionSource(Camera.main.transform) : null;
+            if (cameraSource != null)
+            {
+                resolvedSource = PlayerPositionSource.MainCamera;
+                return cameraSource;
+            }
+        }
+
+        if (playerPositionSource == PlayerPositionSource.XROriginRoot)
+        {
+            Transform originSource = ValidatePlayerPositionSource(XROrigin);
+            if (originSource != null)
+            {
+                resolvedSource = PlayerPositionSource.XROriginRoot;
+                return originSource;
+            }
+        }
+
+        if (playerPositionSource == PlayerPositionSource.FPSPlayerRoot)
+        {
+            Transform fpsSource = ValidatePlayerPositionSource(FindFPSPlayerTransform());
+            if (fpsSource != null)
+            {
+                resolvedSource = PlayerPositionSource.FPSPlayerRoot;
+                return fpsSource;
+            }
+        }
+
+        if (Camera.main != null)
+        {
+            Transform cameraFallback = ValidatePlayerPositionSource(Camera.main.transform);
+            if (cameraFallback != null)
+            {
+                resolvedSource = PlayerPositionSource.MainCamera;
+                return cameraFallback;
+            }
+        }
+
+        Transform originFallback = ValidatePlayerPositionSource(XROrigin);
+        if (originFallback != null)
+        {
+            resolvedSource = PlayerPositionSource.XROriginRoot;
+            return originFallback;
+        }
+
+        Transform fpsFallback = ValidatePlayerPositionSource(FindFPSPlayerTransform());
+        if (fpsFallback != null)
+        {
+            resolvedSource = PlayerPositionSource.FPSPlayerRoot;
+            return fpsFallback;
+        }
+
+        return null;
+    }
+
+    private Transform ValidatePlayerPositionSource(Transform candidate)
+    {
+        if (candidate == null)
+        {
+            return null;
+        }
+
+        if (candidate == transform ||
+            candidate.GetComponent<SimulationManager>() != null ||
+            candidate.GetComponent<ConnectionManager>() != null)
+        {
+            LogOutgoingWarning("[GAMA][OUT][WARN] rejected manager transform as player position source source=" + candidate.name);
+            return null;
+        }
+
+        return candidate;
+    }
+
+    private Transform FindFPSPlayerTransform()
+    {
+        if (player != null)
+        {
+            return player.transform;
+        }
+
+        GameObject taggedPlayer = GamaSceneUtility.FindGameObjectWithTag("player");
+        if (taggedPlayer != null)
+        {
+            return taggedPlayer.transform;
+        }
+
+        GameObject fpsPlayer = GameObject.Find("FPSPlayer");
+        return fpsPlayer != null ? fpsPlayer.transform : null;
+    }
+
+    private int ResolveOutgoingPlayerAngle(Transform source)
+    {
+        Transform directionSource = Camera.main != null ? Camera.main.transform : source;
+        if (directionSource == null || parameters == null)
+        {
+            return 0;
+        }
+
+        Vector2 playerForward = new Vector2(directionSource.forward.x, directionSource.forward.z);
+        if (playerForward.sqrMagnitude < 0.0001f)
+        {
+            return 0;
+        }
+
+        playerForward.Normalize();
+        Vector2 worldForward = Vector2.up;
+        float dot = Mathf.Clamp(Vector2.Dot(playerForward, worldForward), -1f, 1f);
+        float cross = playerForward.x * worldForward.y - playerForward.y * worldForward.x;
+        float signedDegrees = ((cross > 0f) ? -1f : 1f) * Mathf.Rad2Deg * Mathf.Acos(dot);
+        return Mathf.RoundToInt(signedDegrees * parameters.precision);
+    }
+
+    private bool IsSuspiciousOutgoingPlayerPosition(Transform source, PlayerPositionSource resolvedSource, Vector3 unityPos)
+    {
+        if (!IsFiniteVector(unityPos))
+        {
+            LogOutgoingWarning("[GAMA][OUT][WARN] suspicious player position source=" + resolvedSource +
+                               " unityPos=" + FormatVector(unityPos) +
+                               " lastUnityPos=" + FormatLastOutgoingPosition());
+            return true;
+        }
+
+        bool suspicious = false;
+        if (unityPos.sqrMagnitude < 0.000001f)
+        {
+            suspicious = true;
+        }
+
+        if (source == transform || source.GetComponent<SimulationManager>() != null || source.GetComponent<ConnectionManager>() != null)
+        {
+            suspicious = true;
+        }
+
+        if (hasLastOutgoingPlayerUnityPosition &&
+            suspiciousTeleportDistance > 0f &&
+            Vector3.Distance(lastOutgoingPlayerUnityPosition, unityPos) > suspiciousTeleportDistance)
+        {
+            suspicious = true;
+        }
+
+        if (suspicious)
+        {
+            LogOutgoingWarning("[GAMA][OUT][WARN] suspicious player position source=" + resolvedSource +
+                               " unityPos=" + FormatVector(unityPos) +
+                               " lastUnityPos=" + FormatLastOutgoingPosition());
+        }
+
+        return suspicious;
+    }
+
+    private void WarnIfRootAndCameraDiverge(PlayerPositionSource resolvedSource, Transform source)
+    {
+        if (source == null ||
+            Camera.main == null ||
+            resolvedSource == PlayerPositionSource.MainCamera ||
+            resolvedSource == PlayerPositionSource.ExplicitTransform)
+        {
+            return;
+        }
+
+        Vector3 rootPos = source.position;
+        Vector3 cameraPos = Camera.main.transform.position;
+        if (Vector3.Distance(rootPos, cameraPos) > 1f)
+        {
+            LogOutgoingWarning("[GAMA][OUT][WARN] player root and camera positions differ root=" +
+                               FormatVector(rootPos) + " camera=" + FormatVector(cameraPos));
+        }
+    }
+
+    private void LogOutgoingPlayerPosition(PlayerPositionSource source, Vector3 unityPos, List<int> gamaPos, int angle)
+    {
+        if (!logOutgoingPlayerPosition)
+        {
+            return;
+        }
+
+        float now = Time.unscaledTime;
+        if (now < nextOutgoingPlayerPositionLogTime)
+        {
+            return;
+        }
+
+        nextOutgoingPlayerPositionLogTime = now + OutgoingPlayerPositionLogIntervalSeconds;
+        ConnectionManager manager = ConnectionManager.Instance;
+        bool socketOpen = manager != null && manager.CanSendRuntimeMessages;
+        string gama = gamaPos != null && gamaPos.Count >= 3
+            ? "(" + gamaPos[0] + "," + gamaPos[1] + "," + gamaPos[2] + ")"
+            : "(missing)";
+        Debug.Log("[GAMA][OUT][PLAYER_POS] source=" + source +
+                  " unityPos=" + FormatVector(unityPos) +
+                  " gamaPos=" + gama +
+                  " angle=" + angle +
+                  " focus=" + Application.isFocused +
+                  " socketOpen=" + socketOpen);
+    }
+
+    private void LogOutgoingSkip(string reason, string action)
+    {
+        float now = Time.unscaledTime;
+        if (now < nextOutgoingPlayerWarningLogTime)
+        {
+            return;
+        }
+
+        nextOutgoingPlayerWarningLogTime = now + OutgoingPlayerWarningLogIntervalSeconds;
+        Debug.LogWarning("[GAMA][OUT][SKIP] reason=" + reason + " action=" + action);
+    }
+
+    private void LogOutgoingWarning(string message)
+    {
+        float now = Time.unscaledTime;
+        if (now < nextOutgoingPlayerWarningLogTime)
+        {
+            return;
+        }
+
+        nextOutgoingPlayerWarningLogTime = now + OutgoingPlayerWarningLogIntervalSeconds;
+        Debug.LogWarning(message);
+    }
+
+    private void LogPlayerSetPosition(string reason, Vector3 oldPosition, Vector3 newPosition)
+    {
+        Debug.Log("[GAMA][PLAYER][SET_POSITION] reason=" + reason +
+                  " old=" + FormatVector(oldPosition) +
+                  " new=" + FormatVector(newPosition));
+    }
+
+    private static bool IsFiniteVector(Vector3 value)
+    {
+        return IsFinite(value.x) && IsFinite(value.y) && IsFinite(value.z);
+    }
+
+    private static bool IsFinite(float value)
+    {
+        return !float.IsNaN(value) && !float.IsInfinity(value);
+    }
+
+    private string FormatLastOutgoingPosition()
+    {
+        return hasLastOutgoingPlayerUnityPosition ? FormatVector(lastOutgoingPlayerUnityPosition) : "(none)";
+    }
+
+    private static string FormatVector(Vector3 value)
+    {
+        return "(" + value.x.ToString("F3") + "," + value.y.ToString("F3") + "," + value.z.ToString("F3") + ")";
+    }
+
 
     private void instantiateGO(GameObject obj, String name, PropertiesGAMA prop)
     {
         obj.name = name;
-        if (prop.toFollow)
+        if (ShouldSendFollowedGeometryToGama(prop))
         {
-            toFollow.Add(obj);
+            if (!toFollow.Contains(obj))
+            {
+                toFollow.Add(obj);
+            }
+        }
+        else if (prop != null && prop.toFollow)
+        {
+            LogSuppressedFollowedGeometrySync(prop);
         }
         if (prop.tag != null && !string.IsNullOrEmpty(prop.tag))
             GamaSceneUtility.TrySetTag(obj, prop.tag);
@@ -1134,6 +1569,24 @@ public abstract partial class SimulationManager : MonoBehaviour
             interaction.hoverExited.AddListener(HoverExitInteraction);
 
         }
+    }
+
+    private static bool ShouldSendFollowedGeometryToGama(PropertiesGAMA prop)
+    {
+        return prop != null && prop.toFollow && (prop.isInteractable || prop.isGrabable);
+    }
+
+    private void LogSuppressedFollowedGeometrySync(PropertiesGAMA prop)
+    {
+        string propertyId = string.IsNullOrWhiteSpace(prop.id) ? "(unknown)" : prop.id;
+        if (!suppressedFollowedGeometryPropertyWarnings.Add(propertyId))
+        {
+            return;
+        }
+
+        Debug.LogWarning("[GAMA][OUT][FOLLOW] suppressed propertyID=" + propertyId +
+                         " reason=not_unity_controlled toFollow=True isInteractable=" + prop.isInteractable +
+                         " isGrabable=" + prop.isGrabable);
     }
 
 
@@ -1323,6 +1776,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         GameObject root,
         bool dynamicUpdate,
         GamaAgentVisualState visualState,
+        Attributes attributes = null,
         Vector3? basePosition = null,
         Quaternion? baseRotation = null,
         Vector3? visualAnchor = null)
@@ -1346,6 +1800,10 @@ public abstract partial class SimulationManager : MonoBehaviour
         record.Root = root;
         record.VisualRoot = ResolveRuntimeVisualRoot(root);
         record.IsDynamic = record.IsDynamic || dynamicUpdate;
+        if (attributes != null)
+        {
+            record.LastAttributes = attributes;
+        }
         if (basePosition.HasValue)
         {
             record.BasePosition = basePosition.Value;
@@ -1389,6 +1847,282 @@ public abstract partial class SimulationManager : MonoBehaviour
         missingAgentTickCounts.Remove(key);
     }
 
+    private void RegisterObservedRuntimeAttributes(string propertyId, string speciesName, Attributes attributes)
+    {
+        if (attributes == null)
+        {
+            return;
+        }
+
+        List<string> attributeNames = attributes.GetAttributeNames();
+        if (attributeNames == null || attributeNames.Count == 0)
+        {
+            return;
+        }
+
+        AddObservedRuntimeAttributes(propertyId, attributeNames);
+        AddObservedRuntimeAttributes(speciesName, attributeNames);
+    }
+
+    private void AddObservedRuntimeAttributes(string speciesName, List<string> attributeNames)
+    {
+        if (string.IsNullOrWhiteSpace(speciesName) || attributeNames == null || attributeNames.Count == 0)
+        {
+            return;
+        }
+
+        HashSet<string> set;
+        if (!runtimeAttributeNamesBySpecies.TryGetValue(speciesName, out set) || set == null)
+        {
+            set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            runtimeAttributeNamesBySpecies[speciesName] = set;
+        }
+
+        for (int i = 0; i < attributeNames.Count; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(attributeNames[i]))
+            {
+                set.Add(attributeNames[i].Trim());
+            }
+        }
+    }
+
+    public string[] GetRuntimeAttributeNamesForSpecies(string speciesName)
+    {
+        if (string.IsNullOrWhiteSpace(speciesName))
+        {
+            return new string[0];
+        }
+
+        HashSet<string> set;
+        if (!runtimeAttributeNamesBySpecies.TryGetValue(speciesName, out set) || set == null || set.Count == 0)
+        {
+            return new string[0];
+        }
+
+        List<string> names = new List<string>(set);
+        names.Sort(StringComparer.OrdinalIgnoreCase);
+        return names.ToArray();
+    }
+
+    private bool TrySkipUnchangedImport(
+        string key,
+        int importSignature,
+        string propertyId,
+        string speciesName,
+        string agentId,
+        PropertiesGAMA prop,
+        Attributes attributes,
+        GamaAgentVisualState visualState,
+        bool dynamicUpdate,
+        HashSet<string> removalSet,
+        out GameObject obj)
+    {
+        obj = null;
+        if (!enableIncrementalImport || !skipUnchangedObjects || string.IsNullOrWhiteSpace(key))
+        {
+            return false;
+        }
+
+        int previousSignature;
+        if (!lastImportSignatureByName.TryGetValue(key, out previousSignature) || previousSignature != importSignature)
+        {
+            return false;
+        }
+
+        List<object> entry;
+        if (geometryMap == null ||
+            !geometryMap.TryGetValue(key, out entry) ||
+            entry == null ||
+            entry.Count == 0)
+        {
+            return false;
+        }
+
+        obj = entry[0] as GameObject;
+        if (obj == null)
+        {
+            return false;
+        }
+
+        RegisterRuntimeAgent(key, speciesName, agentId, obj, dynamicUpdate, visualState, attributes);
+        if (removalSet != null)
+        {
+            removalSet.Remove(key);
+            removalSet.Remove(agentId);
+        }
+
+        GetRuntimeImportCounters(propertyId).SkippedUnchanged++;
+        return true;
+    }
+
+    private void LogPeopleAttributeDebug(string agentName, string propertyId, Attributes attributes)
+    {
+        if (peopleAttributeDebugLogCount >= PeopleAttributeDebugMaxLogs ||
+            !string.Equals(propertyId, "people", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        peopleAttributeDebugLogCount++;
+        if (attributes == null)
+        {
+            Debug.Log("[GAMA][ATTR_DEBUG] agent=" + agentName +
+                      " species=" + propertyId +
+                      " hasAttributes=false");
+            return;
+        }
+
+        bool boolValue;
+        string stringValue;
+        float floatValue;
+        bool hasBool = attributes.TryGetBool(out boolValue, "is_infected");
+        bool hasString = attributes.TryGetString(out stringValue, "is_infected");
+        bool hasFloat = attributes.TryGetFloat(out floatValue, "is_infected");
+        string raw = attributes.ToDebugString();
+
+        if (!hasBool && !hasString && !hasFloat)
+        {
+            Debug.Log("[GAMA][ATTR_DEBUG] agent=" + agentName +
+                      " species=" + propertyId +
+                      " hasAttributes=true is_infected_missing raw=" + raw);
+            return;
+        }
+
+        Debug.Log("[GAMA][ATTR_DEBUG] agent=" + agentName +
+                  " species=" + propertyId +
+                  " hasAttributes=true" +
+                  " is_infected_bool=" + hasBool +
+                  " value=" + (hasBool ? boolValue.ToString() : "(missing)") +
+                  " is_infected_string=" + hasString +
+                  " stringValue=" + (hasString ? stringValue : "(missing)") +
+                  " is_infected_float=" + hasFloat +
+                  " floatValue=" + (hasFloat ? floatValue.ToString("G9") : "(missing)") +
+                  " raw=" + raw);
+    }
+
+    private void StoreImportSignature(string key, int importSignature, string propertyId, bool existingBefore)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return;
+        }
+
+        lastImportSignatureByName[key] = importSignature;
+        RuntimeImportCounters counters = GetRuntimeImportCounters(propertyId);
+        if (existingBefore)
+        {
+            counters.Updated++;
+        }
+        else
+        {
+            counters.Created++;
+        }
+    }
+
+    private bool ShouldDeferImportAfterProcessed(
+        bool budgetedPass,
+        ref int processedAgentCount,
+        int budget,
+        int currentAgentIndex,
+        int nextPrefabIndex,
+        int nextGeomIndex)
+    {
+        if (!budgetedPass)
+        {
+            return false;
+        }
+
+        processedAgentCount++;
+        if (processedAgentCount < budget || infoWorld == null || infoWorld.names == null || currentAgentIndex + 1 >= infoWorld.names.Count)
+        {
+            return false;
+        }
+
+        pendingWorldAgentIndex = currentAgentIndex + 1;
+        pendingWorldPrefabIndex = nextPrefabIndex;
+        pendingWorldGeomIndex = nextGeomIndex;
+        int deferred = infoWorld.names.Count - pendingWorldAgentIndex;
+        MarkRuntimeImportDeferred(deferred);
+        EmitAgentUpdateBudgetDiagnostic(processedAgentCount, infoWorld.names.Count, pendingWorldAgentIndex);
+        return true;
+    }
+
+    private int ComputeImportSignature(
+        string agentKey,
+        string propertyId,
+        GAMAPoint pointLoc,
+        GAMAPoint pointGeom,
+        int rawGeometryYOffset,
+        Attributes attributes,
+        GamaAgentVisualState visualState,
+        string prefabSignature)
+    {
+        unchecked
+        {
+            int hash = 17;
+            hash = HashString(hash, agentKey);
+            hash = HashString(hash, propertyId);
+            hash = HashPoint(hash, pointLoc);
+            hash = HashPoint(hash, pointGeom);
+            hash = hash * 31 + rawGeometryYOffset;
+            hash = hash * 31 + (attributes != null ? attributes.ComputeStableHash() : 0);
+            hash = HashVisualState(hash, visualState);
+            hash = HashString(hash, prefabSignature);
+            return hash;
+        }
+    }
+
+    private static int HashPoint(int hash, GAMAPoint point)
+    {
+        unchecked
+        {
+            if (point == null || point.c == null)
+            {
+                return hash * 31;
+            }
+
+            hash = hash * 31 + point.c.Count;
+            for (int i = 0; i < point.c.Count; i++)
+            {
+                hash = hash * 31 + point.c[i];
+            }
+
+            return hash;
+        }
+    }
+
+    private static int HashVisualState(int hash, GamaAgentVisualState state)
+    {
+        unchecked
+        {
+            hash = hash * 31 + (state.Visible ? 1 : 0);
+            hash = hash * 31 + (state.HasColor ? 1 : 0);
+            hash = hash * 31 + state.Color.r;
+            hash = hash * 31 + state.Color.g;
+            hash = hash * 31 + state.Color.b;
+            hash = hash * 31 + state.Color.a;
+            hash = hash * 31 + Mathf.RoundToInt(state.ScaleMultiplier * 100000f);
+            hash = hash * 31 + Mathf.RoundToInt(state.PositionOffset.x * 100000f);
+            hash = hash * 31 + Mathf.RoundToInt(state.PositionOffset.y * 100000f);
+            hash = hash * 31 + Mathf.RoundToInt(state.PositionOffset.z * 100000f);
+            hash = hash * 31 + Mathf.RoundToInt(state.RotationOffsetEuler.x * 100000f);
+            hash = hash * 31 + Mathf.RoundToInt(state.RotationOffsetEuler.y * 100000f);
+            hash = hash * 31 + Mathf.RoundToInt(state.RotationOffsetEuler.z * 100000f);
+            hash = HashString(hash, state.PrefabResourcePath);
+            hash = HashString(hash, state.PrefabOverride != null ? state.PrefabOverride.name : null);
+            return hash;
+        }
+    }
+
+    private static int HashString(int hash, string value)
+    {
+        unchecked
+        {
+            return hash * 31 + (string.IsNullOrEmpty(value) ? 0 : StringComparer.Ordinal.GetHashCode(value));
+        }
+    }
+
     private static GameObject ResolveRuntimeVisualRoot(GameObject root)
     {
         if (root == null)
@@ -1415,6 +2149,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
         runtimeAgentRecords.Remove(key);
         missingAgentTickCounts.Remove(key);
+        lastImportSignatureByName.Remove(key);
     }
 
     private RuntimeSyncCounters GetRuntimeSyncCounters(string speciesName)
@@ -2271,7 +3006,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                 continue;
             }
 
-            GamaAgentVisualState visualState = ResolveAgentVisualState(record.AgentId, prop, null);
+            GamaAgentVisualState visualState = ResolveAgentVisualState(record.AgentId, prop, record.LastAttributes);
             GameObject root = record.Root;
             Vector3 basePosition = ResolveRuntimeBasePosition(record, root);
             Quaternion baseRotation = ResolveRuntimeBaseRotation(record);
@@ -3159,7 +3894,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         subscribedConnectionManager = null;
     }
 
-    private bool CanSendRuntimeAsk(string sendLabel)
+    private bool CanSendRuntimeAsk(string sendLabel, string action = null)
     {
         TrySubscribeConnectionManager();
         ConnectionManager manager = ConnectionManager.Instance;
@@ -3171,8 +3906,15 @@ public abstract partial class SimulationManager : MonoBehaviour
         float now = Time.unscaledTime;
         if (now >= nextSocketClosedWarningTime)
         {
-            string reason = manager == null ? "ConnectionManager missing" : "socket not open";
-            Debug.LogWarning("[GAMA][RUNTIME][CONNECTION] " + reason + "; skipping " + sendLabel + " send");
+            string reason = manager == null ? "connection_manager_missing" : "socket_not_open";
+            if (!string.IsNullOrWhiteSpace(action))
+            {
+                Debug.LogWarning("[GAMA][OUT][SKIP] reason=" + reason + " action=" + action);
+            }
+            else
+            {
+                Debug.LogWarning("[GAMA][RUNTIME][CONNECTION] " + reason + "; skipping " + sendLabel + " send");
+            }
             nextSocketClosedWarningTime = now + SocketClosedWarningIntervalSeconds;
         }
 
@@ -3181,7 +3923,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     private bool TrySendExecutableAsk(string action, Dictionary<string, string> arguments, string sendLabel)
     {
-        if (!CanSendRuntimeAsk(sendLabel))
+        if (!CanSendRuntimeAsk(sendLabel, action))
         {
             return false;
         }
@@ -3219,6 +3961,159 @@ public abstract partial class SimulationManager : MonoBehaviour
         int names = world != null && world.names != null ? world.names.Count : 0;
         int propertyIds = world != null && world.propertyID != null ? world.propertyID.Count : 0;
         Debug.Log("[GAMA][RUNTIME][FLOW] received json_output names=" + names + " propertyIDs=" + propertyIds);
+    }
+
+    private RuntimeImportProfile AnalyzeRuntimeImport(WorldJSONInfo world, int messageBytes, long parseMs)
+    {
+        RuntimeImportProfile profile = new RuntimeImportProfile
+        {
+            IsInit = world != null && world.isInit,
+            MessageBytes = messageBytes,
+            NamesCount = world != null && world.names != null ? world.names.Count : 0,
+            PointsLocCount = world != null && world.pointsLoc != null ? world.pointsLoc.Count : 0,
+            PointsGeomCount = world != null && world.pointsGeom != null ? world.pointsGeom.Count : 0,
+            ParseMs = parseMs
+        };
+
+        if (world != null && world.propertyID != null)
+        {
+            for (int i = 0; i < world.propertyID.Count; i++)
+            {
+                string propertyId = string.IsNullOrWhiteSpace(world.propertyID[i]) ? "unknown" : world.propertyID[i];
+                int count;
+                profile.CountsByPropertyId.TryGetValue(propertyId, out count);
+                profile.CountsByPropertyId[propertyId] = count + 1;
+            }
+        }
+
+        profile.IsLarge =
+            messageBytes >= hugeMessageByteThreshold ||
+            profile.NamesCount >= largeGeometryThreshold ||
+            profile.PointsLocCount >= largeGeometryThreshold ||
+            profile.PointsGeomCount >= largeGeometryThreshold ||
+            HasLargeSpecies(profile);
+
+        LogRuntimeImportProfile(profile);
+        return profile;
+    }
+
+    private bool HasLargeSpecies(RuntimeImportProfile profile)
+    {
+        if (profile == null)
+        {
+            return false;
+        }
+
+        foreach (KeyValuePair<string, int> pair in profile.CountsByPropertyId)
+        {
+            if (pair.Value >= largeSpeciesThreshold)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void LogRuntimeImportProfile(RuntimeImportProfile profile)
+    {
+        if (profile == null)
+        {
+            return;
+        }
+
+        runtimePerfLogCount++;
+        bool shouldLog =
+            runtimePerfLogCount <= 5 ||
+            runtimePerfLogCount % 100 == 0 ||
+            (profile.IsLarge && runtimePerfLogCount % 10 == 0);
+        if (!shouldLog)
+        {
+            return;
+        }
+
+        Debug.Log(
+            "[GAMA][PERF][STREAM] isInit=" + profile.IsInit +
+            " bytes=" + profile.MessageBytes +
+            " names=" + profile.NamesCount +
+            " pointsLoc=" + profile.PointsLocCount +
+            " pointsGeom=" + profile.PointsGeomCount +
+            " large=" + profile.IsLarge);
+
+        foreach (KeyValuePair<string, int> pair in profile.CountsByPropertyId)
+        {
+            if (profile.IsLarge || pair.Value >= largeSpeciesThreshold)
+            {
+                Debug.Log("[GAMA][PERF][SPECIES] propertyID=" + pair.Key + " count=" + pair.Value + " mode=" + largeSpeciesMode);
+            }
+        }
+
+        Debug.Log("[GAMA][PERF][JSON] parseMs=" + profile.ParseMs + " applyMs=0");
+    }
+
+    private void BeginImportApplyIfNeeded()
+    {
+        if (currentImportProfile != null && currentImportProfile.ApplyStartedAt < 0f)
+        {
+            currentImportProfile.ApplyStartedAt = Time.realtimeSinceStartup;
+        }
+    }
+
+    private void CompleteImportProfileIfNeeded(bool completed)
+    {
+        if (!completed || currentImportProfile == null)
+        {
+            return;
+        }
+
+        long applyMs = currentImportProfile.ApplyStartedAt >= 0f
+            ? (long)((Time.realtimeSinceStartup - currentImportProfile.ApplyStartedAt) * 1000f)
+            : 0L;
+
+        foreach (KeyValuePair<string, RuntimeImportCounters> pair in currentImportProfile.ImportCountersByPropertyId)
+        {
+            RuntimeImportCounters counters = pair.Value;
+            Debug.Log(
+                "[GAMA][PERF][IMPORT] propertyID=" + pair.Key +
+                " created=" + counters.Created +
+                " updated=" + counters.Updated +
+                " skippedUnchanged=" + counters.SkippedUnchanged +
+                " deferred=" + counters.Deferred);
+        }
+
+        Debug.Log("[GAMA][PERF][JSON] parseMs=" + currentImportProfile.ParseMs + " applyMs=" + applyMs);
+        currentImportProfile = null;
+    }
+
+    private RuntimeImportCounters GetRuntimeImportCounters(string propertyId)
+    {
+        if (currentImportProfile == null)
+        {
+            return detachedRuntimeImportCounters;
+        }
+
+        string key = string.IsNullOrWhiteSpace(propertyId) ? "unknown" : propertyId;
+        RuntimeImportCounters counters;
+        if (!currentImportProfile.ImportCountersByPropertyId.TryGetValue(key, out counters) || counters == null)
+        {
+            counters = new RuntimeImportCounters();
+            currentImportProfile.ImportCountersByPropertyId[key] = counters;
+        }
+
+        return counters;
+    }
+
+    private void MarkRuntimeImportDeferred(int deferred)
+    {
+        if (currentImportProfile == null)
+        {
+            return;
+        }
+
+        foreach (KeyValuePair<string, RuntimeImportCounters> pair in currentImportProfile.ImportCountersByPropertyId)
+        {
+            pair.Value.Deferred = Mathf.Max(pair.Value.Deferred, deferred);
+        }
     }
 
 
@@ -3462,7 +4357,11 @@ public abstract partial class SimulationManager : MonoBehaviour
             case "pointsLoc":
                 if (infoWorld == null)
                 {
+                    int messageBytes = string.IsNullOrEmpty(content) ? 0 : System.Text.Encoding.UTF8.GetByteCount(content);
+                    System.Diagnostics.Stopwatch parseWatch = System.Diagnostics.Stopwatch.StartNew();
                     infoWorld = WorldJSONInfo.CreateFromJSON(content);
+                    parseWatch.Stop();
+                    currentImportProfile = AnalyzeRuntimeImport(infoWorld, messageBytes, parseWatch.ElapsedMilliseconds);
                     LogRuntimeFlow(infoWorld);
                 }
                 break;

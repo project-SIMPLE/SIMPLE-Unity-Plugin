@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 
 /// <summary>
@@ -204,6 +205,20 @@ public enum GamaSpeciesRenderMode
     Hidden = 4
 }
 
+public enum GamaDynamicColorMode
+{
+    None = 0,
+    Discrete = 1,
+    Continuous = 2
+}
+
+[Serializable]
+public class GamaDiscreteColorRule
+{
+    public string value;
+    public Color color = Color.white;
+}
+
 [Serializable]
 public class GamaSpeciesRenderOverrideEntry
 {
@@ -233,6 +248,19 @@ public class GamaSpeciesRenderOverrideEntry
     public bool visibleInRuntime = true;
     public GamaSpeciesRenderMode renderMode = GamaSpeciesRenderMode.Default;
     public string notesDebug = string.Empty;
+
+    [Header("Dynamic color")]
+    public bool overrideDynamicColor;
+    public GamaDynamicColorMode dynamicColorMode = GamaDynamicColorMode.None;
+    public string dynamicColorAttribute = string.Empty;
+    public List<GamaDiscreteColorRule> discreteColorRules = new List<GamaDiscreteColorRule>();
+    public Color continuousBaseColor = Color.green;
+    public float continuousMinValue = 0f;
+    public float continuousMaxValue = 1f;
+    public bool continuousInvert;
+    [Range(0f, 1f)] public float continuousLightAmount = 0.45f;
+    [Range(0f, 1f)] public float continuousDarkAmount = 0.45f;
+    public bool fallbackToStaticColor = true;
 
     [Header("Legacy runtime visibility")]
     public bool overrideVisibility;
@@ -319,6 +347,11 @@ public class GamaSpeciesRenderOverrideEntry
             score += 60;
         }
 
+        if (UsesDynamicColorOverride())
+        {
+            score += 65;
+        }
+
         if (UsesScaleOverride())
         {
             score += 80;
@@ -342,6 +375,7 @@ public class GamaSpeciesRenderOverrideEntry
         return prefabOverride != null ||
                materialOverride != null ||
                !string.IsNullOrWhiteSpace(prefabResourcePath) ||
+               UsesDynamicColorOverride() ||
                UsesScaleOverride() ||
                UsesPositionOffsetOverride() ||
                UsesRotationOffsetOverride() ||
@@ -353,6 +387,7 @@ public class GamaSpeciesRenderOverrideEntry
         materialOverride != null ||
         !string.IsNullOrWhiteSpace(prefabResourcePath) ||
         overrideColor ||
+        UsesDynamicColorOverride() ||
         overrideScaleMultiplier ||
         overridePositionOffset ||
         overrideRotationOffset ||
@@ -366,6 +401,189 @@ public class GamaSpeciesRenderOverrideEntry
     public bool UsesScaleOverride()
     {
         return overrideScaleMultiplier || Math.Abs(scaleMultiplier - 1f) > 0.0001f;
+    }
+
+    public bool UsesDynamicColorOverride()
+    {
+        return overrideDynamicColor &&
+               dynamicColorMode != GamaDynamicColorMode.None &&
+               !string.IsNullOrWhiteSpace(dynamicColorAttribute);
+    }
+
+    public bool TryResolveDynamicColor(Attributes attributes, out Color color)
+    {
+        color = Color.white;
+        try
+        {
+            if (!UsesDynamicColorOverride() || attributes == null)
+            {
+                return false;
+            }
+
+            switch (dynamicColorMode)
+            {
+                case GamaDynamicColorMode.Discrete:
+                    return TryResolveDiscreteDynamicColor(attributes, out color);
+                case GamaDynamicColorMode.Continuous:
+                    return TryResolveContinuousDynamicColor(attributes, out color);
+                default:
+                    return false;
+            }
+        }
+        catch
+        {
+            color = Color.white;
+            return false;
+        }
+    }
+
+    private bool TryResolveDiscreteDynamicColor(Attributes attributes, out Color color)
+    {
+        color = Color.white;
+        if (discreteColorRules == null || discreteColorRules.Count == 0)
+        {
+            return false;
+        }
+
+        string attributeValue;
+        if (!TryReadDiscreteAttribute(attributes, out attributeValue))
+        {
+            return false;
+        }
+
+        string normalizedAttribute = NormalizeDiscreteValue(attributeValue);
+        for (int i = 0; i < discreteColorRules.Count; i++)
+        {
+            GamaDiscreteColorRule rule = discreteColorRules[i];
+            if (rule == null || string.IsNullOrWhiteSpace(rule.value))
+            {
+                continue;
+            }
+
+            if (string.Equals(
+                    NormalizeDiscreteValue(rule.value),
+                    normalizedAttribute,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                color = rule.color;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryResolveContinuousDynamicColor(Attributes attributes, out Color color)
+    {
+        color = Color.white;
+        float value;
+        if (!attributes.TryGetFloat(out value, dynamicColorAttribute))
+        {
+            return false;
+        }
+
+        if (Mathf.Abs(continuousMaxValue - continuousMinValue) < 0.000001f)
+        {
+            return false;
+        }
+
+        float t = Mathf.Clamp01(Mathf.InverseLerp(continuousMinValue, continuousMaxValue, value));
+        if (continuousInvert)
+        {
+            t = 1f - t;
+        }
+
+        Color low = MakeLighter(continuousBaseColor, continuousLightAmount);
+        Color high = MakeDarker(continuousBaseColor, continuousDarkAmount);
+        color = Color.Lerp(low, high, t);
+        color.a = continuousBaseColor.a;
+        return true;
+    }
+
+    private bool TryReadDiscreteAttribute(Attributes attributes, out string value)
+    {
+        value = string.Empty;
+        if (attributes == null || string.IsNullOrWhiteSpace(dynamicColorAttribute))
+        {
+            return false;
+        }
+
+        if (attributes.TryGetString(out value, dynamicColorAttribute))
+        {
+            return true;
+        }
+
+        bool boolValue;
+        if (attributes.TryGetBool(out boolValue, dynamicColorAttribute))
+        {
+            value = boolValue ? "true" : "false";
+            return true;
+        }
+
+        float floatValue;
+        if (attributes.TryGetFloat(out floatValue, dynamicColorAttribute))
+        {
+            value = floatValue.ToString("G9", CultureInfo.InvariantCulture);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string NormalizeDiscreteValue(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        string normalized = value.Trim().Trim('"', '\'').ToLowerInvariant();
+        bool boolValue;
+        if (bool.TryParse(normalized, out boolValue))
+        {
+            return boolValue ? "true" : "false";
+        }
+
+        string numeric = normalized.IndexOf(',') >= 0 && normalized.IndexOf('.') < 0
+            ? normalized.Replace(',', '.')
+            : normalized;
+        double number;
+        if (double.TryParse(numeric, NumberStyles.Float, CultureInfo.InvariantCulture, out number))
+        {
+            if (Math.Abs(number) < 0.000001d)
+            {
+                return "false";
+            }
+
+            if (Math.Abs(number - 1d) < 0.000001d)
+            {
+                return "true";
+            }
+
+            double rounded = Math.Round(number);
+            if (Math.Abs(number - rounded) < 0.000001d)
+            {
+                return ((long)rounded).ToString(CultureInfo.InvariantCulture);
+            }
+
+            return number.ToString("G9", CultureInfo.InvariantCulture);
+        }
+
+        return normalized;
+    }
+
+    private static Color MakeLighter(Color baseColor, float amount)
+    {
+        Color color = Color.Lerp(baseColor, Color.white, Mathf.Clamp01(amount));
+        color.a = baseColor.a;
+        return color;
+    }
+
+    private static Color MakeDarker(Color baseColor, float amount)
+    {
+        Color color = Color.Lerp(baseColor, Color.black, Mathf.Clamp01(amount));
+        color.a = baseColor.a;
+        return color;
     }
 
     public bool UsesPositionOffsetOverride()

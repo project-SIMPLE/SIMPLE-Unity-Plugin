@@ -62,6 +62,58 @@ public class Attributes
         return values.TryGetValue(key, out value);
     }
 
+    public List<string> GetAttributeNames()
+    {
+        EnsureValues();
+        List<string> keys = new List<string>(values.Keys);
+        keys.Sort(StringComparer.OrdinalIgnoreCase);
+        return keys;
+    }
+
+    public int ComputeStableHash()
+    {
+        EnsureValues();
+        unchecked
+        {
+            int hash = 17;
+            hash = hash * 31 + type;
+            List<string> keys = new List<string>(values.Keys);
+            keys.Sort(StringComparer.Ordinal);
+            for (int i = 0; i < keys.Count; i++)
+            {
+                string key = keys[i];
+                hash = hash * 31 + StringComparer.Ordinal.GetHashCode(key);
+                JToken token = values[key];
+                string value = token != null ? token.ToString(Newtonsoft.Json.Formatting.None) : string.Empty;
+                hash = hash * 31 + StringComparer.Ordinal.GetHashCode(value);
+            }
+
+            return hash;
+        }
+    }
+
+    public string ToDebugString()
+    {
+        EnsureValues();
+        if (values.Count == 0)
+        {
+            return "{}";
+        }
+
+        List<string> keys = new List<string>(values.Keys);
+        keys.Sort(StringComparer.OrdinalIgnoreCase);
+        List<string> parts = new List<string>(keys.Count);
+        for (int i = 0; i < keys.Count; i++)
+        {
+            string key = keys[i];
+            JToken token = values[key];
+            string rawValue = token != null ? token.ToString(Newtonsoft.Json.Formatting.None) : "null";
+            parts.Add(key + "=" + rawValue);
+        }
+
+        return "{" + string.Join(", ", parts.ToArray()) + "}";
+    }
+
     public bool TryGetFloat(out float value, params string[] keys)
     {
         EnsureValues();

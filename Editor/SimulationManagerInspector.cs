@@ -30,10 +30,14 @@ public class SimulationManagerInspector : Editor
         "enableGpuInstancingForPrefabMaterials",
         
         "primaryRightHandButton", "player", "Ground", "XROrigin", "toFollow", "lightObject", "groupRuntimeAgentsBySpecies",
+        "useGamaInitialPlayerPosition", "playerPositionSource", "explicitPlayerPositionSource", "logOutgoingPlayerPosition",
+        "rejectSuspiciousPlayerPositions", "suspiciousTeleportDistance",
         
         "dayNight", "hotspots", "interactionTags", "gamaAsks", "visualFeedback", "interactionRules",
         
-        "enablePrefabPooling", "maxPooledPrefabsPerSignature", "limitAgentUpdatesPerTick", "maxAgentUpdatesPerTick",
+        "enablePrefabPooling", "maxPooledPrefabsPerSignature", "enableIncrementalImport", "largeSpeciesThreshold",
+        "largeGeometryThreshold", "hugeMessageByteThreshold", "skipUnchangedObjects", "largeSpeciesMode",
+        "limitAgentUpdatesPerTick", "maxAgentUpdatesPerTick",
         "removeMissingGeometryAgents", "missingTicksBeforeCull",
         
         "logPrefabStreamingStats", "prefabStreamingStatsInterval", "logAgentUpdateBudgetStats", "agentUpdateBudgetStatsInterval",
@@ -89,6 +93,8 @@ public class SimulationManagerInspector : Editor
             
             bool applyToPlay = EditorPrefs.GetBool("ProjectSimple.GamaUnity.Panel.ApplyPreviewSettingsToPlay", true);
             applyToPlay = EditorGUILayout.Toggle("Apply Preview Settings to Play", applyToPlay);
+
+            DrawProperty("useGamaInitialPlayerPosition", "Use GAMA Initial Player Position");
             
             bool liveUpdate = EditorPrefs.GetBool("ProjectSimple.GamaUnity.Panel.AutoUpdatePreview", false);
             liveUpdate = EditorGUILayout.Toggle("Live Update Preview", liveUpdate);
@@ -125,6 +131,11 @@ public class SimulationManagerInspector : Editor
             
             EditorGUILayout.Space(4);
             DrawProperty("groupRuntimeAgentsBySpecies", "Group Runtime Agents By Species");
+            DrawProperty("playerPositionSource", "Player Position Source");
+            DrawProperty("explicitPlayerPositionSource", "Explicit Player Position Source");
+            DrawProperty("logOutgoingPlayerPosition", "Log Outgoing Player Position");
+            DrawProperty("rejectSuspiciousPlayerPositions", "Reject Suspicious Player Positions");
+            DrawProperty("suspiciousTeleportDistance", "Suspicious Teleport Distance");
             
             // Draw any unknown serialized properties here
             DrawUnknownProperties();
@@ -158,6 +169,12 @@ public class SimulationManagerInspector : Editor
             EditorGUILayout.HelpBox("Performance options for large simulations. Keep default values unless profiling shows a bottleneck.", MessageType.None);
             DrawProperty("enablePrefabPooling", "Enable Object Pooling");
             DrawProperty("maxPooledPrefabsPerSignature", "Max Pooled Objects Per Type");
+            DrawProperty("enableIncrementalImport", "Enable Incremental Import");
+            DrawProperty("largeSpeciesThreshold", "Large Species Threshold");
+            DrawProperty("largeGeometryThreshold", "Large Geometry Threshold");
+            DrawProperty("hugeMessageByteThreshold", "Huge Message Byte Threshold");
+            DrawProperty("skipUnchangedObjects", "Skip Unchanged Objects");
+            DrawProperty("largeSpeciesMode", "Large Species Mode");
             DrawProperty("limitAgentUpdatesPerTick", "Limit Agent Updates Per Frame");
             DrawProperty("maxAgentUpdatesPerTick", "Max Agent Updates Per Frame");
             DrawProperty("removeMissingGeometryAgents", "Remove Missing Geometry Agents");
@@ -237,6 +254,7 @@ public class SimulationManagerInspector : Editor
 
         bool assetChanged = false;
         List<string> changedSpecies = new List<string>();
+        SimulationManager manager = target as SimulationManager;
 
         // Draw each species entry
         for (int i = 0; i < count; i++)
@@ -280,6 +298,12 @@ public class SimulationManagerInspector : Editor
             overrideEntry.overrideColor = !ColorsApproximately(editedColor, defaultColor);
             overrideEntry.color = overrideEntry.overrideColor ? editedColor : defaultColor;
 
+            bool dynamicColorChanged = DrawDynamicColorControls(
+                overrideEntry,
+                manager,
+                speciesName,
+                tag != null ? tag.stringValue : string.Empty);
+
             float editedScale = EditorGUILayout.DelayedFloatField("Scale Multiplier", overrideEntry.GetEffectiveScaleMultiplier());
             editedScale = Mathf.Max(0.0001f, editedScale);
             overrideEntry.overrideScaleMultiplier = Mathf.Abs(editedScale - 1f) > 0.0001f;
@@ -300,7 +324,7 @@ public class SimulationManagerInspector : Editor
             overrideEntry.overrideVisibility = visibilityDiffersFromDefault;
             overrideEntry.visible = editedVisible;
 
-            bool rowChanged = EditorGUI.EndChangeCheck();
+            bool rowChanged = EditorGUI.EndChangeCheck() || dynamicColorChanged;
 
             EditorGUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace();
@@ -375,6 +399,320 @@ public class SimulationManagerInspector : Editor
                Mathf.Abs(a.a - b.a) < 0.001f;
     }
 
+    private static bool DrawDynamicColorControls(
+        GamaSpeciesRenderOverrideEntry entry,
+        SimulationManager manager,
+        string speciesName,
+        string tag)
+    {
+        if (entry == null)
+        {
+            return false;
+        }
+
+        bool changed = false;
+        EditorGUILayout.Space(4);
+        EditorGUILayout.LabelField("Dynamic Color", EditorStyles.miniBoldLabel);
+        EditorGUI.indentLevel++;
+
+        bool overrideDynamic = EditorGUILayout.Toggle("Override Dynamic Color", entry.overrideDynamicColor);
+        if (overrideDynamic != entry.overrideDynamicColor)
+        {
+            entry.overrideDynamicColor = overrideDynamic;
+            changed = true;
+        }
+
+        using (new EditorGUI.DisabledScope(!entry.overrideDynamicColor))
+        {
+            GamaDynamicColorMode mode = (GamaDynamicColorMode)EditorGUILayout.EnumPopup("Dynamic Color Mode", entry.dynamicColorMode);
+            if (mode != entry.dynamicColorMode)
+            {
+                entry.dynamicColorMode = mode;
+                changed = true;
+            }
+
+            bool attributeChanged;
+            string attributeName = DrawDynamicColorAttributeSelector(
+                entry.dynamicColorAttribute,
+                manager,
+                speciesName,
+                tag,
+                out attributeChanged);
+            if (attributeChanged)
+            {
+                entry.dynamicColorAttribute = attributeName;
+                changed = true;
+            }
+
+            if (entry.dynamicColorMode == GamaDynamicColorMode.Discrete)
+            {
+                changed |= DrawDiscreteColorRules(entry);
+            }
+            else if (entry.dynamicColorMode == GamaDynamicColorMode.Continuous)
+            {
+                changed |= DrawContinuousColorSettings(entry);
+            }
+        }
+
+        EditorGUI.indentLevel--;
+        return changed;
+    }
+
+    private static string DrawDynamicColorAttributeSelector(
+        string currentAttribute,
+        SimulationManager manager,
+        string speciesName,
+        string tag,
+        out bool changed)
+    {
+        changed = false;
+        currentAttribute = currentAttribute ?? string.Empty;
+
+        string[] detectedAttributes = GetDetectedRuntimeAttributes(manager, speciesName, tag);
+        if (detectedAttributes == null || detectedAttributes.Length == 0)
+        {
+            string editedAttribute = EditorGUILayout.TextField("Attribute Name", currentAttribute);
+            changed = editedAttribute != currentAttribute;
+            EditorGUILayout.LabelField("Detected Attributes", "None received yet", EditorStyles.miniLabel);
+            return editedAttribute;
+        }
+
+        List<string> values = new List<string>();
+        List<string> labels = new List<string>();
+        values.Add(string.Empty);
+        labels.Add("(None)");
+
+        bool currentInDetected = string.IsNullOrWhiteSpace(currentAttribute);
+        for (int i = 0; i < detectedAttributes.Length; i++)
+        {
+            string attribute = detectedAttributes[i];
+            if (string.IsNullOrWhiteSpace(attribute))
+            {
+                continue;
+            }
+
+            values.Add(attribute);
+            labels.Add(attribute);
+            if (string.Equals(attribute, currentAttribute, System.StringComparison.OrdinalIgnoreCase))
+            {
+                currentInDetected = true;
+            }
+        }
+
+        if (!currentInDetected)
+        {
+            values.Add(currentAttribute);
+            labels.Add(currentAttribute + " (current)");
+        }
+
+        int selectedIndex = 0;
+        for (int i = 1; i < values.Count; i++)
+        {
+            if (string.Equals(values[i], currentAttribute, System.StringComparison.OrdinalIgnoreCase))
+            {
+                selectedIndex = i;
+                break;
+            }
+        }
+
+        int newIndex = EditorGUILayout.Popup("Attribute Name", selectedIndex, labels.ToArray());
+        string selectedAttribute = newIndex > 0 && newIndex < values.Count ? values[newIndex] : string.Empty;
+        changed = selectedAttribute != currentAttribute;
+        return selectedAttribute;
+    }
+
+    private static string[] GetDetectedRuntimeAttributes(SimulationManager manager, string speciesName, string tag)
+    {
+        if (manager == null)
+        {
+            return new string[0];
+        }
+
+        HashSet<string> names = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+        AddDetectedRuntimeAttributes(manager, speciesName, names);
+        AddDetectedRuntimeAttributes(manager, tag, names);
+
+        if (names.Count == 0)
+        {
+            return new string[0];
+        }
+
+        List<string> sortedNames = new List<string>(names);
+        sortedNames.Sort(System.StringComparer.OrdinalIgnoreCase);
+        return sortedNames.ToArray();
+    }
+
+    private static void AddDetectedRuntimeAttributes(SimulationManager manager, string speciesName, HashSet<string> names)
+    {
+        if (manager == null || string.IsNullOrWhiteSpace(speciesName) || names == null)
+        {
+            return;
+        }
+
+        string[] detected = manager.GetRuntimeAttributeNamesForSpecies(speciesName);
+        if (detected == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < detected.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(detected[i]))
+            {
+                names.Add(detected[i]);
+            }
+        }
+    }
+
+    private static bool DrawDiscreteColorRules(GamaSpeciesRenderOverrideEntry entry)
+    {
+        bool changed = false;
+        if (entry.discreteColorRules == null)
+        {
+            entry.discreteColorRules = new List<GamaDiscreteColorRule>();
+            changed = true;
+        }
+
+        EditorGUILayout.LabelField("Discrete Rules", EditorStyles.miniLabel);
+        int removeIndex = -1;
+        for (int i = 0; i < entry.discreteColorRules.Count; i++)
+        {
+            GamaDiscreteColorRule rule = entry.discreteColorRules[i];
+            if (rule == null)
+            {
+                rule = new GamaDiscreteColorRule();
+                entry.discreteColorRules[i] = rule;
+                changed = true;
+            }
+
+            EditorGUILayout.BeginHorizontal();
+            string value = EditorGUILayout.TextField(rule.value ?? string.Empty);
+            if (value != rule.value)
+            {
+                rule.value = value;
+                changed = true;
+            }
+
+            Color color = EditorGUILayout.ColorField(rule.color, GUILayout.MaxWidth(90f));
+            if (!ColorsApproximately(color, rule.color))
+            {
+                rule.color = color;
+                changed = true;
+            }
+
+            if (GUILayout.Button("-", GUILayout.Width(24f)))
+            {
+                removeIndex = i;
+            }
+            EditorGUILayout.EndHorizontal();
+        }
+
+        if (removeIndex >= 0)
+        {
+            entry.discreteColorRules.RemoveAt(removeIndex);
+            changed = true;
+        }
+
+        EditorGUILayout.BeginHorizontal();
+        if (GUILayout.Button("Add Rule"))
+        {
+            entry.discreteColorRules.Add(new GamaDiscreteColorRule());
+            changed = true;
+        }
+
+        if (GUILayout.Button("Add true/false rules"))
+        {
+            AddOrUpdateDiscreteRule(entry, "false", Color.green);
+            AddOrUpdateDiscreteRule(entry, "true", Color.red);
+            changed = true;
+        }
+        EditorGUILayout.EndHorizontal();
+
+        return changed;
+    }
+
+    private static bool DrawContinuousColorSettings(GamaSpeciesRenderOverrideEntry entry)
+    {
+        bool changed = false;
+
+        Color baseColor = EditorGUILayout.ColorField("Base Color", entry.continuousBaseColor);
+        if (!ColorsApproximately(baseColor, entry.continuousBaseColor))
+        {
+            entry.continuousBaseColor = baseColor;
+            changed = true;
+        }
+
+        float min = EditorGUILayout.FloatField("Min Value", entry.continuousMinValue);
+        if (!Mathf.Approximately(min, entry.continuousMinValue))
+        {
+            entry.continuousMinValue = min;
+            changed = true;
+        }
+
+        float max = EditorGUILayout.FloatField("Max Value", entry.continuousMaxValue);
+        if (!Mathf.Approximately(max, entry.continuousMaxValue))
+        {
+            entry.continuousMaxValue = max;
+            changed = true;
+        }
+
+        bool invert = EditorGUILayout.Toggle("Invert", entry.continuousInvert);
+        if (invert != entry.continuousInvert)
+        {
+            entry.continuousInvert = invert;
+            changed = true;
+        }
+
+        float light = EditorGUILayout.Slider("Light Amount", entry.continuousLightAmount, 0f, 1f);
+        if (!Mathf.Approximately(light, entry.continuousLightAmount))
+        {
+            entry.continuousLightAmount = light;
+            changed = true;
+        }
+
+        float dark = EditorGUILayout.Slider("Dark Amount", entry.continuousDarkAmount, 0f, 1f);
+        if (!Mathf.Approximately(dark, entry.continuousDarkAmount))
+        {
+            entry.continuousDarkAmount = dark;
+            changed = true;
+        }
+
+        if (GUILayout.Button("Configure 0..1 green gradient"))
+        {
+            entry.continuousBaseColor = Color.green;
+            entry.continuousMinValue = 0f;
+            entry.continuousMaxValue = 1f;
+            entry.continuousInvert = false;
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    private static void AddOrUpdateDiscreteRule(GamaSpeciesRenderOverrideEntry entry, string value, Color color)
+    {
+        if (entry.discreteColorRules == null)
+        {
+            entry.discreteColorRules = new List<GamaDiscreteColorRule>();
+        }
+
+        for (int i = 0; i < entry.discreteColorRules.Count; i++)
+        {
+            GamaDiscreteColorRule rule = entry.discreteColorRules[i];
+            if (rule != null && string.Equals(rule.value, value, System.StringComparison.OrdinalIgnoreCase))
+            {
+                rule.color = color;
+                return;
+            }
+        }
+
+        entry.discreteColorRules.Add(new GamaDiscreteColorRule
+        {
+            value = value,
+            color = color
+        });
+    }
+
     private static bool TryGetResourcesPath(GameObject prefab, out string resourcesPath)
     {
         resourcesPath = string.Empty;
@@ -431,6 +769,21 @@ public class SimulationManagerInspector : Editor
 
         entry.overrideColor = false;
         entry.color = defaultColor;
+
+        entry.overrideDynamicColor = false;
+        entry.dynamicColorMode = GamaDynamicColorMode.None;
+        entry.dynamicColorAttribute = string.Empty;
+        if (entry.discreteColorRules != null)
+        {
+            entry.discreteColorRules.Clear();
+        }
+        entry.continuousBaseColor = Color.green;
+        entry.continuousMinValue = 0f;
+        entry.continuousMaxValue = 1f;
+        entry.continuousInvert = false;
+        entry.continuousLightAmount = 0.45f;
+        entry.continuousDarkAmount = 0.45f;
+        entry.fallbackToStaticColor = true;
 
         entry.overrideScaleMultiplier = false;
         entry.scaleMultiplier = 1f;

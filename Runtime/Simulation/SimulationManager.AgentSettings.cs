@@ -30,6 +30,9 @@ public abstract partial class SimulationManager
     private readonly Dictionary<string, GamaAgentInstanceSettings> agentLookup =
         new Dictionary<string, GamaAgentInstanceSettings>(StringComparer.OrdinalIgnoreCase);
 
+    private static readonly HashSet<string> dynamicColorMissingAttributesWarnings =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     private bool maxEntriesWarningLogged;
 
     public void ImportAgentProperties(IEnumerable<PropertiesGAMA> properties, int precision)
@@ -125,6 +128,23 @@ public abstract partial class SimulationManager
                     state.Color = (Color32)previewOverride.color;
                     state.HasColor = true;
                     state.HasManualColorOverride = true;
+                }
+                if (previewOverride.UsesDynamicColorOverride())
+                {
+                    if (attributes == null)
+                    {
+                        LogMissingDynamicColorAttributesOnce(property, previewOverride);
+                    }
+                    else
+                    {
+                        Color dynamicColor;
+                        if (previewOverride.TryResolveDynamicColor(attributes, out dynamicColor))
+                        {
+                            state.Color = (Color32)dynamicColor;
+                            state.HasColor = true;
+                            state.HasAttributeColor = true;
+                        }
+                    }
                 }
                 if (previewOverride.UsesScaleOverride())
                 {
@@ -289,6 +309,23 @@ public abstract partial class SimulationManager
         }
 
         return state;
+    }
+
+    private static void LogMissingDynamicColorAttributesOnce(
+        PropertiesGAMA property,
+        GamaSpeciesRenderOverrideEntry previewOverride)
+    {
+        string propertyId = property != null ? property.id : "unknown";
+        string attribute = previewOverride != null ? previewOverride.dynamicColorAttribute : string.Empty;
+        string key = propertyId + ":" + attribute;
+        if (!dynamicColorMissingAttributesWarnings.Add(key))
+        {
+            return;
+        }
+
+        Debug.LogWarning("[GAMA][RUNTIME][DYNAMIC_COLOR] attributes missing propertyID=" + propertyId +
+                         " attribute=" + attribute +
+                         " fallback=static_color");
     }
 
     private void ApplyRuleOverrides(GamaAgentMatchContext context, ref GamaAgentVisualState state)
