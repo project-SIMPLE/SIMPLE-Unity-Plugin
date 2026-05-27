@@ -5,13 +5,17 @@ scene for GAMA communication.
 
 ## Create Or Open A Unity Project
 
-Start from a Unity 6 project.
+Start by creating a new Unity project.
+
+![Create a new Unity project](../images/tutorial/01-create-new-unity-project.png)
+
+Check the choosen Unity version and Create project (you don't have to choose a perticular kind of projetc).
 
 ![Unity version and project creation](../images/tutorial/01-unity-version-create-project.png)
 
-Create a new project if needed.
+Wait until Unity finishes building the scene...
 
-![Create a new Unity project](../images/tutorial/01-create-new-unity-project.png)
+![Wait while Unity builds the preview](../images/tutorial/03-wait-preview-building.png)
 
 After the project opens, you should be on the Unity home/editor screen.
 
@@ -60,7 +64,6 @@ For local development:
 3. Select **Add package from disk...**.
 4. Select the package `package.json`.
 
-> Screenshot to add: Unity Package Manager with **Add package from disk...**
 > and the package `package.json` selected.
 
 ## Setup The Unity Scene
