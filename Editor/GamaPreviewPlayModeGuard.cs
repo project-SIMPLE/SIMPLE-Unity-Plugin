@@ -26,8 +26,7 @@ public static class GamaPreviewPlayModeGuard
                 bool autoHide = EditorPrefs.GetBool(AutoHidePreviewOnPlayPrefKey, true);
                 if (autoHide && wasActive)
                 {
-                    root.SetActive(false);
-                    Debug.Log("[GAMA][PREVIEW][PLAY] Static preview disabled for Play mode to avoid duplicates.");
+                    Debug.Log("[GAMA][PREVIEW][PLAY] Static preview kept visible until live runtime data is received.");
                 }
             }
         }

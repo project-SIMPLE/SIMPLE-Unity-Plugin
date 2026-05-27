@@ -153,9 +153,15 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
             connectionRequested = true;
             UpdateConnectionState(ConnectionState.PENDING);
 
-            await GetSocket().Connect();
-             
-           
+            var socket = GetSocket();
+            if (socket == null)
+            {
+                Debug.LogWarning("[GAMA][CONNECTION][START] socket not initialized yet; waiting for connector startup");
+                return;
+            }
+
+            await socket.Connect();
+
         } else {
         }
         
@@ -171,6 +177,16 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
 
     public bool IsConnectionState(ConnectionState currentState) {
         return this.currentState == currentState;
+    }
+
+    public bool CanSendRuntimeMessages
+    {
+        get
+        {
+            return IsSocketOpen &&
+                   (IsConnectionState(ConnectionState.CONNECTED) ||
+                    IsConnectionState(ConnectionState.AUTHENTICATED));
+        }
     }
 
     public void SendExecutableExpression(string expression) {

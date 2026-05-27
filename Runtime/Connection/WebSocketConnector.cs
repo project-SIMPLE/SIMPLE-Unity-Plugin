@@ -26,6 +26,9 @@ public abstract class WebSocketConnector : MonoBehaviour
 
     protected int numErrorsBeforeDeconnection = 10;
     protected int numErrors = 0;
+    private float nextSocketClosedWarningTime;
+    private int receivedMessageLogCount;
+    private const float SocketClosedWarningIntervalSeconds = 2f;
 
     async void Start()
     {
@@ -55,11 +58,13 @@ public abstract class WebSocketConnector : MonoBehaviour
             }
         }
 
-
-        socket = new WebSocket("ws://" + host + ":" + port + "/");
+        string url = "ws://" + host + ":" + port + "/";
+        Debug.Log("[GAMA][CONNECTION][START] url=" + url);
+        socket = new WebSocket(url);
 
         socket.OnOpen += () =>
         {
+            Debug.Log("[GAMA][CONNECTION][OPEN]");
             HandleConnectionOpen();
         };
 
@@ -67,19 +72,20 @@ public abstract class WebSocketConnector : MonoBehaviour
         socket.OnMessage += (byte[] msg) =>
         {
             string mes = Encoding.UTF8.GetString(msg);
-            // Debug.Log("WS received message: " + mes);
+            LogReceivedMessage(mes);
             ManageMessage(mes);
         };
 
         // Add OnError event listener
         socket.OnError += (string errMsg) =>
         {
-            Debug.LogError("WS error: " + errMsg);
+            Debug.LogError("[GAMA][CONNECTION][ERROR] " + errMsg);
         };
 
         // Add OnClose event listener
         socket.OnClose += (WebSocketCloseCode code) =>
         {
+            Debug.Log("[GAMA][CONNECTION][CLOSE] code=" + code);
             HandleConnectionClosed();
         };
 
@@ -133,17 +139,80 @@ public abstract class WebSocketConnector : MonoBehaviour
 
     protected async Task SendMessageToServerAsync(string message)
     {
-        if (socket == null || socket.State != WebSocketState.Open)
+        if (!IsSocketOpen)
         {
-            Debug.LogWarning("WebSocketConnector: cannot send message because the socket is not open.");
+            float now = Time.realtimeSinceStartup;
+            if (now >= nextSocketClosedWarningTime)
+            {
+                Debug.LogWarning("[GAMA][CONNECTION][WARN] socket not open; skipping send state=" + GetSocketStateForLog());
+                nextSocketClosedWarningTime = now + SocketClosedWarningIntervalSeconds;
+            }
             return;
         }
 
         await socket.SendText(message);
     }
 
+    public bool IsSocketOpen
+    {
+        get { return socket != null && socket.State == WebSocketState.Open; }
+    }
+
+    protected string GetSocketStateForLog()
+    {
+        return socket == null ? "null" : socket.State.ToString();
+    }
+
     protected WebSocket GetSocket() {
         return socket;
+    }
+
+    private void LogReceivedMessage(string message)
+    {
+        receivedMessageLogCount++;
+        if (receivedMessageLogCount > 20 && receivedMessageLogCount % 100 != 0)
+        {
+            return;
+        }
+
+        Debug.Log(
+            "[GAMA][CONNECTION][MESSAGE] type=" + ResolveMessageTypeForLog(message) +
+            " length=" + (message != null ? message.Length : 0));
+    }
+
+    private static string ResolveMessageTypeForLog(string message)
+    {
+        if (string.IsNullOrEmpty(message))
+        {
+            return "unknown";
+        }
+
+        const string marker = "\"type\"";
+        int typeIndex = message.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (typeIndex < 0)
+        {
+            return "unknown";
+        }
+
+        int colonIndex = message.IndexOf(':', typeIndex + marker.Length);
+        if (colonIndex < 0)
+        {
+            return "unknown";
+        }
+
+        int firstQuoteIndex = message.IndexOf('"', colonIndex + 1);
+        if (firstQuoteIndex < 0)
+        {
+            return "unknown";
+        }
+
+        int secondQuoteIndex = message.IndexOf('"', firstQuoteIndex + 1);
+        if (secondQuoteIndex <= firstQuoteIndex)
+        {
+            return "unknown";
+        }
+
+        return message.Substring(firstQuoteIndex + 1, secondQuoteIndex - firstQuoteIndex - 1);
     }
 
     protected async Task CloseSocketAsync()

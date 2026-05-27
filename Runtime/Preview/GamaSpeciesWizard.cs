@@ -40,7 +40,7 @@ public class GamaSpeciesWizard : MonoBehaviour
             return;
         }
 
-        if (!overridesAsset.TryGetOverride(modelPath, experimentName, speciesName, out GamaSpeciesRenderOverrideEntry entry) ||
+        if (!overridesAsset.TryGetOverride(modelPath, experimentName, speciesName, out GamaSpeciesRenderOverrideEntry entry, true) ||
             entry == null)
         {
             return;
@@ -75,6 +75,34 @@ public class GamaSpeciesWizard : MonoBehaviour
 #if UNITY_EDITOR
     public static Action OnWizardSettingsChanged;
     public static Func<GamaSpeciesRenderOverrides> GetDefaultOverridesAsset;
+    private static int suppressAssetWriteDepth;
+
+    public static IDisposable SuppressAssetWrites()
+    {
+        suppressAssetWriteDepth++;
+        return new SuppressAssetWriteScope();
+    }
+
+    private static bool AssetWritesSuppressed
+    {
+        get { return suppressAssetWriteDepth > 0; }
+    }
+
+    private sealed class SuppressAssetWriteScope : IDisposable
+    {
+        private bool disposed;
+
+        public void Dispose()
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            suppressAssetWriteDepth = Math.Max(0, suppressAssetWriteDepth - 1);
+            disposed = true;
+        }
+    }
 
     private void OnValidate()
     {
@@ -83,8 +111,6 @@ public class GamaSpeciesWizard : MonoBehaviour
         {
             overridesAsset = GetDefaultOverridesAsset.Invoke();
         }
-
-        SaveCurrentSettingsToAsset();
 
         if (OnWizardSettingsChanged != null)
         {
@@ -134,17 +160,18 @@ public class GamaSpeciesWizard : MonoBehaviour
         materialOverride = entry.materialOverride;
         colorOverrideEnabled = entry.overrideColor;
         colorOverride = entry.color;
-        positionOffset = entry.positionOffset;
-        rotationOffset = entry.rotationOffsetEuler;
-        scaleMultiplier = Mathf.Max(0f, entry.scaleMultiplier);
-        visibleInPreview = entry.visibleInPreview;
-        visibleInRuntime = entry.visibleInRuntime;
+        positionOffset = entry.GetEffectivePositionOffset();
+        rotationOffset = entry.GetEffectiveRotationOffsetEuler();
+        scaleMultiplier = entry.GetEffectiveScaleMultiplier();
+        visibleInPreview = entry.UsesPreviewVisibilityOverride() ? entry.GetEffectivePreviewVisible() : true;
+        visibleInRuntime = entry.UsesRuntimeVisibilityOverride() ? entry.GetEffectiveRuntimeVisible() : true;
         renderMode = entry.renderMode;
         notesDebug = entry.notesDebug;
     }
 
     public GamaSpeciesRenderOverrideEntry BuildEntryFromCurrentSettings()
     {
+        bool hasVisibilityOverride = !visibleInPreview || !visibleInRuntime;
         return new GamaSpeciesRenderOverrideEntry
         {
             modelPath = modelPath,
@@ -155,14 +182,17 @@ public class GamaSpeciesWizard : MonoBehaviour
             materialOverride = materialOverride,
             overrideColor = colorOverrideEnabled,
             color = colorOverride,
+            overrideScaleMultiplier = Math.Abs(scaleMultiplier - 1f) > 0.0001f,
+            overridePositionOffset = positionOffset.sqrMagnitude > 0.0001f,
+            overrideRotationOffset = rotationOffset.sqrMagnitude > 0.0001f,
             positionOffset = positionOffset,
             rotationOffsetEuler = rotationOffset,
             scaleMultiplier = Mathf.Max(0f, scaleMultiplier),
-            overridePreviewVisibility = true,
+            overridePreviewVisibility = hasVisibilityOverride,
             visibleInPreview = visibleInPreview,
-            overrideRuntimeVisibility = true,
+            overrideRuntimeVisibility = hasVisibilityOverride,
             visibleInRuntime = visibleInRuntime,
-            overrideVisibility = true,
+            overrideVisibility = hasVisibilityOverride,
             visible = visibleInRuntime,
             renderMode = renderMode,
             notesDebug = notesDebug
@@ -171,6 +201,13 @@ public class GamaSpeciesWizard : MonoBehaviour
 
     public void SaveCurrentSettingsToAsset()
     {
+#if UNITY_EDITOR
+        if (AssetWritesSuppressed)
+        {
+            return;
+        }
+#endif
+
         if (overridesAsset == null || string.IsNullOrWhiteSpace(speciesName))
         {
             return;
@@ -200,22 +237,17 @@ public class GamaSpeciesWizard : MonoBehaviour
             baseline.localScale = instance.localScale;
         }
 
-        bool previewVisible = entry.visibleInPreview;
-        if (entry.overridePreviewVisibility == false && entry.overrideVisibility)
-        {
-            previewVisible = entry.visible;
-        }
-
-        if (!previewVisible && (entry.overridePreviewVisibility || entry.overrideVisibility))
+        bool previewVisible = entry.GetEffectivePreviewVisible();
+        if (!previewVisible && entry.UsesPreviewVisibilityOverride())
         {
             instance.gameObject.SetActive(false);
             return 0;
         }
 
         instance.gameObject.SetActive(true);
-        instance.localPosition = baseline.localPosition + entry.positionOffset;
-        instance.localRotation = baseline.localRotation * Quaternion.Euler(entry.rotationOffsetEuler);
-        instance.localScale = baseline.localScale * entry.scaleMultiplier;
+        instance.localPosition = baseline.localPosition + entry.GetEffectivePositionOffset();
+        instance.localRotation = baseline.localRotation * Quaternion.Euler(entry.GetEffectiveRotationOffsetEuler());
+        instance.localScale = baseline.localScale * entry.GetEffectiveScaleMultiplier();
 
         Renderer[] renderers = instance.GetComponentsInChildren<Renderer>(true);
         int touchedRendererCount = 0;

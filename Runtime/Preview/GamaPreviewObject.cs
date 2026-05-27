@@ -16,6 +16,8 @@ public class GamaPreviewObject : MonoBehaviour
     [SerializeField, HideInInspector] private Vector3 baseLocalPosition;
     [SerializeField, HideInInspector] private Quaternion baseLocalRotation;
     [SerializeField, HideInInspector] private Vector3 baseLocalScale;
+    [SerializeField, HideInInspector] private bool hasVisualAnchor = false;
+    [SerializeField, HideInInspector] private Vector3 visualAnchorLocal = Vector3.zero;
 
     [System.Serializable]
     private class RendererBaseState
@@ -52,32 +54,47 @@ public class GamaPreviewObject : MonoBehaviour
         }
     }
 
+    public void SetVisualAnchorLocal(Vector3 localAnchor)
+    {
+        visualAnchorLocal = localAnchor;
+        hasVisualAnchor = true;
+    }
+
+    public bool TryGetVisualAnchorLocal(out Vector3 localAnchor)
+    {
+        localAnchor = visualAnchorLocal;
+        return hasVisualAnchor;
+    }
+
+    public void RestoreBaseLocalScaleIfCaptured()
+    {
+        if (hasBaseState)
+        {
+            transform.localScale = baseLocalScale;
+        }
+    }
+
     public void ApplySpeciesOverride(GamaSpeciesRenderOverrideEntry entry)
     {
         if (!hasBaseState) return;
 
-        if (entry.positionOffset.sqrMagnitude > 0.0001f)
-            transform.localPosition = baseLocalPosition + entry.positionOffset;
+        if (entry.UsesPositionOffsetOverride())
+            transform.localPosition = baseLocalPosition + entry.GetEffectivePositionOffset();
         else
             transform.localPosition = baseLocalPosition;
 
-        if (entry.rotationOffsetEuler.sqrMagnitude > 0.0001f)
-            transform.localRotation = baseLocalRotation * Quaternion.Euler(entry.rotationOffsetEuler);
+        if (entry.UsesRotationOffsetOverride())
+            transform.localRotation = baseLocalRotation * Quaternion.Euler(entry.GetEffectiveRotationOffsetEuler());
         else
             transform.localRotation = baseLocalRotation;
 
-        if (Mathf.Abs(entry.scaleMultiplier - 1f) > 0.0001f)
-            transform.localScale = baseLocalScale * Mathf.Max(0f, entry.scaleMultiplier);
+        if (entry.UsesScaleOverride())
+            transform.localScale = baseLocalScale * entry.GetEffectiveScaleMultiplier();
         else
             transform.localScale = baseLocalScale;
 
-        bool previewVisible = entry.visibleInPreview;
-        if (entry.overridePreviewVisibility == false && entry.overrideVisibility)
-        {
-            previewVisible = entry.visible;
-        }
-
-        if (!previewVisible && (entry.overridePreviewVisibility || entry.overrideVisibility))
+        bool previewVisible = entry.GetEffectivePreviewVisible();
+        if (!previewVisible && entry.UsesPreviewVisibilityOverride())
         {
             gameObject.SetActive(false);
             return;
