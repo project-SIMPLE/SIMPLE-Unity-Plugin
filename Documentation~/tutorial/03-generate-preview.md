@@ -5,7 +5,7 @@ or selected in GAMA.
 
 ## Steps
 
-1. Open **GAMA > GAMA Panel > Generate Preview from GAMA**.
+Open **GAMA > GAMA Panel > Generate Preview from GAMA**.
 ![GAMA Preview page](../images/tutorial/03-gama-preview-page.png)
 Click **Generate Preview from GAMA**.
 ![Generate Preview from GAMA button](../images/tutorial/03-generate-preview-button.png)
@@ -14,10 +14,11 @@ During capture, the GAMA Panel shows that the preview is being built.
 
 ![Preview building in the GAMA Panel](../images/tutorial/03-preview-building-panel.png)
 
-GAMA may start or update the experiment while Unity receives the preview data.
-
 ![GAMA running during preview capture](../images/tutorial/03-gama-running-during-preview-capture.png)
 
+GAMA may start or update the experiment while Unity receives the preview data.
+
+_Example of the previous experiment after the preview is built in Unity_
 ## Expected Result
 
 The Unity scene should show the map and detected agents without entering Play
@@ -42,14 +43,3 @@ The GAMA Panel now contains the detected species settings.
 Generating a new preview should clean previous generated preview/runtime objects
 before rebuilding the scene. This avoids visual superposition with older example
 scenes or older previews.
-
-
-## If Nothing Appears
-
-Check:
-
-- `simple.webplatform` is running;
-- GAMA is running;
-- the experiment is opened or selected;
-- Unity uses the same port as the middleware;
-- the GAMA model sends at least one geometry.
