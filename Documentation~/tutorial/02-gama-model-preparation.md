@@ -1,21 +1,14 @@
-# 2. Prepare a GAMA Experiment for Unity
+# 2. Prepare the middleware and a GAMA Experiment for Unity
 
-This chapter explains what the GAMA model must expose so Unity can preview and
-render it.
+This chapter explains how to quickly expose the middleware and the GAMA model so Unity can preview and
+render the experiment.
 
 ## Unity Linker
 
 A Unity-compatible experiment normally defines a species that extends
 `abstract_unity_linker`.
 
-The linker declares:
-
-- the Unity player species;
-- the list of Unity properties;
-- the species or geometries to send to Unity;
-- optional runtime attributes sent with each agent.
-
-Open the target model in GAMA.
+Open the target VR-model in GAMA.
 
 ![Open a new GAMA tab](../images/tutorial/02-gama-new-tab.png)
 
