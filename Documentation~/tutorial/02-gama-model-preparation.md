@@ -8,7 +8,7 @@ render the experiment.
 Open your target VR-model in GAMA in the configuration of the screenshot below (ready to run). For explanations on how to install the Simple Unity Plugin, follow [this link](https://doc.project-simple.eu/gama/installation). 
 
 ![Open a GAMA experiment](../images/tutorial/02-open-gama-experiment.png)
-
+_Exemple of an opened experiment in "Library models\Tutorials\Predator Prey\models"_
 
 ## Middleware Requirements
 
