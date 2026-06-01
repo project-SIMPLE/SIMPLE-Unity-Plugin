@@ -4,12 +4,8 @@ This chapter explains how to correctly expose the middleware and the GAMA model 
 render the experiment.
 
 ## In GAMA
-### Unity Linker
 
-A Unity-compatible experiment normally defines a species that extends
-`abstract_unity_linker`.
-
-Open the target VR-model in GAMA.
+Open the target VR-model in GAMA. For explanations on how to install the Simple Unity Plugin; follow [this link](https://doc.project-simple.eu/gama/installation). 
 
 ![Open a new GAMA tab](../images/tutorial/02-gama-new-tab.png)
 
