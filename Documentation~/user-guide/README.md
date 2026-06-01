@@ -8,11 +8,11 @@ screenshots, and reference details.
 ## Planned Pages
 
 1. Installation and project setup.
-2. GAMA Panel workflow.
-3. Static GAMA Preview.
-4. Species visual settings.
-5. Live Preview from GAMA.
-6. Dynamic colors from GAMA attributes.
+2. Middleware and GAMA requirements.
+3. Play Mode live runtime workflow.
+4. Editor Preview and species visual settings.
+5. Dynamic properties from GAMA attributes.
+6. Applying preview settings back to Play Mode.
 7. Large model performance settings.
 8. Troubleshooting.
 

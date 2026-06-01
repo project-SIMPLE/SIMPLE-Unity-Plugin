@@ -2,7 +2,7 @@
 
 The SIMPLE Unity Plugin is a Unity Package Manager package designed to connect Unity scenes with GAMA simulations through the SIMPLE Webplatform middleware.
 
-It provides a lightweight Unity workflow to set up a scene, connect to the middleware, generate a static preview from an experiment opened in GAMA, adjust species visual settings, and run the simulation in Play Mode. The package is designed to work without modifying `simple.webplatform`: the middleware is launched separately and Unity connects to it through WebSocket.
+It provides a lightweight Unity workflow to set up a scene, connect to the middleware, run a live GAMA experiment in Play Mode, generate a static preview from the experiment opened in GAMA, adjust species visual settings, and reuse those settings when the live simulation runs again. The package is designed to work without modifying `simple.webplatform`: the middleware is launched separately and Unity connects to it through WebSocket.
 
 The current demo workflow is centered around the **GAMA Panel**, which groups scene setup, preview generation, species settings, and runtime visualization tools in one place.
 
@@ -90,12 +90,12 @@ The runtime client connects to the webplatform headset WebSocket endpoint, not d
 4. Open Unity.
 5. Open **GAMA > GAMA Panel**.
 6. Run **Setup Scene** if needed.
-7. Use **Generate Preview from GAMA**.
-8. Adjust species settings.
-9. Apply settings to the preview.
-10. Press **Play**.
+7. Press **Play** once to validate the live runtime connection.
+8. Use **Generate Preview from GAMA** to inspect the scene in Edit Mode.
+9. Adjust species settings and dynamic visual rules.
+10. Apply the preview settings, then press **Play** again.
 
-The experiment does **not** need to be already running in GAMA. It only needs to be open or selected. Unity reproduces a Play-like middleware initialization flow through port `8080` to generate the static preview.
+For preview generation, the experiment does **not** need to be already running in GAMA. It only needs to be open or selected. Unity reproduces a Play-like middleware initialization flow through port `8080` to generate the static preview.
 
 ---
 
@@ -107,7 +107,21 @@ Start `simple.webplatform`, then start GAMA and open or select the experiment yo
 
 The standard preview workflow does not require the middleware catalogue, `settings.json`, or `LEARNING_PACKAGE_PATH`.
 
-### 2. Generate a static preview
+### 2. Validate the live Play Mode workflow
+
+Press **Play** in Unity while the middleware and the GAMA experiment are running.
+
+Unity should connect through port `8080` and create live agents under:
+
+```text
+[GAMA] Runtime Live Agents
+```
+
+This proves that the basic data flow works, but it is not ideal for visual
+iteration because the experiment must be running each time the user wants to
+check the look of the scene.
+
+### 3. Generate a static preview
 
 Open the **GAMA Panel** in Unity and click:
 
@@ -117,7 +131,7 @@ Generate Preview from GAMA
 
 Unity connects to the existing middleware on port `8080`, receives JSON data, and builds a static preview in the Unity scene.
 
-### 3. Adjust species settings
+### 4. Adjust species settings
 
 After the preview is generated, detected species appear in the GAMA Panel and in the Simulation Manager Inspector.
 
@@ -133,7 +147,7 @@ For each species, you can adjust:
 
 These settings can be edited from the GAMA Panel or later from the **Game Manager / Simulation Manager Inspector**.
 
-### 4. Press Play
+### 5. Press Play again
 
 When Play Mode starts:
 
