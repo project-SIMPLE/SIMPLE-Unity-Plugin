@@ -1,14 +1,11 @@
 # 3. Generate a GAMA Preview in Unity
 
-This chapter creates a static preview from the GAMA experiment currently opened
+Let's create a static preview from the GAMA experiment currently opened
 or selected in GAMA.
 
 ## Steps
 
-1. In `simple.webplatform`, start the middleware before generating the preview.
-![Open the middleware](../images/tutorial/02-open-middleware.png)
-3. Open or select the target experiment in GAMA.
-4. Open **GAMA > GAMA Panel > Generate Preview from GAMA**.
+1. Open **GAMA > GAMA Panel > Generate Preview from GAMA**.
 ![GAMA Preview page](../images/tutorial/03-gama-preview-page.png)
 Click **Generate Preview from GAMA**.
 ![Generate Preview from GAMA button](../images/tutorial/03-generate-preview-button.png)
