@@ -73,3 +73,9 @@ Check:
 - the Unity middleware port is `8080`;
 - the scene contains a `Connection Manager` and a `Game Manager`;
 - the GAMA model sends geometries through the Unity linker.
+
+## Navigation
+
+| Previous | Next |
+|---|---|
+| [2. Middleware and GAMA requirements](02-gama-model-preparation.md) | [4. Generate and Configure the Unity Preview](04-configure-species.md) |

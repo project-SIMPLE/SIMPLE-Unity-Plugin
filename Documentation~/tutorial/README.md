@@ -68,3 +68,9 @@ You need:
 - a GAMA experiment opened or selected in GAMA.
 
 Unity connects to `simple.webplatform`, not directly to GAMA Server.
+
+## Navigation
+
+| Previous | Next |
+|---|---|
+| - | [1. Install the Unity Package](01-installation-and-setup.md) |

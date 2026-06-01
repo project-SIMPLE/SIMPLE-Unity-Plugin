@@ -97,3 +97,9 @@ scenes or older previews.
 At the end of this chapter, the static preview should look close to the desired
 Unity scene, and the same species settings should be ready to reuse in Play
 Mode.
+
+## Navigation
+
+| Previous | Next |
+|---|---|
+| [3. Run the GAMA Experiment in Play Mode](03-generate-preview.md) | [5. Drive Dynamic Properties From GAMA Attributes](05-live-preview.md) |

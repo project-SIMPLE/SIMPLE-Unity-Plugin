@@ -97,3 +97,9 @@ They do not replace the static preview workflow:
 At the end of this chapter, Unity should be able to show both static species
 settings and per-agent runtime variations, such as infected people turning red
 or prey becoming greener as a numeric value changes.
+
+## Navigation
+
+| Previous | Next |
+|---|---|
+| [4. Generate and Configure the Unity Preview](04-configure-species.md) | [6. Apply Preview Settings In Play Mode](06-dynamic-colors.md) |

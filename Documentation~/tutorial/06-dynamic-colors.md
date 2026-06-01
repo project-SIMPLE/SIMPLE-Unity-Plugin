@@ -71,3 +71,9 @@ At the end of this chapter, the workflow should be clear:
 2. generate a preview to tune the Unity representation faster;
 3. validate the preview settings;
 4. press Play again and check that those settings apply to live agents.
+
+## Navigation
+
+| Previous | Next |
+|---|---|
+| [5. Drive Dynamic Properties From GAMA Attributes](05-live-preview.md) | [7. Optimize Large Simulations](07-large-models-performance.md) |
