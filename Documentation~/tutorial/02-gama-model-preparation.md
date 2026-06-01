@@ -3,19 +3,16 @@
 This chapter explains how to correctly expose the middleware and the GAMA model so Unity can preview and
 render the experiment.
 
-## In GAMA
+## GAMA Requirements
 
-Open the target VR-model in GAMA. For explanations on how to install the Simple Unity Plugin; follow [this link](https://doc.project-simple.eu/gama/installation). 
-
-![Open a new GAMA tab](../images/tutorial/02-gama-new-tab.png)
-
-Select an experiment that is ready to run.
+Open your target VR-model in GAMA in the configuration of the screenshot below (ready to run). For explanations on how to install the Simple Unity Plugin, follow [this link](https://doc.project-simple.eu/gama/installation). 
 
 ![Open a GAMA experiment](../images/tutorial/02-open-gama-experiment.png)
 
+
 ## Middleware Requirements
 
-Start `simple.webplatform` before generating a preview or entering Play Mode.
+Open the Websocket connection thanks to [this tutorial](https://github.com/project-SIMPLE/simple.webplatform).
 
 Default endpoints:
 
@@ -28,5 +25,4 @@ GAMA Server behind webplatform: ws://localhost:1000/
 
 ## Result
 
-At the end of this chapter, the GAMA experiment exposes species, geometries, and
-optional attributes that Unity can receive.
+Now that every actor of the connection is in place, we'll start launching requests from Unity to explore the agents, geometries and properties of our experiment.
