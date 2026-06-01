@@ -14,6 +14,8 @@ _Exemple of an opened experiment in "Library models\Tutorials\Predator Prey\mode
 
 Open the Websocket connection thanks to [this tutorial](https://github.com/project-SIMPLE/simple.webplatform).
 
+![Open the middleware](../images/tutorial/02-open-middleware.png)
+
 Default endpoints:
 
 ```text
