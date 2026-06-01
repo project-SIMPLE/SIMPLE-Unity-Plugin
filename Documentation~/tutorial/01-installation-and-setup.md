@@ -55,18 +55,22 @@ https://github.com/project-SIMPLE/SIMPLE-Unity-Plugin.git#branch-name
 
 For local development:
 
-1. After clicking on **+** select **Add package from disk...**.
+1. After clicking on **+** select **Add package from disk...**
 2. Select the package `package.json` file from your local package folder.
 
 ## Setup The Unity Scene
 
-1. Open **GAMA > GAMA Panel**.
+1. Open **GAMA > GAMA Panel**
+
+![Open a new GAMA tab](../images/tutorial/02-gama-new-tab.png)
 ![Open the GAMA Panel menu](../images/tutorial/01-open-gama-panel-menu.gif)
-3. Click **Setup Scene**. ![Setup Scene button](../images/tutorial/01-setup-scene-button.png)
 
+2. Click **Setup Scene**
 ![GAMA Panel opened](../images/tutorial/01-gama-panel-open.png)
+![Setup Scene button](../images/tutorial/01-setup-scene-button.png)
 
-4. After a quick build...
+
+3. After a quick build...
 ![Unity project ready](../images/tutorial/01-unity-project-ready.png)
 
 ...your scene should contain every object needed to communicate with the middleware.
