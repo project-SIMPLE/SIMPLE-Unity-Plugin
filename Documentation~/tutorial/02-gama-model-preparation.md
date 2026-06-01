@@ -1,9 +1,10 @@
-# 2. Prepare the middleware and a GAMA Experiment for Unity
+# 2. Middleware and GAMA requirements
 
-This chapter explains how to quickly expose the middleware and the GAMA model so Unity can preview and
+This chapter explains how to correctly expose the middleware and the GAMA model so Unity can preview and
 render the experiment.
 
-## Unity Linker
+## In GAMA
+### Unity Linker
 
 A Unity-compatible experiment normally defines a species that extends
 `abstract_unity_linker`.
@@ -15,6 +16,19 @@ Open the target VR-model in GAMA.
 Select an experiment that is ready to run.
 
 ![Open a GAMA experiment](../images/tutorial/02-open-gama-experiment.png)
+
+## Middleware Requirements
+
+Start `simple.webplatform` before generating a preview or entering Play Mode.
+
+Default endpoints:
+
+```text
+Unity runtime / headset WebSocket: ws://localhost:8080/
+Monitor WebSocket: ws://localhost:8001/
+GAMA Server behind webplatform: ws://localhost:1000/
+```
+
 
 ## Result
 
