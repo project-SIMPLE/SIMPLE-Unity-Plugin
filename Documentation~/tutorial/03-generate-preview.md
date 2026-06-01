@@ -64,16 +64,6 @@ the next chapter introduces the Editor preview: it lets you build a static
 snapshot of the experiment in Unity, adjust the visual parameters there, and then
 reuse those settings in Play Mode.
 
-## If Runtime Agents Do Not Appear
-
-Check:
-
-- `simple.webplatform` is running;
-- GAMA is running and the experiment is started;
-- the Unity middleware port is `8080`;
-- the scene contains a `Connection Manager` and a `Game Manager`;
-- the GAMA model sends geometries through the Unity linker.
-
 ## Navigation
 
 | Previous | Next |
