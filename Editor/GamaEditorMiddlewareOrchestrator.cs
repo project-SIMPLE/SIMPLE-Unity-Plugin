@@ -635,6 +635,155 @@ internal static class GamaEditorMiddlewareOrchestrator
         return result;
     }
 
+    /// <summary>
+    /// Attaches to the experiment already visible to the running middleware monitor.
+    /// Used when Unity generated a preview from GAMA's active selection and therefore has no
+    /// local .gaml path to match against the middleware catalog. This must not force
+    /// launch_experiment, because GAMA may otherwise ask to close the current experiment.
+    /// </summary>
+    public static async Task<ManagedExperimentResult> LaunchCurrentMonitorExperimentAsync(
+        string host,
+        int monitorPort,
+        CancellationToken ct,
+        Action<string> log = null)
+    {
+        ManagedExperimentResult result = new ManagedExperimentResult();
+        StringBuilder trail = new StringBuilder();
+        void Append(string line)
+        {
+            trail.AppendLine(line);
+            try
+            {
+                if (log != null)
+                {
+                    log.Invoke(line);
+                }
+                else
+                {
+                    UnityEngine.Debug.Log(line);
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        string hostNorm = string.IsNullOrWhiteSpace(host) ? "localhost" : host.Trim();
+        int port = monitorPort > 0 ? monitorPort : DefaultMonitorPort;
+        Uri monitorUri = new Uri("ws://" + hostNorm + ":" + port + "/");
+
+        Append("[GAMA][ORCH][PLAY] Attach to current GAMA monitor state via " + monitorUri + ".");
+
+        if (!await IsTcpPortOpenAsync(hostNorm, port, 3000, ct).ConfigureAwait(false))
+        {
+            result.Error = "Monitor middleware injoignable sur ws://" + hostNorm + ":" + port +
+                           "/. Lancez simple.webplatform en arrière-plan.";
+            result.LogTrail = trail.ToString();
+            return result;
+        }
+
+        using (ClientWebSocket ws = new ClientWebSocket())
+        {
+            ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(5);
+            try
+            {
+                using (CancellationTokenSource connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                {
+                    connectCts.CancelAfter(TimeSpan.FromSeconds(15));
+                    await ws.ConnectAsync(monitorUri, connectCts.Token).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Error = "Connexion monitor impossible : " + ex.Message;
+                result.LogTrail = trail.ToString();
+                return result;
+            }
+
+            Append("[GAMA][ORCH][PLAY] Connecté au monitor.");
+
+            MonitorSession session = new MonitorSession(ws, Append);
+            Task receiveTask = session.RunReceiveLoopAsync(ct);
+
+            DateTime initialStateDeadline = DateTime.UtcNow.AddSeconds(3);
+            while (DateTime.UtcNow < initialStateDeadline && !ct.IsCancellationRequested)
+            {
+                string state = session.LastExperimentState ?? string.Empty;
+                if (!string.IsNullOrEmpty(state))
+                {
+                    break;
+                }
+
+                await Task.Delay(100, ct).ConfigureAwait(false);
+            }
+
+            string expState = session.LastExperimentState ?? string.Empty;
+            if (string.Equals(expState, "PAUSED", StringComparison.OrdinalIgnoreCase))
+            {
+                Append("[GAMA][ORCH][PLAY] → resume_experiment (état PAUSED)");
+                await session.SendAsync(new JObject { ["type"] = "resume_experiment" }, ct).ConfigureAwait(false);
+                DateTime resumeDeadline = DateTime.UtcNow.AddSeconds(45);
+                while (DateTime.UtcNow < resumeDeadline && !ct.IsCancellationRequested)
+                {
+                    expState = session.LastExperimentState ?? expState;
+                    if (string.Equals(expState, "RUNNING", StringComparison.OrdinalIgnoreCase))
+                    {
+                        break;
+                    }
+
+                    await Task.Delay(200, ct).ConfigureAwait(false);
+                }
+            }
+
+            result.FinalExperimentState = session.LastExperimentState ?? expState;
+            result.ExperimentId = session.LastExperimentId ?? string.Empty;
+            result.Success = !string.IsNullOrEmpty(result.FinalExperimentState) &&
+                             !string.Equals(result.FinalExperimentState, "NONE", StringComparison.OrdinalIgnoreCase) &&
+                             !string.Equals(result.FinalExperimentState, "NOTREADY", StringComparison.OrdinalIgnoreCase);
+            if (!result.Success)
+            {
+                result.Error = "Aucune expérience GAMA active détectée par le monitor (état=" +
+                               (string.IsNullOrEmpty(result.FinalExperimentState) ? "?" : result.FinalExperimentState) +
+                               "). Unity n'envoie pas launch_experiment en mode sélection GAMA active pour éviter le prompt de fermeture.";
+            }
+            else
+            {
+                Append("[GAMA][ORCH][PLAY] Expérience active détectée : experiment_state=" + result.FinalExperimentState +
+                       (string.IsNullOrEmpty(result.ExperimentId) ? string.Empty : " exp_id=" + result.ExperimentId));
+            }
+
+            session.Stop();
+            try
+            {
+                await receiveTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                if (ws.State == WebSocketState.Open)
+                {
+                    using (CancellationTokenSource closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(2)))
+                    {
+                        await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "play launch done", closeCts.Token)
+                            .ConfigureAwait(false);
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        result.LogTrail = trail.ToString();
+        return result;
+    }
+
     private struct JsonSettingsLookupResult
     {
         public bool Found;
@@ -1395,6 +1544,89 @@ internal static class GamaEditorMiddlewareOrchestrator
                     using (CancellationTokenSource closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(2)))
                     {
                         await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "pause done", closeCts.Token)
+                            .ConfigureAwait(false);
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Removes a player from the middleware/GAMA through the monitor socket.</summary>
+    public static async Task<bool> RemovePlayerHeadsetAsync(
+        string host,
+        int monitorPort,
+        string playerId,
+        CancellationToken ct,
+        Action<string> log = null)
+    {
+        if (string.IsNullOrWhiteSpace(playerId))
+        {
+            return false;
+        }
+
+        string hostNorm = string.IsNullOrWhiteSpace(host) ? "localhost" : host.Trim();
+        int port = monitorPort > 0 ? monitorPort : DefaultMonitorPort;
+        Uri monitorUri = new Uri("ws://" + hostNorm + ":" + port + "/");
+
+        void Append(string line)
+        {
+            try
+            {
+                log?.Invoke(line);
+            }
+            catch
+            {
+                // ignore
+            }
+
+            UnityEngine.Debug.Log(line);
+        }
+
+        if (!await IsTcpPortOpenAsync(hostNorm, port, 3000, ct).ConfigureAwait(false))
+        {
+            Append("[GAMA][ORCH] remove_player_headset : monitor injoignable sur " + monitorUri);
+            return false;
+        }
+
+        using (ClientWebSocket ws = new ClientWebSocket())
+        {
+            ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(5);
+            await ws.ConnectAsync(monitorUri, ct).ConfigureAwait(false);
+            MonitorSession session = new MonitorSession(ws, Append);
+            Task receiveTask = session.RunReceiveLoopAsync(ct);
+            await Task.Delay(200, ct).ConfigureAwait(false);
+            Append("[GAMA][ORCH] → remove_player_headset id=" + playerId.Trim());
+            await session.SendAsync(
+                new JObject
+                {
+                    ["type"] = "remove_player_headset",
+                    ["id"] = playerId.Trim()
+                },
+                ct).ConfigureAwait(false);
+            await Task.Delay(700, ct).ConfigureAwait(false);
+            session.Stop();
+            try
+            {
+                await receiveTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                if (ws.State == WebSocketState.Open)
+                {
+                    using (CancellationTokenSource closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(2)))
+                    {
+                        await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "remove player done", closeCts.Token)
                             .ConfigureAwait(false);
                     }
                 }

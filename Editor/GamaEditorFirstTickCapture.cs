@@ -111,7 +111,7 @@ internal static class GamaEditorFirstTickCapture
 
         foreach (string ghostId in CollectGhostPlayerIdsToPurge(capturePlayerId))
         {
-            CapLog(append, sessionId, "pre", "→ purge id=\"" + ghostId + "\" (disconnect_properly)…");
+            CapLog(append, sessionId, "pre", "→ fermeture propre id=\"" + ghostId + "\"…");
             string outcome;
             try
             {
@@ -776,15 +776,7 @@ internal static class GamaEditorFirstTickCapture
 
                 if (!directGamaServer && !state.SkipRemoteLoad)
                 {
-                    try
-                    {
-                        await SendDisconnectProperlyAsync(ws, CancellationToken.None).ConfigureAwait(false);
-                        append("[GAMA] disconnect_properly envoyé (libère le slot " + effectiveId + " côté middleware).");
-                    }
-                    catch (Exception ex)
-                    {
-                        append("[GAMA] disconnect_properly : " + ex.Message);
-                    }
+                    append("[GAMA] Fermeture propre de la connexion preview sans disconnect_properly pour éviter de purger le socket middleware actif.");
                 }
                 else if (!directGamaServer && state.SkipRemoteLoad)
                 {
@@ -1167,9 +1159,9 @@ internal static class GamaEditorFirstTickCapture
     }
 
     /// <summary>
-    /// Se connecte au middleware, dit bonjour avec l'id donné, puis envoie immédiatement
-    /// <c>disconnect_properly</c> pour purger un joueur fantôme (cas typique : ancien Editor_Capture
-    /// qui bloque le slot quand <c>max_num_players = 1</c> côté GAMA).
+    /// Se connecte au middleware, dit bonjour avec l'id donné, puis ferme proprement la connexion.
+    /// La preview ne doit pas envoyer <c>disconnect_properly</c>, car cette commande force une purge
+    /// côté middleware pendant que le socket est en cours de fermeture.
     /// </summary>
     public static async Task<string> PurgeGhostPlayerAsync(
         string host,
@@ -1223,8 +1215,6 @@ internal static class GamaEditorFirstTickCapture
 
                 await Task.Delay(300, cts.Token).ConfigureAwait(false);
 
-                await SendDisconnectProperlyAsync(ws, cts.Token).ConfigureAwait(false);
-
                 using (CancellationTokenSource closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(3)))
                 {
                     await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "purge ghost", closeCts.Token)
@@ -1237,7 +1227,7 @@ internal static class GamaEditorFirstTickCapture
             }
         }
 
-        return "Joueur fantôme \"" + ghostId + "\" purgé côté middleware (disconnect_properly envoyé).";
+        return "Connexion fantôme \"" + ghostId + "\" fermée proprement côté middleware.";
     }
 
     private static async Task SendExecutableExpressionAsync(ClientWebSocket ws, string expression, CancellationToken ct)

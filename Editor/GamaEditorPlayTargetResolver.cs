@@ -18,6 +18,14 @@ internal static class GamaEditorPlayTargetResolver
 
         GamaPreviewSession session = FindPreviewSession();
         if (session != null &&
+            (session.activeGamaSelection ||
+             string.Equals(session.modelPath, "GAMA_ACTIVE_SELECTION", StringComparison.OrdinalIgnoreCase)))
+        {
+            source = "aperçu GAMA actif (sélection monitor courante)";
+            return false;
+        }
+
+        if (session != null &&
             !string.IsNullOrWhiteSpace(session.modelPath) &&
             !string.IsNullOrWhiteSpace(session.experimentName) &&
             File.Exists(session.modelPath))

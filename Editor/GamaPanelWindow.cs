@@ -124,6 +124,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private System.Threading.Tasks.Task<GamaEditorMiddlewareOrchestrator.CatalogDiagnosisResult> catalogDiagnosisTask;
     private string catalogDiagnosisStatus = string.Empty;
     private bool captureFlowActive;
+    private string pendingPreviewPlayerCleanupId = string.Empty;
     private System.Threading.CancellationTokenSource captureCts;
     private GamaEditorBackgroundProcess captureGamaProcess;
     private GamaEditorBackgroundProcess captureMiddlewareProcess;
@@ -829,12 +830,12 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorGUILayout.LabelField("Live Preview from GAMA", EditorStyles.boldLabel);
 
         EditorGUILayout.HelpBox(
-            "Start GAMA and simple.webplatform, then open the experiment you want to preview in GAMA. The simulation does not need to be running. Unity connects to middleware port 8080 and generates a static preview from the received data.",
+            "Start GAMA and simple.webplatform, then open the experiment you want to preview in GAMA. Unity connects as an isolated preview player and leaves simple.webplatform unchanged.",
             MessageType.Info);
 
         bool busy = captureFlowActive || captureTask != null;
 
-        using (new EditorGUI.DisabledScope(busy || captureUseLocalMiddleware))
+        using (new EditorGUI.DisabledScope(busy))
         {
             if (GUILayout.Button("Generate Preview from GAMA", GUILayout.Height(34f)))
             {
@@ -1646,8 +1647,19 @@ public sealed class GamaPanelWindow : EditorWindow
         return File.Exists(systemCmd) ? systemCmd : "cmd.exe";
     }
 
+    private static string GetGamaPreviewConnectionId()
+    {
+        return "Editor_Capture";
+    }
+
+    private static int GetGamaPreviewHeartbeatMs()
+    {
+        return 24 * 60 * 60 * 1000;
+    }
+
     private void StartCaptureFlow(bool launchGama, bool managedFromUnity = false)
     {
+        pendingPreviewPlayerCleanupId = string.Empty;
         if (captureFlowActive || captureTask != null)
         {
             EditorUtility.DisplayDialog("Capture", "A capture is already in progress.", "OK");
@@ -1655,10 +1667,23 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         bool selectedGamaPreviewMode = managedFromUnity && captureUseExternalMiddleware;
+        bool directOpenGamaPreviewMode = !managedFromUnity &&
+                                         captureUseLocalMiddleware &&
+                                         captureSkipRemoteLoad &&
+                                         GamaEditorFirstTickCapture.IsGamaNativeWebSocketPort(capturePort);
         string uiSelectedModelPath = string.Empty;
         string runtimeModelPath = string.Empty;
         string runtimeExperimentName = string.Empty;
         if (selectedGamaPreviewMode)
+        {
+            if (analysis != null)
+            {
+                runtimeModelPath = SafeFullPath(analysis.SourcePath);
+                uiSelectedModelPath = runtimeModelPath;
+                runtimeExperimentName = analysis.Name ?? string.Empty;
+            }
+        }
+        else if (directOpenGamaPreviewMode)
         {
             if (analysis != null)
             {
@@ -1717,7 +1742,10 @@ public sealed class GamaPanelWindow : EditorWindow
         string host = string.IsNullOrWhiteSpace(captureHost) ? PlayerPrefs.GetString("IP", "localhost") : captureHost.Trim();
         string port = string.IsNullOrWhiteSpace(capturePort) ? PlayerPrefs.GetString("PORT", "8080") : capturePort.Trim();
         string rawId = string.IsNullOrWhiteSpace(captureConnectionId) ? string.Empty : captureConnectionId.Trim();
-        string id = string.IsNullOrEmpty(rawId) ? StaticInformation.getId() : rawId;
+        string id = selectedGamaPreviewMode || directOpenGamaPreviewMode
+            ? GetGamaPreviewConnectionId()
+            : string.IsNullOrEmpty(rawId) ? StaticInformation.getId() : rawId;
+        string previewCleanupId = selectedGamaPreviewMode ? id : string.Empty;
         string outDir = string.IsNullOrWhiteSpace(gamaJsonExportOutputDir) ? null : gamaJsonExportOutputDir.Trim();
 
         if (string.IsNullOrEmpty(outDir))
@@ -1746,6 +1774,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         if (!selectedGamaPreviewMode &&
+            !directOpenGamaPreviewMode &&
             !string.IsNullOrWhiteSpace(runtimeModelPath) &&
             !GamaEditorUnityModelValidation.TryValidateUnityCaptureTarget(
                 runtimeModelPath,
@@ -1927,6 +1956,8 @@ public sealed class GamaPanelWindow : EditorWindow
                 "For the Node middleware, launch simple.webplatform and use port 8080.");
         }
 
+        pendingPreviewPlayerCleanupId = previewCleanupId;
+
         if (managedFromUnity && !captureUseLocalMiddleware)
         {
             if (selectedGamaPreviewMode)
@@ -1951,6 +1982,7 @@ public sealed class GamaPanelWindow : EditorWindow
         int maxWorldFrames = Mathf.Clamp(captureMaxWorldFrames, 3, 120);
         float worldPhaseSec = Mathf.Clamp(captureWorldPhaseSeconds, 5f, 120f);
         float stableSec = Mathf.Clamp(capturePreviewStableSeconds, 1f, 30f);
+        int handshakeHeartbeatMs = selectedGamaPreviewMode ? GetGamaPreviewHeartbeatMs() : 5000;
 
         if (useDirectGama)
         {
@@ -1960,7 +1992,7 @@ public sealed class GamaPanelWindow : EditorWindow
                 gamaPort,
                 outDir,
                 id,
-                5000,
+                handshakeHeartbeatMs,
                 10_000,
                 captureTimeoutMs,
                 true,
@@ -1993,7 +2025,7 @@ public sealed class GamaPanelWindow : EditorWindow
                 port,
                 outDir,
                 id,
-                5000,
+                handshakeHeartbeatMs,
                 connectTimeoutMs,
                 captureTimeoutMs,
                 false,
@@ -2562,6 +2594,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
         if (userAbortReason != null)
         {
+            CleanupPendingPreviewPlayer();
             captureRuntimeStatus = "Capture cancelled: " + userAbortReason;
             Repaint();
             return;
@@ -2577,6 +2610,8 @@ public sealed class GamaPanelWindow : EditorWindow
             captureRuntimeStatus = "Capture failed: " + ex.Message;
             UnityEngine.Debug.LogError("[GAMA] Capture : " + ex);
         }
+
+        CleanupPendingPreviewPlayer();
 
         if (result == null)
         {
@@ -2636,6 +2671,49 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         Repaint();
+    }
+
+    private void CleanupPendingPreviewPlayer()
+    {
+        string playerId = pendingPreviewPlayerCleanupId;
+        pendingPreviewPlayerCleanupId = string.Empty;
+        if (string.IsNullOrWhiteSpace(playerId))
+        {
+            return;
+        }
+
+        string host = string.IsNullOrWhiteSpace(captureHost)
+            ? PlayerPrefs.GetString("IP", "localhost")
+            : captureHost.Trim();
+
+        try
+        {
+            using (System.Threading.CancellationTokenSource cleanupCts =
+                   new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(6)))
+            {
+                bool removed = GamaEditorMiddlewareOrchestrator.RemovePlayerHeadsetAsync(
+                        host,
+                        captureMonitorPort,
+                        playerId,
+                        cleanupCts.Token,
+                        UnityEngine.Debug.Log)
+                    .GetAwaiter()
+                    .GetResult();
+
+                if (removed)
+                {
+                    Debug.Log("[GAMA][PREVIEW][CLEANUP] Removed isolated preview player " + playerId + " before Play.");
+                }
+                else
+                {
+                    Debug.LogWarning("[GAMA][PREVIEW][CLEANUP] Could not remove isolated preview player " + playerId + ".");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[GAMA][PREVIEW][CLEANUP] remove_player_headset failed for " + playerId + ": " + ex.Message);
+        }
     }
 
 
