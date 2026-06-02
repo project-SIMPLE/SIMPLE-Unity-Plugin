@@ -788,6 +788,7 @@ public sealed class GamaPanelWindow : EditorWindow
         if (EditorGUI.EndChangeCheck())
         {
             AnalyzeSelectedExperiment();
+            SaveSelectedExperimentAsRuntimeTarget();
             InvalidateCaptureSelectionCache();
         }
     }
@@ -3764,10 +3765,29 @@ public sealed class GamaPanelWindow : EditorWindow
 
         selectedExperimentIndex = index;
         AnalyzeSelectedExperiment();
+        SaveSelectedExperimentAsRuntimeTarget();
         InvalidateCaptureSelectionCache();
         experimentStatus = "Experiment imported: " + experimentOptions[index].DisplayName + ". Adjust agents / scene, run cumulative preview or generate static preview.";
         selectedTab = TabImportExperiment;
         Repaint();
+    }
+
+    private void SaveSelectedExperimentAsRuntimeTarget()
+    {
+        if (selectedExperimentIndex < 0 || selectedExperimentIndex >= experimentOptions.Count)
+        {
+            return;
+        }
+
+        GamaPanelExperimentOption option = experimentOptions[selectedExperimentIndex];
+        if (option == null ||
+            string.IsNullOrWhiteSpace(option.SourcePath) ||
+            string.IsNullOrWhiteSpace(option.Name))
+        {
+            return;
+        }
+
+        GamaEditorRuntimeSelectionStore.Save(SafeFullPath(option.SourcePath), option.Name.Trim());
     }
 
     private bool TryPopulateExperimentOptions(out string errorMessage)

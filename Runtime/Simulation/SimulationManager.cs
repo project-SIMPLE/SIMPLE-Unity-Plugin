@@ -293,6 +293,11 @@ public abstract partial class SimulationManager : MonoBehaviour
     private int runtimeFlowLogCount;
     private int runtimeCreateLogCount;
     private int runtimePerfLogCount;
+    private float nextRuntimePlayerBootstrapTime;
+    private int runtimePlayerBootstrapAttempts;
+    private bool runtimePlayerBootstrapConfirmed;
+    private const float RuntimePlayerBootstrapRetrySeconds = 1f;
+    private const int RuntimePlayerBootstrapMaxAttempts = 20;
 
     // ############################################ UNITY FUNCTIONS ############################################
     void Awake()
@@ -371,6 +376,9 @@ public abstract partial class SimulationManager : MonoBehaviour
             peopleAttributeDebugLogCount = 0;
             staticPreviewHiddenAfterRuntimeData = false;
             hasLastOutgoingPlayerUnityPosition = false;
+            nextRuntimePlayerBootstrapTime = 0f;
+            runtimePlayerBootstrapAttempts = 0;
+            runtimePlayerBootstrapConfirmed = false;
 
             geometryMap = new Dictionary<string, List<object>>();
         handleGeometriesRequested = false;
@@ -387,6 +395,11 @@ public abstract partial class SimulationManager : MonoBehaviour
         if (ConnectionManager.Instance == null)
         {
             return;
+        }
+
+        if (IsGameState(GameState.WAITING))
+        {
+            TryBootstrapRuntimePlayer();
         }
 
         if (sendMessageToReactivatePositionSent)
@@ -3940,8 +3953,20 @@ public abstract partial class SimulationManager : MonoBehaviour
         // player has been added to the simulation by the middleware
         if (state == ConnectionState.AUTHENTICATED)
         {
+            runtimePlayerBootstrapConfirmed = true;
             Debug.Log("[GAMA] Authenticated, loading simulation data");
             UpdateGameState(GameState.LOADING_DATA);
+        }
+        else if (state == ConnectionState.CONNECTED)
+        {
+            runtimePlayerBootstrapConfirmed = false;
+            runtimePlayerBootstrapAttempts = 0;
+            nextRuntimePlayerBootstrapTime = 0f;
+            if (IsGameState(GameState.MENU))
+            {
+                Debug.Log("[GAMA] Connected to middleware");
+                UpdateGameState(GameState.WAITING);
+            }
         }
     }
 
@@ -3969,6 +3994,14 @@ public abstract partial class SimulationManager : MonoBehaviour
         subscribedConnectionManager.OnConnectionStateChanged += HandleConnectionStateChanged;
         connectionID["id"] = subscribedConnectionManager.GetConnectionId();
         Debug.Log("[GAMA][RUNTIME][CONNECTION] subscribed to ConnectionManager");
+        if (subscribedConnectionManager.IsConnectionState(ConnectionState.AUTHENTICATED))
+        {
+            HandleConnectionStateChanged(ConnectionState.AUTHENTICATED);
+        }
+        else if (subscribedConnectionManager.IsConnectionState(ConnectionState.CONNECTED))
+        {
+            HandleConnectionStateChanged(ConnectionState.CONNECTED);
+        }
         return true;
     }
 
@@ -4513,12 +4546,79 @@ public abstract partial class SimulationManager : MonoBehaviour
                 Debug.Log("[GAMA] Connected to middleware");
                 UpdateGameState(GameState.WAITING);
             }
+
+            nextRuntimePlayerBootstrapTime = 0f;
         }
         else
         {
             // stay in MENU state
 
         }
+    }
+
+    private void TryBootstrapRuntimePlayer()
+    {
+        if (runtimePlayerBootstrapConfirmed)
+        {
+            return;
+        }
+
+        TrySubscribeConnectionManager();
+        ConnectionManager manager = ConnectionManager.Instance;
+        if (manager == null || !manager.CanSendRuntimeMessages)
+        {
+            return;
+        }
+
+        if (manager.IsConnectionState(ConnectionState.AUTHENTICATED))
+        {
+            runtimePlayerBootstrapConfirmed = true;
+            UpdateGameState(GameState.LOADING_DATA);
+            return;
+        }
+
+        if (!manager.IsConnectionState(ConnectionState.CONNECTED))
+        {
+            return;
+        }
+
+        float now = Time.unscaledTime;
+        if (now < nextRuntimePlayerBootstrapTime)
+        {
+            return;
+        }
+
+        if (runtimePlayerBootstrapAttempts >= RuntimePlayerBootstrapMaxAttempts)
+        {
+            if (runtimePlayerBootstrapAttempts == RuntimePlayerBootstrapMaxAttempts)
+            {
+                runtimePlayerBootstrapAttempts++;
+                Debug.LogWarning("[GAMA][RUNTIME][BOOTSTRAP] create_player did not authenticate after " +
+                                 RuntimePlayerBootstrapMaxAttempts + " attempts. Check simple.webplatform/GAMA logs.");
+            }
+            return;
+        }
+
+        string id = manager.GetConnectionId();
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            id = StaticInformation.getId();
+        }
+
+        connectionID["id"] = id;
+        string expression = "do create_player(\"" + EscapeGamlString(id) + "\");";
+        runtimePlayerBootstrapAttempts++;
+        nextRuntimePlayerBootstrapTime = now + RuntimePlayerBootstrapRetrySeconds;
+        Debug.Log("[GAMA][RUNTIME][BOOTSTRAP] create_player attempt " + runtimePlayerBootstrapAttempts +
+                  "/" + RuntimePlayerBootstrapMaxAttempts + " id=" + id);
+        manager.SendExecutableExpression(expression);
+    }
+
+    private static string EscapeGamlString(string value)
+    {
+        return (value ?? string.Empty)
+            .Replace("\\", "\\\\")
+            .Replace("\"", "\\\"");
     }
 
     private void TryReconnect()

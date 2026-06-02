@@ -16,6 +16,23 @@ internal static class GamaEditorPlayTargetResolver
         experimentName = string.Empty;
         source = "aucune";
 
+        GamaPanelWindow[] panels = Resources.FindObjectsOfTypeAll<GamaPanelWindow>();
+        for (int i = 0; i < panels.Length; i++)
+        {
+            if (panels[i] != null &&
+                panels[i].TryGetOpenPanelSelection(out modelPath, out experimentName))
+            {
+                source = "panneau GAMA ouvert";
+                return true;
+            }
+        }
+
+        if (GamaEditorRuntimeSelectionStore.TryLoad(out modelPath, out experimentName))
+        {
+            source = "sélection Unity enregistrée";
+            return true;
+        }
+
         GamaPreviewSession session = FindPreviewSession();
         if (session != null &&
             (session.activeGamaSelection ||
@@ -33,12 +50,6 @@ internal static class GamaEditorPlayTargetResolver
             modelPath = session.modelPath;
             experimentName = session.experimentName;
             source = "aperçu statique en scène" + (session.stale ? " (stale)" : string.Empty);
-            return true;
-        }
-
-        if (GamaEditorRuntimeSelectionStore.TryLoad(out modelPath, out experimentName))
-        {
-            source = "sélection Unity enregistrée";
             return true;
         }
 
@@ -62,17 +73,6 @@ internal static class GamaEditorPlayTargetResolver
         {
             source = "Experiment Path (panneau GAMA)";
             return true;
-        }
-
-        GamaPanelWindow[] panels = Resources.FindObjectsOfTypeAll<GamaPanelWindow>();
-        for (int i = 0; i < panels.Length; i++)
-        {
-            if (panels[i] != null &&
-                panels[i].TryGetOpenPanelSelection(out modelPath, out experimentName))
-            {
-                source = "panneau GAMA ouvert";
-                return true;
-            }
         }
 
         return false;
