@@ -146,7 +146,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private bool setupSceneBeforeApply = false;
     private bool replaceGeneratedRules = true;
-    private bool enablePrefabRenderDistance = true;
+    private bool enablePrefabRenderDistance = false;
     private float sceneCharacteristicSize = 100f;
     private float horizontalScale = 1f;
     private float verticalOffset = 0f;
@@ -811,8 +811,17 @@ public sealed class GamaPanelWindow : EditorWindow
         sceneCharacteristicSize = Mathf.Max(1f, EditorGUILayout.FloatField("Scene Size", sceneCharacteristicSize));
         horizontalScale = Mathf.Max(0.0001f, EditorGUILayout.FloatField("GAMA XY Scale", horizontalScale));
         verticalOffset = EditorGUILayout.FloatField("GAMA Z Offset", verticalOffset);
+        bool wasRenderDistanceEnabled = enablePrefabRenderDistance;
         enablePrefabRenderDistance = EditorGUILayout.Toggle("Render Distance Culling", enablePrefabRenderDistance);
-        renderDistance = Mathf.Max(0f, EditorGUILayout.FloatField("Render Distance", renderDistance));
+        if (enablePrefabRenderDistance && !wasRenderDistanceEnabled)
+        {
+            renderDistance = 1500f;
+        }
+
+        using (new EditorGUI.DisabledScope(!enablePrefabRenderDistance))
+        {
+            renderDistance = Mathf.Max(0f, EditorGUILayout.FloatField("Render Distance", renderDistance));
+        }
         cameraNearClip = Mathf.Max(0.001f, EditorGUILayout.FloatField("Camera Near Clip", cameraNearClip));
         cameraFarClip = Mathf.Max(cameraNearClip + 1f, EditorGUILayout.FloatField("Camera Far Clip", cameraFarClip));
         previewSamplesPerAgent = Mathf.Clamp(EditorGUILayout.IntField("Preview Samples / Agent", previewSamplesPerAgent), 1, 100);
@@ -3896,6 +3905,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private void ApplySimulationManagerSettings(SimulationManager manager)
     {
         SerializedObject serializedManager = new SerializedObject(manager);
+        SetBool(serializedManager, "streamPrefabsByCameraView", false);
         SetBool(serializedManager, "enablePrefabRenderDistance", enablePrefabRenderDistance);
         SetFloat(serializedManager, "globalPrefabRenderDistance", renderDistance);
         SetFloat(serializedManager, "prefabViewPadding", Mathf.Max(1f, sceneCharacteristicSize * 0.05f));

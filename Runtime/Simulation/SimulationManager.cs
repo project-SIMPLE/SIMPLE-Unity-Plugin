@@ -91,14 +91,14 @@ public abstract partial class SimulationManager : MonoBehaviour
     protected bool groupRuntimeAgentsBySpecies = true;
 
     [Header("Prefab viewport streaming")]
-    [SerializeField] protected bool streamPrefabsByCameraView = true;
+    [SerializeField] protected bool streamPrefabsByCameraView = false;
     [SerializeField, Tooltip("Legacy toggle kept for backward compatibility. SceneView camera is ignored; streaming uses Game camera only.")]
     protected bool preferSceneViewCameraInEditor = false;
     [SerializeField] protected bool keepSelectedPrefabsLoaded = true;
     [SerializeField, Min(0f)] protected float prefabViewPadding = 20f;
     [SerializeField, Min(0.02f)] protected float prefabViewUpdateInterval = 0.1f;
     [SerializeField, Tooltip("When enabled, prefabs beyond globalPrefabRenderDistance are deactivated (with hysteresis), in addition to frustum culling.")]
-    protected bool enablePrefabRenderDistance = true;
+    protected bool enablePrefabRenderDistance = false;
     [SerializeField, Min(0f), Tooltip("World-space distance from camera at which streaming may disable the prefab (uses bounds closest point).")]
     protected float globalPrefabRenderDistance = 1500f;
     [SerializeField, Min(0f), Tooltip("Reactivation requires coming this much closer than globalPrefabRenderDistance to avoid flicker.")]
@@ -2604,13 +2604,22 @@ public abstract partial class SimulationManager : MonoBehaviour
     {
         int rawHeading = pointData != null && pointData.Count > 3 ? pointData[3] : 0;
         float heading = DecodeGamaAngle(rawHeading);
+        bool headingFromMovement = false;
 
         if (rawHeading == 0 && TryResolveHeadingFromPreviousMovement(agentName, prop, currentPosition, out float movementHeading))
         {
             heading = movementHeading;
+            headingFromMovement = true;
         }
 
-        float rotation = prop.rotationCoeffF * heading + prop.rotationOffsetF;
+        float rotationCoeff = prop != null ? prop.rotationCoeffF : 1f;
+        if (headingFromMovement && Mathf.Abs(rotationCoeff) <= 0.000001f)
+        {
+            rotationCoeff = 1f;
+        }
+
+        float rotationOffset = prop != null ? prop.rotationOffsetF : 0f;
+        float rotation = rotationCoeff * heading + rotationOffset;
         return Quaternion.AngleAxis(rotation, Vector3.up);
     }
 

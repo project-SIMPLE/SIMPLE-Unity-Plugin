@@ -71,9 +71,7 @@ public class SimulationManagerInspector : Editor
             DrawProperty("keepSelectedPrefabsLoaded", "Keep Selected Agents Visible");
             DrawProperty("prefabViewPadding", "Camera View Padding");
             DrawProperty("prefabViewUpdateInterval", "Visibility Update Interval");
-            DrawProperty("enablePrefabRenderDistance", "Enable Max Render Distance");
-            DrawProperty("globalPrefabRenderDistance", "Max Render Distance");
-            DrawProperty("prefabRenderDistanceHysteresis", "Render Distance Hysteresis");
+            DrawRenderDistanceSettings();
             DrawProperty("enableGpuInstancingForPrefabMaterials", "Enable GPU Instancing");
             EditorGUI.indentLevel--;
         }
@@ -208,6 +206,39 @@ public class SimulationManagerInspector : Editor
         {
             if (label != null) EditorGUILayout.PropertyField(prop, new GUIContent(label), true);
             else EditorGUILayout.PropertyField(prop, true);
+        }
+    }
+
+    private void DrawRenderDistanceSettings()
+    {
+        SerializedProperty enabled = serializedObject.FindProperty("enablePrefabRenderDistance");
+        SerializedProperty distance = serializedObject.FindProperty("globalPrefabRenderDistance");
+        SerializedProperty hysteresis = serializedObject.FindProperty("prefabRenderDistanceHysteresis");
+
+        if (enabled == null)
+        {
+            return;
+        }
+
+        bool wasEnabled = enabled.boolValue;
+        EditorGUI.BeginChangeCheck();
+        EditorGUILayout.PropertyField(enabled, new GUIContent("Enable Max Render Distance"), true);
+        if (EditorGUI.EndChangeCheck() && enabled.boolValue && !wasEnabled && distance != null)
+        {
+            distance.floatValue = 1500f;
+        }
+
+        using (new EditorGUI.DisabledScope(!enabled.boolValue))
+        {
+            if (distance != null)
+            {
+                EditorGUILayout.PropertyField(distance, new GUIContent("Max Render Distance"), true);
+            }
+
+            if (hysteresis != null)
+            {
+                EditorGUILayout.PropertyField(hysteresis, new GUIContent("Render Distance Hysteresis"), true);
+            }
         }
     }
 

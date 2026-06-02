@@ -179,8 +179,9 @@ internal static class GamaCodeExampleSceneBuilder
 
         if (manager != null)
         {
+            SetSerializedBool(manager, "streamPrefabsByCameraView", false);
             SetSerializedFloat(manager, "globalPrefabRenderDistance", 1500f);
-            SetSerializedBool(manager, "enablePrefabRenderDistance", true);
+            SetSerializedBool(manager, "enablePrefabRenderDistance", false);
         }
     }
 
