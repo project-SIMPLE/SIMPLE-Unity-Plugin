@@ -3985,9 +3985,22 @@ public abstract partial class SimulationManager : MonoBehaviour
         // player has been added to the simulation by the middleware
         if (state == ConnectionState.AUTHENTICATED)
         {
-            runtimePlayerBootstrapConfirmed = true;
-            Debug.Log("[GAMA] Authenticated, loading simulation data");
-            UpdateGameState(GameState.LOADING_DATA);
+            if (!runtimePlayerBootstrapConfirmed && runtimePlayerBootstrapAttempts == 0)
+            {
+                // Middleware says we're authenticated (stale player from previous session).
+                // Force a create_player first so GAMA actually registers us.
+                Debug.Log("[GAMA] Authenticated with stale session, forcing create_player before loading data");
+                runtimePlayerBootstrapConfirmed = false;
+                UpdateGameState(GameState.WAITING);
+                // Immediately trigger the bootstrap so we don't wait for next FixedUpdate
+                TryBootstrapRuntimePlayer();
+            }
+            else
+            {
+                runtimePlayerBootstrapConfirmed = true;
+                Debug.Log("[GAMA] Authenticated, loading simulation data");
+                UpdateGameState(GameState.LOADING_DATA);
+            }
         }
         else if (state == ConnectionState.CONNECTED)
         {
@@ -3999,6 +4012,15 @@ public abstract partial class SimulationManager : MonoBehaviour
                 Debug.Log("[GAMA] Connected to middleware");
                 UpdateGameState(GameState.WAITING);
             }
+        }
+        else if (state == ConnectionState.DISCONNECTED)
+        {
+            Debug.Log("[GAMA] Disconnected from middleware, resetting state");
+            runtimePlayerBootstrapConfirmed = false;
+            runtimePlayerBootstrapAttempts = 0;
+            nextRuntimePlayerBootstrapTime = 0f;
+            loadedAlready = false;
+            UpdateGameState(GameState.MENU);
         }
     }
 
