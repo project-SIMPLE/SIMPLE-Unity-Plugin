@@ -929,6 +929,10 @@ public abstract partial class SimulationManager : MonoBehaviour
                 Vector3 pos = basePos + visualState.PositionOffset;
                 Quaternion baseRotation = ResolvePrefabHeadingRotation(agentKey, prop, pt, basePos);
                 Quaternion rotation = ComposePrefabRuntimeRotation(baseRotation, visualState, obj);
+                if (agentKey.ToLower().Contains("car") || agentKey.ToLower().Contains("voiture") || agentKey.ToLower().Contains("vehicle")) {
+                    Debug.Log($"[GAMA][ROTATION] {agentKey} pt[3]={(pt.Count > 3 ? pt[3].ToString() : "N/A")} baseRot={baseRotation.eulerAngles} finalRot={rotation.eulerAngles}");
+                }
+
                 obj.transform.SetPositionAndRotation(pos, rotation);
                 previousPrefabPositions[agentKey] = basePos;
                 previousPrefabPropertyIds[agentKey] = prop.id ?? string.Empty;
@@ -4570,14 +4574,14 @@ public abstract partial class SimulationManager : MonoBehaviour
             return;
         }
 
-        if (manager.IsConnectionState(ConnectionState.AUTHENTICATED))
+        if (manager.IsConnectionState(ConnectionState.AUTHENTICATED) && runtimePlayerBootstrapAttempts > 0)
         {
             runtimePlayerBootstrapConfirmed = true;
             UpdateGameState(GameState.LOADING_DATA);
             return;
         }
 
-        if (!manager.IsConnectionState(ConnectionState.CONNECTED))
+        if (!manager.IsConnectionState(ConnectionState.CONNECTED) && !manager.IsConnectionState(ConnectionState.AUTHENTICATED))
         {
             return;
         }
