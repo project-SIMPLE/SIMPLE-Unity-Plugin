@@ -1007,31 +1007,23 @@ public abstract partial class SimulationManager : MonoBehaviour
                     }
                 }
 
-                bool wantsPrefab = visualState.PrefabOverride != null || !string.IsNullOrWhiteSpace(visualState.PrefabResourcePath);
 
                 if(!geometryMap.ContainsKey(agentKey))
                 {
-                    if (wantsPrefab)
+                    obj = polygonInputValid
+                        ? polyGen.GeneratePolygons(false, name, pt, prop, parameters.precision)
+                        : new GameObject(name);
+                   if(prop.hasCollider)
                     {
-                        obj = instantiatePrefab(name, agentKey, speciesName, prop, attributes, null, initGame);
-                    }
-                    else
-                    {
-                        obj = polygonInputValid
-                            ? polyGen.GeneratePolygons(false, name, pt, prop, parameters.precision)
-                            : new GameObject(name);
-                        if(prop.hasCollider)
+                        MeshFilter meshFilter = obj.GetComponent<MeshFilter>();
+                        if (meshFilter != null && meshFilter.sharedMesh != null)
                         {
-                            MeshFilter meshFilter = obj.GetComponent<MeshFilter>();
-                            if (meshFilter != null && meshFilter.sharedMesh != null)
-                            {
-                                MeshCollider mc = obj.AddComponent<MeshCollider>();
-                                mc.sharedMesh = meshFilter.sharedMesh;
-                                if (prop.isGrabable) mc.convex = true;
-                            }
+                            MeshCollider mc = obj.AddComponent<MeshCollider>();
+                            mc.sharedMesh = meshFilter.sharedMesh;
+                            if (prop.isGrabable) mc.convex = true;
                         }
-                        instantiateGO(obj, name, prop);
                     }
+                    instantiateGO(obj, name, prop);
                     ParentRuntimeAgent(obj, speciesName);
                     if (geometryMap != null)
                     {
@@ -1047,12 +1039,12 @@ public abstract partial class SimulationManager : MonoBehaviour
                     if (p == prop)
                     {
                         obj = obj2;
-                        if (!wantsPrefab && polygonInputValid)
+                        if (polygonInputValid)
                         {
                             polyGen.UpdatePolygon(obj, pt);
                         }
 
-                        if(!wantsPrefab && prop.hasCollider)
+                        if(prop.hasCollider)
                         {
                             MeshCollider collider = obj.GetComponent<MeshCollider>();
                             MeshFilter meshFilter = obj.GetComponent<MeshFilter>();
@@ -1065,27 +1057,8 @@ public abstract partial class SimulationManager : MonoBehaviour
                 }
 
                 Quaternion geometryBaseRotation = ResolveGeometryHeadingRotation(agentKey, prop, pt, computedWorldAnchor);
-                
-                if (wantsPrefab)
-                {
-                    Vector3 pos = computedWorldAnchor + visualState.PositionOffset;
-                    Quaternion rotation = ComposePrefabRuntimeRotation(geometryBaseRotation, visualState, obj);
-                    
-                    if (agentKey.ToLower().Contains("car") || agentKey.ToLower().Contains("voiture") || agentKey.ToLower().Contains("vehicle")) {
-                        Debug.Log($"[GAMA][ROTATION] {agentKey} fromGeometry baseRot={geometryBaseRotation.eulerAngles} finalRot={rotation.eulerAngles}");
-                    }
-                    
-                    obj.transform.SetPositionAndRotation(pos, rotation);
-                    previousPrefabPositions[agentKey] = computedWorldAnchor;
-                    previousPrefabPropertyIds[agentKey] = prop.id ?? string.Empty;
-
-                    ApplyAgentVisualState(obj, prop, visualState, true, Vector3.zero);
-                }
-                else
-                {
-                    ApplyAgentVisualState(obj, prop, visualState, false, polygonBasePosition, computedWorldAnchor, geometryBaseRotation);
-                    HandleInvalidDynamicGeometryFallback(obj, speciesName, visualState, computedWorldAnchor, dynamicUpdate, !polygonInputValid, geometryBaseRotation);
-                }
+                ApplyAgentVisualState(obj, prop, visualState, false, polygonBasePosition, computedWorldAnchor, geometryBaseRotation);
+                HandleInvalidDynamicGeometryFallback(obj, speciesName, visualState, computedWorldAnchor, dynamicUpdate, !polygonInputValid, geometryBaseRotation);
                 ApplyImmediateStreamingState(obj, prop, immediateStreamingCamera, immediateFrustumEnabled);
                 RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, attributes, polygonBasePosition, geometryBaseRotation, computedWorldAnchor);
                 if(toRemove != null)
