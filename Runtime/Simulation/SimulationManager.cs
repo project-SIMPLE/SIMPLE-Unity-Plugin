@@ -1038,10 +1038,11 @@ public abstract partial class SimulationManager : MonoBehaviour
                     }
                 }
 
-                ApplyAgentVisualState(obj, prop, visualState, false, polygonBasePosition, computedWorldAnchor);
-                HandleInvalidDynamicGeometryFallback(obj, speciesName, visualState, computedWorldAnchor, dynamicUpdate, !polygonInputValid);
+                Quaternion geometryBaseRotation = ResolveGeometryHeadingRotation(agentKey, prop, pt, computedWorldAnchor);
+                ApplyAgentVisualState(obj, prop, visualState, false, polygonBasePosition, computedWorldAnchor, geometryBaseRotation);
+                HandleInvalidDynamicGeometryFallback(obj, speciesName, visualState, computedWorldAnchor, dynamicUpdate, !polygonInputValid, geometryBaseRotation);
                 ApplyImmediateStreamingState(obj, prop, immediateStreamingCamera, immediateFrustumEnabled);
-                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, attributes, polygonBasePosition, Quaternion.identity, computedWorldAnchor);
+                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, attributes, polygonBasePosition, geometryBaseRotation, computedWorldAnchor);
                 if(toRemove != null)
                 {
                     toRemove.Remove(agentKey);
@@ -2612,15 +2613,46 @@ public abstract partial class SimulationManager : MonoBehaviour
             headingFromMovement = true;
         }
 
-        float rotationCoeff = prop != null ? prop.rotationCoeffF : 1f;
-        if (headingFromMovement && Mathf.Abs(rotationCoeff) <= 0.000001f)
-        {
-            rotationCoeff = 1f;
-        }
-
+        bool hasHeading = headingFromMovement || rawHeading != 0 || Mathf.Abs(heading) > 0.000001f;
+        float rotationCoeff = ResolveRuntimeRotationCoeff(prop, hasHeading);
         float rotationOffset = prop != null ? prop.rotationOffsetF : 0f;
         float rotation = rotationCoeff * heading + rotationOffset;
         return Quaternion.AngleAxis(rotation, Vector3.up);
+    }
+
+    private Quaternion ResolveGeometryHeadingRotation(
+        string agentName,
+        PropertiesGAMA prop,
+        int[] pointData,
+        Vector3 currentAnchor)
+    {
+        float heading;
+        bool hasHeading = TryResolveHeadingFromPreviousGeometryMovement(agentName, currentAnchor, out heading);
+        if (!hasHeading)
+        {
+            hasHeading = TryComputeHeadingFromPolygon(pointData, out heading);
+        }
+
+        if (!hasHeading)
+        {
+            return Quaternion.identity;
+        }
+
+        float rotationCoeff = ResolveRuntimeRotationCoeff(prop, true);
+        float rotationOffset = prop != null ? prop.rotationOffsetF : 0f;
+        float rotation = rotationCoeff * heading + rotationOffset;
+        return Quaternion.AngleAxis(rotation, Vector3.up);
+    }
+
+    private static float ResolveRuntimeRotationCoeff(PropertiesGAMA prop, bool hasHeading)
+    {
+        float rotationCoeff = prop != null ? prop.rotationCoeffF : 1f;
+        if (hasHeading && Mathf.Abs(rotationCoeff) <= 0.000001f)
+        {
+            return 1f;
+        }
+
+        return rotationCoeff;
     }
 
     private static Quaternion ComposePrefabRuntimeRotation(
@@ -2738,6 +2770,68 @@ public abstract partial class SimulationManager : MonoBehaviour
         return true;
     }
 
+    private bool TryResolveHeadingFromPreviousGeometryMovement(
+        string agentName,
+        Vector3 currentAnchor,
+        out float heading)
+    {
+        heading = 0f;
+        if (string.IsNullOrWhiteSpace(agentName))
+        {
+            return false;
+        }
+
+        RuntimeAgentRecord record;
+        if (!runtimeAgentRecords.TryGetValue(agentName, out record) || record == null || !record.HasVisualAnchor)
+        {
+            return false;
+        }
+
+        return TryComputeHeadingFromDelta(record.VisualAnchor, currentAnchor, out heading);
+    }
+
+    private bool TryComputeHeadingFromPolygon(int[] points, out float heading)
+    {
+        heading = 0f;
+        if (points == null || points.Length < 4)
+        {
+            return false;
+        }
+
+        Vector2 bestDelta = Vector2.zero;
+        float bestSqrDistance = 0f;
+        int pointCount = points.Length / 2;
+        for (int i = 0; i < pointCount; i++)
+        {
+            Vector2 a = converter != null
+                ? converter.fromGAMACRS2D(points[i * 2], points[i * 2 + 1])
+                : new Vector2(points[i * 2], points[i * 2 + 1]);
+
+            for (int j = i + 1; j < pointCount; j++)
+            {
+                Vector2 b = converter != null
+                    ? converter.fromGAMACRS2D(points[j * 2], points[j * 2 + 1])
+                    : new Vector2(points[j * 2], points[j * 2 + 1]);
+
+                Vector2 delta = b - a;
+                float sqrDistance = delta.sqrMagnitude;
+                if (sqrDistance > bestSqrDistance)
+                {
+                    bestSqrDistance = sqrDistance;
+                    bestDelta = delta;
+                }
+            }
+        }
+
+        if (bestSqrDistance <= 0.0001f)
+        {
+            return false;
+        }
+
+        heading = Mathf.Atan2(bestDelta.y, bestDelta.x) * Mathf.Rad2Deg;
+        return true;
+    }
+
     private float DecodeGamaAngle(int rawAngle)
     {
         int precision = parameters != null ? Mathf.Max(1, parameters.precision) : 1;
@@ -2761,7 +2855,8 @@ public abstract partial class SimulationManager : MonoBehaviour
         GamaAgentVisualState visualState,
         bool prefabAgent,
         Vector3 basePosition,
-        Vector3? computedWorldAnchor = null)
+        Vector3? computedWorldAnchor = null,
+        Quaternion? baseRotation = null)
     {
         if (obj == null)
         {
@@ -2778,6 +2873,9 @@ public abstract partial class SimulationManager : MonoBehaviour
         obj.transform.localScale = keepLogicalRootScaleStable
             ? Vector3.one
             : new Vector3(scale, scale, scale);
+
+        Quaternion visualRotation = (baseRotation.HasValue ? baseRotation.Value : Quaternion.identity) *
+                                    Quaternion.Euler(visualState.RotationOffsetEuler);
 
         if (!prefabAgent)
         {
@@ -2860,7 +2958,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                 {
                     visualOverride.position = ResolveCurrentVisualWorldAnchor(obj);
                 }
-                visualOverride.rotation = Quaternion.Euler(visualState.RotationOffsetEuler);
+                visualOverride.rotation = visualRotation;
                 visualOverride.localScale = ResolveVisualOverrideLocalScale(scale, visualState, keepLogicalRootScaleStable);
 
                 string speciesKey = prop != null ? prop.id : "unknown";
@@ -3045,7 +3143,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             else
             {
                 Vector3? visualAnchor = record.HasVisualAnchor ? record.VisualAnchor : (Vector3?)null;
-                ApplyAgentVisualState(root, prop, visualState, false, basePosition, visualAnchor);
+                ApplyAgentVisualState(root, prop, visualState, false, basePosition, visualAnchor, baseRotation);
             }
 
             ApplyImmediateStreamingState(root, prop, GetPrefabStreamingCamera(), frustumReady: false);
@@ -3201,7 +3299,8 @@ public abstract partial class SimulationManager : MonoBehaviour
         GamaAgentVisualState visualState,
         Vector3 computedWorldAnchor,
         bool dynamicUpdate,
-        bool forceFallback)
+        bool forceFallback,
+        Quaternion baseRotation)
     {
         if (obj == null)
         {
@@ -3244,7 +3343,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         fallback.position = hasComputedAnchor
             ? computedWorldAnchor + visualState.PositionOffset
             : GetRuntimeAgentWorldAnchor(obj);
-        fallback.rotation = Quaternion.Euler(visualState.RotationOffsetEuler);
+        fallback.rotation = baseRotation * Quaternion.Euler(visualState.RotationOffsetEuler);
         float parentScale = Mathf.Max(0.0001f, visualState.ScaleMultiplier);
         fallback.localScale = Vector3.one * (Mathf.Max(0.2f, visualState.ScaleMultiplier) / parentScale);
         ChangeColor(fallback.gameObject, visualState.HasColor ? visualState.Color : new Color32(255, 80, 80, 255));
