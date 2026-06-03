@@ -695,42 +695,8 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private void DrawExperimentImportTab()
     {
-        EditorGUILayout.LabelField("GAMA Preview", EditorStyles.boldLabel);
-        EditorGUILayout.HelpBox(
-            "Recommended workflow: 'Workspace Explorer' tab → folder path or .gaml → Explore → 'Open in GAMA Preview' on the desired row. " +
-            "You can also enter the path here and click Explore. " +
-            "Without middleware / cumulative preview, use the grid preview and agent settings (scale, color, visibility) as before. " +
-            "For a static preview faithful to the world after warmup, launch the middleware, then use the preview section below.",
-            MessageType.Info);
-
-        EditorGUILayout.Space();
-        DrawExperimentPathInput();
-        DrawExperimentToolbar();
-
-        EditorGUILayout.Space();
-        EditorGUILayout.HelpBox(experimentStatus, MessageType.None);
-
-        if (experimentOptions.Count > 0)
-        {
-            DrawExperimentSelection();
-        }
-
-        if (analysis == null && experimentOptions.Count > 0)
-        {
-            AnalyzeSelectedExperiment();
-        }
-
         experimentScroll = EditorGUILayout.BeginScrollView(experimentScroll);
-
-        if (analysis != null)
-        {
-            DrawExperimentSummary();
-            DrawSceneSettings();
-        }
-
-        EditorGUILayout.Space();
         DrawStaticPreviewMiddlewareJsonSection();
-
         EditorGUILayout.EndScrollView();
     }
 
@@ -894,6 +860,42 @@ public sealed class GamaPanelWindow : EditorWindow
             EditorGUILayout.HelpBox(captureRuntimeStatus, MessageType.None);
         }
 
+        EditorGUILayout.Space(12f);
+        headlessExportSectionExpanded = EditorGUILayout.Foldout(headlessExportSectionExpanded, "Advanced Preview Settings", true);
+        if (!headlessExportSectionExpanded)
+        {
+            return;
+        }
+
+        EditorGUI.indentLevel++;
+        EditorGUILayout.LabelField("Experiment Source", EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox(
+            "Recommended workflow: 'Workspace Explorer (alpha)' tab → folder path or .gaml → Explore → 'Open in GAMA Preview' on the desired row. " +
+            "You can also enter the path here and click Explore. Without middleware / cumulative preview, use the grid preview and agent settings (scale, color, visibility) as before.",
+            MessageType.Info);
+
+        DrawExperimentPathInput();
+        DrawExperimentToolbar();
+
+        EditorGUILayout.Space();
+        EditorGUILayout.HelpBox(experimentStatus, MessageType.None);
+
+        if (experimentOptions.Count > 0)
+        {
+            DrawExperimentSelection();
+        }
+
+        if (analysis == null && experimentOptions.Count > 0)
+        {
+            AnalyzeSelectedExperiment();
+        }
+
+        if (analysis != null)
+        {
+            DrawExperimentSummary();
+            DrawSceneSettings();
+        }
+
         if (analysis != null || agentOverrides.Count > 0)
         {
             EditorGUILayout.Space(8f);
@@ -909,13 +911,6 @@ public sealed class GamaPanelWindow : EditorWindow
         else if (GameObject.Find(StaticPreviewRootName) != null)
         {
             DrawPreviewValidationControls();
-        }
-
-        EditorGUILayout.Space(12f);
-        headlessExportSectionExpanded = EditorGUILayout.Foldout(headlessExportSectionExpanded, "Advanced Preview Settings", true);
-        if (!headlessExportSectionExpanded)
-        {
-            return;
         }
 
         EditorGUI.BeginChangeCheck();
@@ -1146,6 +1141,8 @@ public sealed class GamaPanelWindow : EditorWindow
                 });
             }
         }
+
+        EditorGUI.indentLevel--;
     }
 
     private void DrawMiddlewareSection(bool busy)
