@@ -6,9 +6,11 @@ using UnityEngine;
 
 internal static class GamaPrefabSelectionUtility
 {
+    private const float ClearButtonWidth = 44f;
     private const float BrowseButtonWidth = 28f;
     private const double CacheLifetimeSeconds = 8.0;
     private static readonly List<GameObject> CachedVisualPrefabs = new List<GameObject>();
+    private static readonly Dictionary<string, GameObject> PendingSelections = new Dictionary<string, GameObject>();
     private static double lastCacheRefreshTime = -1000.0;
 
     private sealed class PrefabChoice
@@ -25,7 +27,12 @@ internal static class GamaPrefabSelectionUtility
     {
         EditorGUILayout.BeginHorizontal();
         EditorGUILayout.PrefixLabel(label);
-        GameObject selected = DrawPrefabSelectorControl(current, speciesName, prefabHint, GUILayout.ExpandWidth(true));
+        GameObject selected = DrawPrefabSelectorControl(
+            "full|" + label + "|" + speciesName + "|" + prefabHint,
+            current,
+            speciesName,
+            prefabHint,
+            GUILayout.ExpandWidth(true));
         EditorGUILayout.EndHorizontal();
         return selected;
     }
@@ -38,33 +45,44 @@ internal static class GamaPrefabSelectionUtility
     {
         EditorGUILayout.BeginHorizontal(GUILayout.Width(width));
         GameObject selected = DrawPrefabSelectorControl(
+            "compact|" + speciesName + "|" + prefabHint,
             current,
             speciesName,
             prefabHint,
-            GUILayout.Width(Mathf.Max(80f, width - BrowseButtonWidth - 4f)));
+            GUILayout.Width(Mathf.Max(80f, width - ClearButtonWidth - BrowseButtonWidth - 8f)));
         EditorGUILayout.EndHorizontal();
         return selected;
     }
 
     private static GameObject DrawPrefabSelectorControl(
+        string key,
         GameObject current,
         string speciesName,
         string prefabHint,
-        params GUILayoutOption[] popupOptions)
+        params GUILayoutOption[] buttonOptions)
     {
-        List<PrefabChoice> choices = BuildPrefabChoices(current, speciesName, prefabHint);
-        int selectedIndex = ResolveSelectedIndex(choices, current);
-
-        string[] labels = new string[choices.Count];
-        for (int i = 0; i < choices.Count; i++)
+        GameObject pending;
+        if (PendingSelections.TryGetValue(key, out pending))
         {
-            labels[i] = choices[i].Label;
+            PendingSelections.Remove(key);
+            current = pending;
+            GUI.changed = true;
         }
 
-        int editedIndex = EditorGUILayout.Popup(selectedIndex, labels, popupOptions);
-        GameObject selected = editedIndex >= 0 && editedIndex < choices.Count
-            ? choices[editedIndex].Prefab
-            : current;
+        List<PrefabChoice> choices = BuildPrefabChoices(current, speciesName, prefabHint);
+        GameObject selected = current;
+
+        if (GUILayout.Button(BuildCurrentButtonLabel(current), EditorStyles.popup, buttonOptions))
+        {
+            ShowPrefabMenu(key, choices, current);
+        }
+
+        EditorGUI.BeginDisabledGroup(current == null);
+        if (GUILayout.Button("Clear", GUILayout.Width(ClearButtonWidth)))
+        {
+            selected = null;
+        }
+        EditorGUI.EndDisabledGroup();
 
         if (GUILayout.Button("...", GUILayout.Width(BrowseButtonWidth)))
         {
@@ -76,6 +94,70 @@ internal static class GamaPrefabSelectionUtility
         }
 
         return selected;
+    }
+
+    private static string BuildCurrentButtonLabel(GameObject current)
+    {
+        return current != null ? current.name : "None";
+    }
+
+    private static void ShowPrefabMenu(string key, List<PrefabChoice> choices, GameObject current)
+    {
+        GenericMenu menu = new GenericMenu();
+        for (int i = 0; i < choices.Count; i++)
+        {
+            PrefabChoice choice = choices[i];
+            GameObject prefab = choice.Prefab;
+            bool selected = prefab == current;
+            menu.AddItem(
+                new GUIContent(SanitizeMenuLabel(choice.Label)),
+                selected,
+                () => QueueSelection(key, prefab));
+        }
+
+        menu.AddSeparator(string.Empty);
+        menu.AddItem(new GUIContent("Refresh prefab list"), false, () => RefreshPrefabCache());
+        menu.ShowAsContext();
+    }
+
+    private static string SanitizeMenuLabel(string label)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            return "Unnamed";
+        }
+
+        return label.Replace("/", " > ").Replace("\\", " > ");
+    }
+
+    private static void QueueSelection(string key, GameObject prefab)
+    {
+        PendingSelections[key] = prefab;
+        GUI.changed = true;
+        EditorApplication.delayCall += RepaintProjectWindows;
+    }
+
+    private static void RefreshPrefabCache()
+    {
+        CachedVisualPrefabs.Clear();
+        lastCacheRefreshTime = -1000.0;
+        EditorApplication.delayCall += RepaintProjectWindows;
+    }
+
+    private static void RepaintProjectWindows()
+    {
+        EditorApplication.RepaintProjectWindow();
+        EditorApplication.RepaintHierarchyWindow();
+        SceneView.RepaintAll();
+
+        EditorWindow[] windows = Resources.FindObjectsOfTypeAll<EditorWindow>();
+        for (int i = 0; i < windows.Length; i++)
+        {
+            if (windows[i] != null)
+            {
+                windows[i].Repaint();
+            }
+        }
     }
 
     private static List<PrefabChoice> BuildPrefabChoices(
@@ -157,24 +239,6 @@ internal static class GamaPrefabSelectionUtility
         }
 
         return string.IsNullOrWhiteSpace(folder) ? name : name + "  [" + folder + "]";
-    }
-
-    private static int ResolveSelectedIndex(List<PrefabChoice> choices, GameObject current)
-    {
-        if (current == null)
-        {
-            return 0;
-        }
-
-        for (int i = 0; i < choices.Count; i++)
-        {
-            if (choices[i].Prefab == current)
-            {
-                return i;
-            }
-        }
-
-        return 0;
     }
 
     private static IEnumerable<GameObject> FindVisualPrefabs(string speciesName, string prefabHint)
