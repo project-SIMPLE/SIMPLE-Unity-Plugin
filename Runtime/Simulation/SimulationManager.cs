@@ -3954,6 +3954,7 @@ public abstract partial class SimulationManager : MonoBehaviour
     // ############################################# HANDLERS ########################################
     private void HandleConnectionStateChanged(ConnectionState state)
     {
+        SyncConnectionIdFromManager();
 
         // player has been added to the simulation by the middleware
         if (state == ConnectionState.AUTHENTICATED)
@@ -4019,7 +4020,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         subscribedConnectionManager.OnServerMessageReceived += HandleServerMessageReceived;
         subscribedConnectionManager.OnConnectionAttempted += HandleConnectionAttempted;
         subscribedConnectionManager.OnConnectionStateChanged += HandleConnectionStateChanged;
-        connectionID["id"] = subscribedConnectionManager.GetConnectionId();
+        SyncConnectionIdFromManager();
         Debug.Log("[GAMA][RUNTIME][CONNECTION] subscribed to ConnectionManager");
         if (subscribedConnectionManager.IsConnectionState(ConnectionState.AUTHENTICATED))
         {
@@ -4030,6 +4031,18 @@ public abstract partial class SimulationManager : MonoBehaviour
             HandleConnectionStateChanged(ConnectionState.CONNECTED);
         }
         return true;
+    }
+
+    private void SyncConnectionIdFromManager()
+    {
+        ConnectionManager manager = subscribedConnectionManager != null
+            ? subscribedConnectionManager
+            : ConnectionManager.Instance;
+        string id = manager != null ? manager.GetConnectionId() : StaticInformation.getId();
+        if (!string.IsNullOrWhiteSpace(id))
+        {
+            connectionID["id"] = id;
+        }
     }
 
     private void RetrySubscribeConnectionManagerIfNeeded()

@@ -98,9 +98,15 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
                         SendMessageToServer(jsonStringId);
                         break;
                     case "json_state":
-                        OnConnectionStateReceived?.Invoke(jsonObj);
+                        string serverPlayerId = (string)jsonObj["id_player"] ?? (string)jsonObj["id"];
                         bool authenticated = (bool)jsonObj["in_game"];
                         bool connected = (bool)jsonObj["connected"];
+                        if (connected)
+                        {
+                            AdoptMiddlewarePlayerIdIfNeeded(serverPlayerId);
+                        }
+
+                        OnConnectionStateReceived?.Invoke(jsonObj);
 
                         if (authenticated && connected)
                         {
@@ -138,6 +144,29 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
         catch (System.Exception ex)
         {
             Debug.LogWarning("[GAMA] Error parsing message: " + ex.Message);
+        }
+    }
+
+    private void AdoptMiddlewarePlayerIdIfNeeded(string serverPlayerId)
+    {
+        if (string.IsNullOrWhiteSpace(serverPlayerId))
+        {
+            return;
+        }
+
+        string currentId = StaticInformation.getId();
+        string cleanServerPlayerId = serverPlayerId.Trim();
+        if (string.Equals(currentId, cleanServerPlayerId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (StaticInformation.AdoptSessionId(cleanServerPlayerId))
+        {
+            Debug.LogWarning(
+                "[GAMA][CONNECTION][REBIND] Middleware reports player id=" + cleanServerPlayerId +
+                " while Unity requested id=" + currentId +
+                ". Adopting middleware id for this Play session.");
         }
     }
 

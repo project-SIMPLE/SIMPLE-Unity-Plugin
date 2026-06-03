@@ -25,6 +25,23 @@ public static class StaticInformation
         }
     }
 
+    public static bool AdoptSessionId(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return false;
+        }
+
+        string safeId = id.Trim();
+        if (string.Equals(connectionId, safeId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        connectionId = safeId;
+        return true;
+    }
+
     public static string getId()
     {
         if (connectionId == null || connectionId.Length == 0)

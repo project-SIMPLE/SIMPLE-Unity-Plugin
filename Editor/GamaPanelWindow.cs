@@ -1668,6 +1668,12 @@ public sealed class GamaPanelWindow : EditorWindow
         return StaticInformation.CreateUniqueSessionId("editor_capture");
     }
 
+    private static string GetGamaExternalPreviewConnectionId()
+    {
+        StaticInformation.EnsureSessionIdPrefix("unity_play");
+        return StaticInformation.getId();
+    }
+
     private static int GetGamaPreviewHeartbeatMs()
     {
         return 24 * 60 * 60 * 1000;
@@ -1677,6 +1683,14 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         pendingPreviewPlayerCleanupId = string.Empty;
         lastPreviewCapturePlayerId = string.Empty;
+        if (EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            captureRuntimeStatus = "Preview generation is disabled during Play mode. Stop Play mode before generating a new editor preview.";
+            Debug.LogWarning("[GAMA][PREVIEW] Capture ignored during Play mode to avoid stealing the runtime websocket player.");
+            Repaint();
+            return;
+        }
+
         if (captureFlowActive || captureTask != null)
         {
             EditorUtility.DisplayDialog("Capture", "A capture is already in progress.", "OK");
@@ -1759,9 +1773,11 @@ public sealed class GamaPanelWindow : EditorWindow
         string host = string.IsNullOrWhiteSpace(captureHost) ? PlayerPrefs.GetString("IP", "localhost") : captureHost.Trim();
         string port = string.IsNullOrWhiteSpace(capturePort) ? PlayerPrefs.GetString("PORT", "8080") : capturePort.Trim();
         string rawId = string.IsNullOrWhiteSpace(captureConnectionId) ? string.Empty : captureConnectionId.Trim();
-        string id = selectedGamaPreviewMode || directOpenGamaPreviewMode
-            ? GetGamaPreviewConnectionId()
-            : string.IsNullOrEmpty(rawId) ? StaticInformation.getId() : rawId;
+        string id = selectedGamaPreviewMode
+            ? GetGamaExternalPreviewConnectionId()
+            : directOpenGamaPreviewMode
+                ? GetGamaPreviewConnectionId()
+                : string.IsNullOrEmpty(rawId) ? StaticInformation.getId() : rawId;
         string previewCleanupId = selectedGamaPreviewMode ? id : string.Empty;
         lastPreviewCapturePlayerId = id;
         string outDir = string.IsNullOrWhiteSpace(gamaJsonExportOutputDir) ? null : gamaJsonExportOutputDir.Trim();

@@ -26,8 +26,8 @@ public static class GamaPreviewPlayModeGuard
     {
         if (state == PlayModeStateChange.ExitingEditMode)
         {
-            StaticInformation.ResetSessionId("unity_play");
-            Debug.Log("[GAMA][PLAY] New Unity Play player id: " + StaticInformation.getId());
+            StaticInformation.EnsureSessionIdPrefix("unity_play");
+            Debug.Log("[GAMA][PLAY] Unity Play player id: " + StaticInformation.getId());
 
             GameObject root = FindPreviewRoot();
             if (root != null)
