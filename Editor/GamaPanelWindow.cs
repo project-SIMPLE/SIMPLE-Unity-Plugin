@@ -860,6 +860,8 @@ public sealed class GamaPanelWindow : EditorWindow
             EditorGUILayout.HelpBox(captureRuntimeStatus, MessageType.None);
         }
 
+        DrawPreviewAppearanceControls();
+
         EditorGUILayout.Space(12f);
         headlessExportSectionExpanded = EditorGUILayout.Foldout(headlessExportSectionExpanded, "Advanced Preview Settings", true);
         if (!headlessExportSectionExpanded)
@@ -894,23 +896,6 @@ public sealed class GamaPanelWindow : EditorWindow
         {
             DrawExperimentSummary();
             DrawSceneSettings();
-        }
-
-        if (analysis != null || agentOverrides.Count > 0)
-        {
-            EditorGUILayout.Space(8f);
-            DrawAgentSettings();
-
-            if (analysis != null)
-            {
-                DrawApplyControls();
-            }
-
-            DrawPreviewValidationControls();
-        }
-        else if (GameObject.Find(StaticPreviewRootName) != null)
-        {
-            DrawPreviewValidationControls();
         }
 
         EditorGUI.BeginChangeCheck();
@@ -1143,6 +1128,29 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         EditorGUI.indentLevel--;
+    }
+
+    private void DrawPreviewAppearanceControls()
+    {
+        bool hasPreviewRoot = GameObject.Find(StaticPreviewRootName) != null;
+        bool hasEditablePreview = analysis != null || agentOverrides.Count > 0;
+        if (!hasPreviewRoot && !hasEditablePreview)
+        {
+            return;
+        }
+
+        EditorGUILayout.Space(8f);
+        if (hasEditablePreview)
+        {
+            DrawAgentSettings();
+
+            if (analysis != null)
+            {
+                DrawApplyControls();
+            }
+        }
+
+        DrawPreviewValidationControls();
     }
 
     private void DrawMiddlewareSection(bool busy)
