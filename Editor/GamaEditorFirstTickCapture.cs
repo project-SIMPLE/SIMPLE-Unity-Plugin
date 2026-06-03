@@ -64,8 +64,7 @@ internal static class GamaEditorFirstTickCapture
     }
 
     /// <summary>
-    /// Même identifiant que <see cref="SimulationManager"/> au Play (Player_XX selon l'IP locale).
-    /// Le middleware indexe aussi les sockets par adresse IP : un id différent sur la même machine provoque un conflit.
+    /// Uses the explicit capture id when Unity starts an isolated preview session; otherwise uses the current runtime id.
     /// </summary>
     public static string ResolveMiddlewarePlayerId(string connectionId)
     {
@@ -79,8 +78,9 @@ internal static class GamaEditorFirstTickCapture
 
     private static IEnumerable<string> CollectGhostPlayerIdsToPurge(string capturePlayerId)
     {
-        HashSet<string> ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> ids = new HashSet<string>(StringComparer.Ordinal);
         ids.Add("Editor_Capture");
+        ids.Add("editor_capture");
 
         string runtimeId = StaticInformation.getId();
         if (!string.IsNullOrWhiteSpace(runtimeId) &&
@@ -1928,7 +1928,7 @@ internal static class GamaEditorFirstTickCapture
             return;
         }
 
-        string connectionId = string.IsNullOrWhiteSpace(state.ConnectionId) ? "Editor_Capture" : state.ConnectionId;
+        string connectionId = string.IsNullOrWhiteSpace(state.ConnectionId) ? StaticInformation.getId() : state.ConnectionId;
         state.DirectCreatePlayerAttempts++;
         state.NextDirectCreatePlayerUtc = DateTime.UtcNow.AddSeconds(1);
         try

@@ -25,6 +25,9 @@ public static class GamaPreviewPlayModeGuard
     {
         if (state == PlayModeStateChange.ExitingEditMode)
         {
+            StaticInformation.ResetSessionId("unity_play");
+            Debug.Log("[GAMA][PLAY] New Unity Play player id: " + StaticInformation.getId());
+
             GameObject root = FindPreviewRoot();
             if (root != null)
             {
@@ -132,6 +135,22 @@ public static class GamaPreviewPlayModeGuard
                         .GetAwaiter()
                         .GetResult();
 
+                if (hasTarget && result != null && !result.Success && ShouldAttachToCurrentMonitorFallback(result.Error))
+                {
+                    Debug.LogWarning("[GAMA][PLAY] Strict middleware catalog launch failed; attaching to current monitor experiment instead. " +
+                                     "The Unity selection remains model=" + (modelPath ?? string.Empty) +
+                                     " experiment=" + (experimentName ?? string.Empty) +
+                                     ". Error: " + (result.Error ?? "unknown"));
+
+                    result = GamaEditorMiddlewareOrchestrator.LaunchCurrentMonitorExperimentAsync(
+                            host,
+                            monitorPort,
+                            cts.Token,
+                            Debug.Log)
+                        .GetAwaiter()
+                        .GetResult();
+                }
+
                 if (result != null && result.Success)
                 {
                     if (hasTarget)
@@ -163,5 +182,19 @@ public static class GamaPreviewPlayModeGuard
         {
             Debug.LogWarning("[GAMA][PLAY] GAMA auto-launch exception before Play: " + ex.Message);
         }
+    }
+
+    private static bool ShouldAttachToCurrentMonitorFallback(string error)
+    {
+        if (string.IsNullOrWhiteSpace(error))
+        {
+            return false;
+        }
+
+        return error.IndexOf("catalogue middleware", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               error.IndexOf("catalog", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               error.IndexOf("introuvable", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               error.IndexOf("Aucun match", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               error.IndexOf("absent du catalogue", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 }

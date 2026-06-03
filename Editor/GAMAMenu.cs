@@ -32,19 +32,24 @@ public class GAMAMenu : ScriptableObject
     // [MenuItem("GAMA/Setup Scene")] // Hidden for demo — accessible via GAMA Panel > Setup Scene
     public static void SetupScene()
     {
-        SetupSceneCore(true);
+        SetupSceneDesktop();
+    }
+
+    public static void SetupSceneDesktop()
+    {
+        SetupSceneCore(false, false);
     }
 
     // [MenuItem("GAMA/Setup Scene (VR Simulator)")] // Hidden for demo — accessible via GAMA Panel > Setup Scene
     public static void SetupSceneVrSimulator()
     {
-        SetupSceneCore(true);
+        SetupSceneCore(true, true);
     }
 
     // [MenuItem("GAMA/Setup Scene (Headset Ready)")] // Hidden for demo — accessible via GAMA Panel > Setup Scene
     public static void SetupSceneHeadsetReady()
     {
-        SetupSceneCore(false);
+        SetupSceneCore(false, true);
     }
 
     public static void ConfigureVrProjectSettings()
@@ -55,10 +60,18 @@ public class GAMAMenu : ScriptableObject
         Debug.Log("[GAMA] VR project settings configured.");
     }
 
-    private static void SetupSceneCore(bool configureEditorSimulator)
+    private static void SetupSceneCore(bool configureEditorSimulator, bool configureVrProjectSettings)
     {
         EnsureRequiredTags();
-        EnsureVrReadyProjectSettings();
+        if (configureVrProjectSettings)
+        {
+            EnsureVrReadyProjectSettings();
+        }
+        else
+        {
+            EnsureInputSystemEnabled();
+        }
+
         int removedRootObjects = ClearActiveSceneObjects(configureEditorSimulator);
 
         ProjectSimple.GamaUnity.Runtime.GamaInitializer.InitializeGama();
@@ -72,7 +85,10 @@ public class GAMAMenu : ScriptableObject
 
         EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
         AssetDatabase.SaveAssets();
-        Debug.Log("[GAMA] Scene setup complete (" + (configureEditorSimulator ? "VR simulator" : "headset-ready") + "). Removed " + removedRootObjects + " previous root object(s).");
+        string mode = configureVrProjectSettings
+            ? (configureEditorSimulator ? "VR simulator" : "headset-ready")
+            : "desktop/no-XR";
+        Debug.Log("[GAMA] Scene setup complete (" + mode + "). Removed " + removedRootObjects + " previous root object(s).");
     }
 
     private static void EnsureVrReadyProjectSettings()

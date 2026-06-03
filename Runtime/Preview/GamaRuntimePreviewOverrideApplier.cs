@@ -148,11 +148,11 @@ public static class GamaRuntimePreviewOverrideApplier
         {
             if (e == null) continue;
             if (string.IsNullOrWhiteSpace(e.speciesName) && string.IsNullOrWhiteSpace(e.speciesKey)) continue;
-            if (!IsExactRuntimeContextEntry(e, wantedModel, wantedExperiment)) continue;
-            
+
             string key = !string.IsNullOrWhiteSpace(e.speciesKey) ? e.speciesKey : e.speciesName;
             key = key.Trim();
-            int score = e.GetSelectionScore(
+            int score = GetRuntimeSelectionScore(
+                e,
                 wantedModel,
                 wantedExperiment,
                 GamaSpeciesRenderOverrides.NormalizeKey(key));
@@ -172,18 +172,89 @@ public static class GamaRuntimePreviewOverrideApplier
         LogLoadedOverrides(bestScoresBySpecies, modelPath, experimentName);
     }
 
+    private static int GetRuntimeSelectionScore(
+        GamaSpeciesRenderOverrideEntry entry,
+        string wantedModel,
+        string wantedExperiment,
+        string wantedSpecies)
+    {
+        if (entry == null)
+        {
+            return -1;
+        }
+
+        if (IsExactRuntimeContextEntry(entry, wantedModel, wantedExperiment, wantedSpecies))
+        {
+            int exactScore = entry.GetSelectionScore(wantedModel, wantedExperiment, wantedSpecies);
+            return exactScore;
+        }
+
+        if (!IsActiveSelectionFallbackEntry(entry, wantedExperiment, wantedSpecies))
+        {
+            return -1;
+        }
+
+        int fallbackScore = 250 + entry.GetOverrideMeaningScore();
+        if (entry.HasAnyOverride)
+        {
+            fallbackScore += 1000;
+        }
+
+        if (entry.HasStrongRuntimeOverride())
+        {
+            fallbackScore += 10000;
+        }
+
+        return fallbackScore;
+    }
+
     private static bool IsExactRuntimeContextEntry(
         GamaSpeciesRenderOverrideEntry entry,
         string wantedModel,
-        string wantedExperiment)
+        string wantedExperiment,
+        string wantedSpecies)
     {
         if (entry == null)
         {
             return false;
         }
 
-        return string.Equals(GamaSpeciesRenderOverrides.NormalizeKey(entry.modelPath), wantedModel, StringComparison.Ordinal) &&
-               string.Equals(GamaSpeciesRenderOverrides.NormalizeKey(entry.experimentName), wantedExperiment, StringComparison.Ordinal);
+        return string.Equals(
+                   GamaSpeciesRenderOverrides.NormalizeKey(entry.modelPath),
+                   wantedModel,
+                   StringComparison.Ordinal) &&
+               string.Equals(
+                   GamaSpeciesRenderOverrides.NormalizeKey(entry.experimentName),
+                   wantedExperiment,
+                   StringComparison.Ordinal) &&
+               string.Equals(
+                   GamaSpeciesRenderOverrides.NormalizeKey(entry.GetSpeciesName()),
+                   wantedSpecies,
+                   StringComparison.Ordinal);
+    }
+
+    private static bool IsActiveSelectionFallbackEntry(
+        GamaSpeciesRenderOverrideEntry entry,
+        string wantedExperiment,
+        string wantedSpecies)
+    {
+        if (entry == null || string.IsNullOrWhiteSpace(wantedExperiment))
+        {
+            return false;
+        }
+
+        return string.Equals(
+                   GamaSpeciesRenderOverrides.NormalizeKey(entry.modelPath),
+                   "gama_active_selection",
+                   StringComparison.Ordinal) &&
+               string.Equals(
+                   GamaSpeciesRenderOverrides.NormalizeKey(entry.experimentName),
+                   wantedExperiment,
+                   StringComparison.Ordinal) &&
+               string.Equals(
+                   GamaSpeciesRenderOverrides.NormalizeKey(entry.GetSpeciesName()),
+                   wantedSpecies,
+                   StringComparison.Ordinal);
     }
 
     private static void LogLoadedOverrides(Dictionary<string, int> scoresBySpecies, string requestedModel, string requestedExperiment)

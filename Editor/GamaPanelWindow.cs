@@ -125,6 +125,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private string catalogDiagnosisStatus = string.Empty;
     private bool captureFlowActive;
     private string pendingPreviewPlayerCleanupId = string.Empty;
+    private string lastPreviewCapturePlayerId = string.Empty;
     private System.Threading.CancellationTokenSource captureCts;
     private GamaEditorBackgroundProcess captureGamaProcess;
     private GamaEditorBackgroundProcess captureMiddlewareProcess;
@@ -356,7 +357,7 @@ public sealed class GamaPanelWindow : EditorWindow
             captureFlowActive = false;
         }
 
-        string idToFree = string.IsNullOrWhiteSpace(captureConnectionId) ? StaticInformation.getId() : captureConnectionId.Trim();
+        string idToFree = ResolveCapturePlayerIdToFree();
         if (purgePlayer && !string.IsNullOrWhiteSpace(idToFree))
         {
             _ = PurgeGhostPlayerInteractiveAsync(idToFree);
@@ -472,13 +473,18 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         EditorGUILayout.LabelField("Scene Configuration", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "Choose a template: classic minimal GAMA scene, VR version with XR device simulator, or a scene generated from the package examples (special cases documented in the code).",
+            "Choose a template: desktop/no-XR for normal editor testing, VR simulator with XR device simulator, headset-ready VR, or a scene generated from the package examples.",
             MessageType.Info);
+
+        if (GUILayout.Button("Setup (Desktop / no XR)", GUILayout.Height(36f)))
+        {
+            GAMAMenu.SetupSceneDesktop();
+        }
 
         EditorGUILayout.BeginHorizontal();
         if (GUILayout.Button("Setup (VR Simulator)", GUILayout.Height(36f)))
         {
-            GAMAMenu.SetupScene();
+            GAMAMenu.SetupSceneVrSimulator();
         }
 
         if (GUILayout.Button("Setup (Headset Ready)", GUILayout.Height(36f)))
@@ -1659,7 +1665,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private static string GetGamaPreviewConnectionId()
     {
-        return "Editor_Capture";
+        return StaticInformation.CreateUniqueSessionId("editor_capture");
     }
 
     private static int GetGamaPreviewHeartbeatMs()
@@ -1670,6 +1676,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private void StartCaptureFlow(bool launchGama, bool managedFromUnity = false)
     {
         pendingPreviewPlayerCleanupId = string.Empty;
+        lastPreviewCapturePlayerId = string.Empty;
         if (captureFlowActive || captureTask != null)
         {
             EditorUtility.DisplayDialog("Capture", "A capture is already in progress.", "OK");
@@ -1756,6 +1763,7 @@ public sealed class GamaPanelWindow : EditorWindow
             ? GetGamaPreviewConnectionId()
             : string.IsNullOrEmpty(rawId) ? StaticInformation.getId() : rawId;
         string previewCleanupId = selectedGamaPreviewMode ? id : string.Empty;
+        lastPreviewCapturePlayerId = id;
         string outDir = string.IsNullOrWhiteSpace(gamaJsonExportOutputDir) ? null : gamaJsonExportOutputDir.Trim();
 
         if (string.IsNullOrEmpty(outDir))
@@ -2540,8 +2548,8 @@ public sealed class GamaPanelWindow : EditorWindow
             : lastGeneratedSettingsJsonContent;
         string action = captureUseExternalMiddleware
             ? "1) The running middleware doesn't know this model.\n" +
-              "2) Restart it manually with the correct package, or select an already catalogued experiment.\n" +
-              "3) Restart the diagnosis without Unity stopping or restarting Node.\n"
+              "2) Play/preview can still attach to the current GAMA monitor experiment if it is already open.\n" +
+              "3) Use the generated package/restart flow only for strict catalog launch tests.\n"
             : "1) Stop the old PIDs on the monitor/player ports.\n" +
               "2) Restart from simple.webplatform with LEARNING_PACKAGE_PATH pointing to GamaGeneratedLearningPackages.\n" +
               "3) Verify that the catalog lists the exact Unity .gaml.\n";
@@ -2724,6 +2732,26 @@ public sealed class GamaPanelWindow : EditorWindow
         {
             Debug.LogWarning("[GAMA][PREVIEW][CLEANUP] remove_player_headset failed for " + playerId + ": " + ex.Message);
         }
+    }
+
+    private string ResolveCapturePlayerIdToFree()
+    {
+        if (!string.IsNullOrWhiteSpace(pendingPreviewPlayerCleanupId))
+        {
+            return pendingPreviewPlayerCleanupId.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(lastPreviewCapturePlayerId))
+        {
+            return lastPreviewCapturePlayerId.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(captureConnectionId))
+        {
+            return captureConnectionId.Trim();
+        }
+
+        return StaticInformation.getId();
     }
 
 
@@ -4416,7 +4444,7 @@ public sealed class GamaPanelWindow : EditorWindow
         session.captureTimestampUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
         session.monitorPort = captureMonitorPort;
         session.middlewarePort = int.TryParse(capturePort, out int middlewarePortValue) ? middlewarePortValue : 0;
-        session.playerId = string.IsNullOrWhiteSpace(captureConnectionId) ? StaticInformation.getId() : captureConnectionId.Trim();
+        session.playerId = ResolvePreviewSessionPlayerId();
         session.selectionMode = activeGamaSelection ? "ActiveGamaSelection" : "UnitySelection";
         session.activeGamaSelection = activeGamaSelection;
         session.stale = false;
@@ -4455,6 +4483,21 @@ public sealed class GamaPanelWindow : EditorWindow
             " exp=" + session.experimentName +
             " mode=" + session.selectionMode +
             " species=" + string.Join(",", session.speciesList.ToArray()));
+    }
+
+    private string ResolvePreviewSessionPlayerId()
+    {
+        if (!string.IsNullOrWhiteSpace(lastPreviewCapturePlayerId))
+        {
+            return lastPreviewCapturePlayerId.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(captureConnectionId))
+        {
+            return captureConnectionId.Trim();
+        }
+
+        return StaticInformation.getId();
     }
 
     private string ResolvePreviewSessionModelPath()

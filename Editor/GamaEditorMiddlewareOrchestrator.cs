@@ -475,7 +475,8 @@ internal static class GamaEditorMiddlewareOrchestrator
             JArray catalog = await session.WaitForCatalogAsync(TimeSpan.FromSeconds(20), ct).ConfigureAwait(false);
             if (catalog == null)
             {
-                result.Error = "Catalogue VU non reçu du monitor (get_simulation_informations). Vérifiez LEARNING_PACKAGE_PATH du middleware.";
+                result.Error = "Catalogue VU non reçu du monitor (get_simulation_informations). " +
+                               "Le lancement strict par catalogue est impossible; Play tentera de s'attacher à l'expérience monitor courante.";
                 session.Stop();
                 try
                 {
@@ -499,11 +500,11 @@ internal static class GamaEditorMiddlewareOrchestrator
                 string why = string.IsNullOrWhiteSpace(lookup.Details) ? "Aucun match strict experiment/model." : lookup.Details;
                 string fallback =
                     "Le modèle est sélectionné dans Unity mais absent du catalogue middleware. " +
-                    "Le monitor 8001 ne peut pas lancer cette expérience. " +
-                    "Ajoutez ce dossier au LEARNING_PACKAGE_PATH ou utilisez une expérience cataloguée.";
+                    "Le monitor 8001 ne peut pas lancer cette expérience par catalogue. " +
+                    "Play doit alors s'attacher à l'expérience GAMA/monitor déjà ouverte.";
                 result.Error = "Expérience Unity introuvable dans le catalogue middleware. " + why + " " +
                                "Sélection Unity attendue: experiment=\"" + (experimentName ?? "?") + "\", modelPath=\"" +
-                               (modelFilePathHint ?? "?") + "\". Vérifiez LEARNING_PACKAGE_PATH. " + fallback;
+                               (modelFilePathHint ?? "?") + "\". " + fallback;
                 session.Stop();
                 try
                 {
@@ -887,7 +888,7 @@ internal static class GamaEditorMiddlewareOrchestrator
                         "L'expérience \"" + experimentName +
                         "\" existe dans le catalogue middleware, mais le .gaml catalogué ne correspond pas à la sélection Unity (" +
                         (modelFilePathHint ?? "?") + "). Modèle dans le catalogue: " + solePath.Trim() +
-                        ". Corrigez LEARNING_PACKAGE_PATH (ou package Unity) pour inclure le bon settings.json.";
+                        ". Le lancement strict par catalogue sera remplacé par un attach-to-current-monitor si une expérience GAMA est déjà active.";
                     return result;
                 }
 
