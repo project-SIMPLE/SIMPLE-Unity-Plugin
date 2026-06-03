@@ -54,15 +54,13 @@ public sealed class GamaPanelWindow : EditorWindow
     private readonly string[] tabs =
     {
         "Setup Scene",
-        "Workspace Explorer",
-        "Import Prefabs",
-        "GAMA Preview"
+        "GAMA Preview",
+        "Workspace Explorer (alpha)"
     };
 
     private const int TabSetupScene = 0;
-    private const int TabWorkspace = 1;
-    private const int TabImportPrefabs = 2;
-    private const int TabImportExperiment = 3;
+    private const int TabImportExperiment = 1;
+    private const int TabWorkspace = 2;
 
     private int selectedTab;
     private readonly GamaWorkspaceExplorerPanel workspaceExplorerPanel = new GamaWorkspaceExplorerPanel();
@@ -117,6 +115,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private bool middlewareSectionExpanded = false;
     private bool manualJsonSectionExpanded = false;
     private bool codeExampleAdvancedExpanded = false;
+    private bool setupSceneAdvancedExpanded = false;
 
     private static int GamaPanelWindowCaptureSessionCounter;
 
@@ -167,7 +166,7 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         GamaPanelWindow window = GetWindow<GamaPanelWindow>("GAMA Panel");
         window.minSize = new Vector2(760f, 480f);
-        window.selectedTab = Mathf.Clamp(tab, TabSetupScene, TabImportExperiment);
+        window.selectedTab = Mathf.Clamp(tab, TabSetupScene, TabWorkspace);
         window.Show();
     }
 
@@ -376,14 +375,11 @@ public sealed class GamaPanelWindow : EditorWindow
             case TabSetupScene:
                 DrawSetupSceneTab();
                 break;
-            case TabWorkspace:
-                DrawWorkspaceTab();
-                break;
-            case TabImportPrefabs:
-                DrawPrefabImportTab();
+            case TabImportExperiment:
+                DrawExperimentImportTab();
                 break;
             default:
-                DrawExperimentImportTab();
+                DrawWorkspaceTab();
                 break;
         }
     }
@@ -473,21 +469,33 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         EditorGUILayout.LabelField("Scene Configuration", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "Choose a template: desktop/no-XR for normal editor testing, VR simulator with XR device simulator, headset-ready VR, or a scene generated from the package examples.",
+            "Use the default setup for a normal desktop/no-XR Unity scene connected to GAMA. Other setup templates and example scene generators are available below.",
             MessageType.Info);
 
-        if (GUILayout.Button("Setup (Desktop / no XR)", GUILayout.Height(36f)))
+        if (GUILayout.Button("Default Setup", GUILayout.Height(38f)))
         {
-            GAMAMenu.SetupSceneDesktop();
+            GAMAMenu.SetupScene();
         }
 
+        EditorGUILayout.Space(10f);
+        setupSceneAdvancedExpanded = EditorGUILayout.Foldout(setupSceneAdvancedExpanded, "Advanced Options", true);
+        if (!setupSceneAdvancedExpanded)
+        {
+            return;
+        }
+
+        EditorGUI.indentLevel++;
+        EditorGUILayout.HelpBox(
+            "Advanced setup templates rebuild the active scene for VR-specific testing. Code examples generate .unity scenes under Assets/Scenes/Code Examples.",
+            MessageType.None);
+
         EditorGUILayout.BeginHorizontal();
-        if (GUILayout.Button("Setup (VR Simulator)", GUILayout.Height(36f)))
+        if (GUILayout.Button("Setup (VR Simulator)", GUILayout.Height(34f)))
         {
             GAMAMenu.SetupSceneVrSimulator();
         }
 
-        if (GUILayout.Button("Setup (Headset Ready)", GUILayout.Height(36f)))
+        if (GUILayout.Button("Setup (Headset Ready)", GUILayout.Height(34f)))
         {
             GAMAMenu.SetupSceneHeadsetReady();
         }
@@ -512,6 +520,7 @@ public sealed class GamaPanelWindow : EditorWindow
         if (codeExampleScenes.Count == 0)
         {
             EditorGUILayout.HelpBox("No example scenes are available in the package.", MessageType.Warning);
+            EditorGUI.indentLevel--;
             return;
         }
 
@@ -553,6 +562,7 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorGUILayout.HelpBox(
             "The classic or VR setup rebuilds the active scene (player, teleport, camera, managers). Compatible with an empty scene or a Unity template.",
             MessageType.None);
+        EditorGUI.indentLevel--;
     }
 
     private void DrawWorkspaceConfigurationSection()
@@ -772,7 +782,7 @@ public sealed class GamaPanelWindow : EditorWindow
             }
         }
 
-        if (GUILayout.Button("Workspace Explorer", GUILayout.Width(170f)))
+        if (GUILayout.Button("Workspace Explorer (alpha)", GUILayout.Width(190f)))
         {
             selectedTab = TabWorkspace;
         }
