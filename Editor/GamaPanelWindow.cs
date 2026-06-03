@@ -1132,14 +1132,22 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private void DrawPreviewAppearanceControls()
     {
-        bool hasPreviewRoot = GameObject.Find(StaticPreviewRootName) != null;
-        bool hasEditablePreview = analysis != null || agentOverrides.Count > 0;
+        GameObject previewRoot = GameObject.Find(StaticPreviewRootName);
+        bool hasPreviewRoot = previewRoot != null;
+        if (hasPreviewRoot && (agentOverrides == null || agentOverrides.Count == 0))
+        {
+            UpdateAgentOverridesFromPreview(previewRoot);
+        }
+
+        bool hasEditablePreview = analysis != null || (agentOverrides != null && agentOverrides.Count > 0);
         if (!hasPreviewRoot && !hasEditablePreview)
         {
             return;
         }
 
         EditorGUILayout.Space(8f);
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        EditorGUILayout.LabelField("Preview Appearance", EditorStyles.boldLabel);
         if (hasEditablePreview)
         {
             DrawAgentSettings();
@@ -1151,6 +1159,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         DrawPreviewValidationControls();
+        EditorGUILayout.EndVertical();
     }
 
     private void DrawMiddlewareSection(bool busy)
