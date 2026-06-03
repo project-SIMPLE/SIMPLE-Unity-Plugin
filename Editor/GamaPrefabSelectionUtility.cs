@@ -147,17 +147,7 @@ internal static class GamaPrefabSelectionUtility
     private static void RepaintProjectWindows()
     {
         EditorApplication.RepaintProjectWindow();
-        EditorApplication.RepaintHierarchyWindow();
         SceneView.RepaintAll();
-
-        EditorWindow[] windows = Resources.FindObjectsOfTypeAll<EditorWindow>();
-        for (int i = 0; i < windows.Length; i++)
-        {
-            if (windows[i] != null)
-            {
-                windows[i].Repaint();
-            }
-        }
     }
 
     private static List<PrefabChoice> BuildPrefabChoices(
