@@ -316,7 +316,11 @@ public class SimulationManagerInspector : Editor
 
             EditorGUI.BeginChangeCheck();
 
-            GameObject editedPrefab = (GameObject)EditorGUILayout.ObjectField("Prefab Override", overrideEntry.prefabOverride, typeof(GameObject), false);
+            GameObject editedPrefab = GamaPrefabSelectionUtility.DrawPrefabSelector(
+                "Prefab Override",
+                overrideEntry.prefabOverride,
+                speciesName,
+                overrideEntry.prefabResourcePath);
             if (editedPrefab != overrideEntry.prefabOverride)
             {
                 overrideEntry.prefabOverride = editedPrefab;

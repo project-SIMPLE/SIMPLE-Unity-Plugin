@@ -2963,11 +2963,11 @@ public sealed class GamaPanelWindow : EditorWindow
             EditorGUILayout.LabelField(agent.Name, GUILayout.Width(180f));
             EditorGUILayout.LabelField(agent.CountExpression, GUILayout.Width(70f));
 
-            GameObject editedPrefab = (GameObject)EditorGUILayout.ObjectField(
+            GameObject editedPrefab = GamaPrefabSelectionUtility.DrawCompactPrefabSelector(
                 agent.PrefabOverride,
-                typeof(GameObject),
-                false,
-                GUILayout.Width(210f));
+                agent.Name,
+                agent.PrefabHint,
+                210f);
 
             if (editedPrefab != agent.PrefabOverride)
             {
