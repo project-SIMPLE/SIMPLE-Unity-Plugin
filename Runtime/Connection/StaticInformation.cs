@@ -15,6 +15,16 @@ public static class StaticInformation
         return BuildUniqueSessionId(prefix);
     }
 
+    public static void EnsureSessionIdPrefix(string prefix)
+    {
+        string safePrefix = string.IsNullOrWhiteSpace(prefix) ? "unity_play" : prefix.Trim();
+        if (string.IsNullOrWhiteSpace(connectionId) ||
+            !connectionId.StartsWith(safePrefix + "_", StringComparison.OrdinalIgnoreCase))
+        {
+            connectionId = BuildUniqueSessionId(safePrefix);
+        }
+    }
+
     public static string getId()
     {
         if (connectionId == null || connectionId.Length == 0)

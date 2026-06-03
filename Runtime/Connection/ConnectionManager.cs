@@ -32,7 +32,10 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
      
     
     // ############################################# UNITY FUNCTIONS #############################################
-    void Awake() {
+    void Awake()
+    {
+        StaticInformation.EnsureSessionIdPrefix("unity_play");
+        Debug.Log("[GAMA][CONNECTION][ID] Runtime player id=" + StaticInformation.getId());
         Instance = this;
         UpdateConnectionState(ConnectionState.DISCONNECTED);
     }
@@ -70,16 +73,15 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
 
     protected override void HandleConnectionOpen()
     {
-        
-            var jsonId = new Dictionary<string, string> {
-                {"type", "connection"},
-                { "id", StaticInformation.getId() },
-                { "heartbeat", ""+ HeartbeatInMs}
-            }; 
-            string jsonStringId = JsonConvert.SerializeObject(jsonId);
-            SendMessageToServer(jsonStringId);
-        
-       
+        string id = StaticInformation.getId();
+        Debug.Log("[GAMA][CONNECTION][OPEN] id=" + id);
+        var jsonId = new Dictionary<string, string> {
+            {"type", "connection"},
+            { "id", id },
+            { "heartbeat", "" + HeartbeatInMs}
+        };
+        string jsonStringId = JsonConvert.SerializeObject(jsonId);
+        SendMessageToServer(jsonStringId);
     }
 
     protected override void ManageMessage(string message)

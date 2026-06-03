@@ -1,6 +1,7 @@
 using UnityEditor;
 using UnityEngine;
 using System;
+using System.Collections.Generic;
 using System.Threading;
 
 [InitializeOnLoad]
@@ -117,6 +118,8 @@ public static class GamaPreviewPlayModeGuard
         {
             using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(130)))
             {
+                CleanupEditorPreviewPlayersBeforePlay(host, playerPort, monitorPort, cts.Token);
+
                 GamaEditorMiddlewareOrchestrator.ManagedExperimentResult result = hasTarget
                     ? GamaEditorMiddlewareOrchestrator.StartMiddlewareManagedExperimentAsync(
                             host,
@@ -196,5 +199,74 @@ public static class GamaPreviewPlayModeGuard
                error.IndexOf("introuvable", StringComparison.OrdinalIgnoreCase) >= 0 ||
                error.IndexOf("Aucun match", StringComparison.OrdinalIgnoreCase) >= 0 ||
                error.IndexOf("absent du catalogue", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static void CleanupEditorPreviewPlayersBeforePlay(
+        string host,
+        string playerPort,
+        int monitorPort,
+        CancellationToken ct)
+    {
+        GamaPreviewSession[] sessions = UnityEngine.Object.FindObjectsByType<GamaPreviewSession>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+        if (sessions == null || sessions.Length == 0)
+        {
+            return;
+        }
+
+        HashSet<string> ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < sessions.Length; i++)
+        {
+            string id = sessions[i] != null ? sessions[i].playerId : string.Empty;
+            if (IsEditorPreviewPlayerId(id))
+            {
+                ids.Add(id.Trim());
+            }
+        }
+
+        foreach (string id in ids)
+        {
+            try
+            {
+                Debug.Log("[GAMA][PLAY] Cleaning preview player before Play: " + id);
+                string outcome = GamaEditorFirstTickCapture.PurgeGhostPlayerAsync(
+                        host,
+                        playerPort,
+                        id,
+                        4000,
+                        ct)
+                    .GetAwaiter()
+                    .GetResult();
+                Debug.Log("[GAMA][PLAY] " + outcome);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[GAMA][PLAY] Preview player websocket cleanup failed for " + id + ": " + ex.Message);
+            }
+
+            try
+            {
+                bool removed = GamaEditorMiddlewareOrchestrator.RemovePlayerHeadsetAsync(
+                        host,
+                        monitorPort,
+                        id,
+                        ct,
+                        Debug.Log)
+                    .GetAwaiter()
+                    .GetResult();
+                Debug.Log("[GAMA][PLAY] Preview player monitor cleanup " + id + " removed=" + removed);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[GAMA][PLAY] Preview player monitor cleanup failed for " + id + ": " + ex.Message);
+            }
+        }
+    }
+
+    private static bool IsEditorPreviewPlayerId(string id)
+    {
+        return !string.IsNullOrWhiteSpace(id) &&
+               id.Trim().StartsWith("editor_capture", StringComparison.OrdinalIgnoreCase);
     }
 }

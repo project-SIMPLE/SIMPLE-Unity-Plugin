@@ -774,7 +774,24 @@ internal static class GamaEditorFirstTickCapture
                     }
                 }
 
-                if (!directGamaServer && !state.SkipRemoteLoad)
+                if (!directGamaServer && IsEditorPreviewCaptureId(effectiveId))
+                {
+                    append("[GAMA] Preview editor : disconnect_properly id=\"" + effectiveId + "\" avant fermeture.");
+                    try
+                    {
+                        using (CancellationTokenSource disconnectCts =
+                               CancellationTokenSource.CreateLinkedTokenSource(captureCts.Token))
+                        {
+                            disconnectCts.CancelAfter(TimeSpan.FromSeconds(2));
+                            await SendDisconnectProperlyAsync(ws, disconnectCts.Token).ConfigureAwait(false);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        append("[GAMA] disconnect_properly preview : " + ex.Message);
+                    }
+                }
+                else if (!directGamaServer && !state.SkipRemoteLoad)
                 {
                     append("[GAMA] Fermeture propre de la connexion preview sans disconnect_properly pour éviter de purger le socket middleware actif.");
                 }
@@ -1158,10 +1175,14 @@ internal static class GamaEditorFirstTickCapture
         await Task.Delay(150, ct).ConfigureAwait(false);
     }
 
+    private static bool IsEditorPreviewCaptureId(string playerId)
+    {
+        return !string.IsNullOrWhiteSpace(playerId) &&
+               playerId.Trim().StartsWith("editor_capture", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
-    /// Se connecte au middleware, dit bonjour avec l'id donné, puis ferme proprement la connexion.
-    /// La preview ne doit pas envoyer <c>disconnect_properly</c>, car cette commande force une purge
-    /// côté middleware pendant que le socket est en cours de fermeture.
+    /// Se connecte au middleware comme le joueur donné, envoie <c>disconnect_properly</c>, puis ferme la connexion.
     /// </summary>
     public static async Task<string> PurgeGhostPlayerAsync(
         string host,
@@ -1214,6 +1235,7 @@ internal static class GamaEditorFirstTickCapture
                     .ConfigureAwait(false);
 
                 await Task.Delay(300, cts.Token).ConfigureAwait(false);
+                await SendDisconnectProperlyAsync(ws, cts.Token).ConfigureAwait(false);
 
                 using (CancellationTokenSource closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(3)))
                 {
