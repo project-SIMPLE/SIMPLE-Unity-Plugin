@@ -1,45 +1,71 @@
-# 3. Generate a GAMA Preview in Unity
+# 3. Run the GAMA Experiment in Play Mode
 
-Let's create a static preview from the GAMA experiment currently opened
-or selected in GAMA.
+Before using the Editor preview, first validate that the live runtime workflow
+works from a clean Unity scene.
+
+This chapter shows the baseline behavior: Unity enters Play Mode, connects to
+`simple.webplatform`, receives the live GAMA simulation, and creates runtime
+objects in the scene.
 
 ## Steps
 
-Open **GAMA > GAMA Panel > Generate Preview from GAMA**.
-![GAMA Preview page](../images/tutorial/03-gama-preview-page.png)
-Click **Generate Preview from GAMA**.
-![Generate Preview from GAMA button](../images/tutorial/03-generate-preview-button.png)
+1. Make sure the scene was prepared with **GAMA > GAMA Panel > Setup Scene**.
+2. Start `simple.webplatform`.
+3. Open the target experiment in GAMA.
+4. Start or run the experiment from GAMA.
+5. Press **Play** in Unity.
 
-During capture, the GAMA Panel shows that the preview is being built.
+Press **Play** from the Unity scene.
 
-![Preview building in the GAMA Panel](../images/tutorial/03-preview-building-panel.png)
+![Press Play from the preview scene](../images/tutorial/05-press-play-from-preview.png)
 
-![GAMA running during preview capture](../images/tutorial/03-gama-running-during-preview-capture.png)
-
-GAMA may start or update the experiment while Unity receives the preview data.
-
-_Example of the previous experiment after the preview is built in Unity_
-## Expected Result
-
-The Unity scene should show the map and detected agents without entering Play
-Mode.
-
-The GAMA Panel should list detected species in a table similar to:
+Runtime agents are created under:
 
 ```text
-Agent / Species | Count | Prefab | Color | Scale | Visible | Reset
+[GAMA] Runtime Live Agents
 ```
 
-The scene now contains the generated static preview.
+When Play Mode works, Unity receives live objects from GAMA and updates them
+while the experiment is running.
 
-![Generated static preview scene](../images/tutorial/03-static-preview-scene-built.png)
+![Play Mode with runtime agents](../images/tutorial/05-play-mode-runtime-preview-hidden.png)
 
-The GAMA Panel now contains the detected species settings.
+## Expected Result
 
-![Captured preview species settings](../images/tutorial/03-preview-captured-species-settings.png)
+During Play Mode:
 
-## Important Behavior
+- Unity connects to `simple.webplatform`;
+- live agents are created, updated, and removed by stable agent id;
+- static background species and dynamic agents are grouped by species;
+- the Unity player or camera position can be sent back to GAMA when configured.
 
-Generating a new preview should clean previous generated preview/runtime objects
-before rebuilding the scene. This avoids visual superposition with older example
-scenes or older previews.
+Dynamic agents should be synchronized by:
+
+```text
+speciesName + "::" + agentId
+```
+
+Expected behavior:
+
+- existing agents update instead of duplicating;
+- newborn agents appear;
+- dead agents disappear after a complete live update;
+- static/background species are not pruned just because they are absent from a
+  dynamic tick.
+
+## Why This Is Not Enough For Visual Setup
+
+This direct Play Mode workflow proves that the connection works, but it is slow
+for visual iteration.
+
+Every time you want to check whether a species has the right prefab, scale,
+color, visibility, or offset, you need to run the experiment again. That is why
+the next chapter introduces the Editor preview: it lets you build a static
+snapshot of the experiment in Unity, adjust the visual parameters there, and then
+reuse those settings in Play Mode.
+
+## Navigation
+
+| Previous | Next |
+|---|---|
+| [2. Middleware and GAMA requirements](02-gama-model-preparation.md) | [4. Generate and Configure the Unity Preview](04-configure-species.md) |

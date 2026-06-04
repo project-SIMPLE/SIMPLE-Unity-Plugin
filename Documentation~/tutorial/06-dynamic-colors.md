@@ -1,106 +1,79 @@
-# 6. Drive Colors From GAMA Attributes
+# 6. Apply Preview Settings In Play Mode
 
-This chapter configures per-agent dynamic colors using attributes received from
-GAMA at runtime.
+This chapter closes the loop between Edit Mode preview and live Play Mode.
 
-Dynamic colors are configured per species in the `Game Manager` /
-`Simulation Manager` inspector.
+The goal is to confirm that the visual settings adjusted in the preview are
+actually reused when Unity receives live GAMA agents.
 
-> Screenshot to add: the Dynamic Color section for one species in the
-> `Game Manager` inspector.
+## Validate The Preview Settings
 
-## Attribute Requirements
+After generating and configuring the preview, click **Validate Preview and Close
+Panel** when the scene looks correct.
 
-The GAMA model must send the attribute in `add_geometries_to_send(...)`.
+![Validate Preview and Close Panel](../images/tutorial/05-validate-preview-button.png)
 
-Example boolean attribute:
+Then press **Play** in Unity.
 
-```gaml
-list<bool> people_infected <- people collect each.is_infected;
-map<string, list<bool>> people_atts <- ["is_infected":: people_infected];
+![Press Play from the preview scene](../images/tutorial/05-press-play-from-preview.png)
 
-do add_geometries_to_send(people, up_people, people_atts);
-```
+## What Should Happen In Play Mode
 
-> Screenshot to add: GAMA code sending `is_infected` as a runtime attribute.
+When Play Mode starts:
 
-Example numeric attribute:
+- the static preview root is hidden to avoid duplicate objects;
+- Unity connects to `simple.webplatform`;
+- live runtime agents are created under `[GAMA] Runtime Live Agents`;
+- species settings from the preview are applied to live agents;
+- dynamic attributes can keep changing per agent while the simulation runs.
 
-```gaml
-list<float> grass_food <- vegetation_cell collect each.food;
-map<string, list<float>> grass_atts <- ["food":: grass_food];
-
-do add_geometries_to_send(vegetation_cell, up_vegetation_cell, grass_atts);
-```
-
-> Screenshot to add: GAMA code sending a numeric grass attribute such as `food`.
-
-## Discrete Color Example
-
-Goal:
+Runtime agents are created under:
 
 ```text
-false -> green
-true  -> red
+[GAMA] Runtime Live Agents
 ```
 
-Steps:
+When Play Mode works, the static preview objects are hidden and runtime objects
+are created.
 
-1. Select the `Game Manager`.
-2. Find the target species, for example `people`.
-3. Enable **Override Dynamic Color**.
-4. Set **Dynamic Color Mode** to **Discrete**.
-5. Select the runtime attribute, for example `is_infected`.
-6. Add two rules:
-   - `false` = green;
-   - `true` = red.
+![Play Mode with runtime agents](../images/tutorial/05-play-mode-runtime-preview-hidden.png)
 
-> Screenshot to add: Discrete Dynamic Color setup with `is_infected`,
-> `false -> green`, and `true -> red`.
+## What To Check
 
-> Screenshot to add: Unity Scene view where infected agents are red and
-> non-infected agents are green.
+Check the following items after pressing Play:
 
-If Unity has already received attributes for that species, the attribute field is
-shown as a dropdown. If no attributes have been received yet, type the attribute
-name manually, then enter Play Mode again.
+- the species that received a prefab override uses that prefab at runtime;
+- scale, position offset, rotation offset, visibility, and color overrides match
+  the preview;
+- fallback cubes still appear for species with no prefab;
+- dynamic color rules still update per agent from GAMA attributes;
+- static/background species are not removed just because a later live tick sends
+  only dynamic agents.
 
-> Screenshot to add: attribute dropdown populated with runtime attributes.
+## Player Position
 
-> Screenshot to add: fallback text field when no runtime attributes have been
-> received yet.
+By default, outgoing Unity player position should come from the Main Camera world
+position.
 
-## Continuous Color Example
+This avoids sending the `Game Manager`, `Connection Manager`, or a fixed root
+position as the player position.
 
-Goal:
+Expected diagnostic shape:
 
 ```text
-0 -> light green
-1 -> dark green
+[GAMA][OUT][PLAYER_POS] source=MainCamera
 ```
 
-Steps:
+## Result
 
-1. Select the `Game Manager`.
-2. Find the target species, for example `vegetation_cell`.
-3. Enable **Override Dynamic Color**.
-4. Set **Dynamic Color Mode** to **Continuous**.
-5. Select the runtime attribute, for example `food`.
-6. Set **Base Color** to green.
-7. Set **Min Value** to `0`.
-8. Set **Max Value** to `1`.
-9. Adjust **Light Amount** and **Dark Amount** if needed.
+At the end of this chapter, the workflow should be clear:
 
-> Screenshot to add: Continuous Dynamic Color setup with base green, min `0`,
-> max `1`.
+1. use Play Mode once to prove the live connection works;
+2. generate a preview to tune the Unity representation faster;
+3. validate the preview settings;
+4. press Play again and check that those settings apply to live agents.
 
-> Screenshot to add: Unity result with low values light green and high values
-> dark green.
+## Navigation
 
-## Fallback Behavior
-
-If the attribute is missing or the value cannot be parsed, Unity keeps the
-static/GAMA color. The dynamic color system should not crash or erase existing
-color overrides.
-
-> Screenshot to add: Console diagnostic for missing attributes, if available.
+| Previous | Next |
+|---|---|
+| [5. Drive Dynamic Properties From GAMA Attributes](05-live-preview.md) | [7. Optimize Large Simulations](07-large-models-performance.md) |

@@ -1,28 +1,63 @@
-# 4. Configure Species Visuals
+# 4. Generate and Configure the Unity Preview
 
-This chapter explains how to customize each GAMA species in Unity.
+After validating Play Mode, generate a static preview to inspect the scene in
+Unity Edit Mode.
 
-Species settings are shared between:
+The preview is useful because it lets you tune visual parameters without
+launching the full live experiment every time.
 
-- the static GAMA Preview in Edit Mode;
-- the `Game Manager` / `Simulation Manager` inspector;
-- Play Mode runtime agents.
+## Generate The Preview
 
-## Available Settings
+Open **GAMA > GAMA Panel > Generate Preview from GAMA**.
 
-For each species, configure:
+![GAMA Preview page](../images/tutorial/03-gama-preview-page.png)
 
-- **Prefab Override**: replace GAMA geometry with a Unity prefab.
-- **Color**: override or adjust the species color.
-- **Scale Multiplier**: multiply the visual size.
-- **Position Offset**: shift the visual representation.
-- **Rotation Offset**: rotate the visual representation.
-- **Visible**: show or hide the species.
-- **Reset to GAMA attributes**: restore default GAMA values for that species.
+Click **Generate Preview from GAMA**.
 
-The preview result lets you edit species settings directly.
+![Generate Preview from GAMA button](../images/tutorial/03-generate-preview-button.png)
 
-![Species settings after capture](../images/tutorial/03-preview-captured-species-settings.png)
+During capture, the GAMA Panel shows that the preview is being built.
+
+![Preview building in the GAMA Panel](../images/tutorial/03-preview-building-panel.png)
+
+GAMA may start or update the experiment while Unity receives the preview data.
+
+![GAMA running during preview capture](../images/tutorial/03-gama-running-during-preview-capture.png)
+
+## Expected Result
+
+The Unity scene should show the map and detected agents without entering Play
+Mode.
+
+The scene now contains the generated static preview.
+
+![Generated static preview scene](../images/tutorial/03-static-preview-scene-built.png)
+
+The GAMA Panel now contains the detected species settings.
+
+![Captured preview species settings](../images/tutorial/03-preview-captured-species-settings.png)
+
+## Parameters You Can Modify In The Preview
+
+For each detected species, the preview exposes visual settings that can later be
+applied to Play Mode runtime agents:
+
+- **Prefab Override**: replace the default GAMA geometry with a Unity prefab.
+- **Resources Path Override**: point runtime loading to a prefab under
+  `Assets/Resources`.
+- **Color Override**: force a stable color for the species.
+- **Scale Multiplier**: change the visual size without changing the logical
+  agent position.
+- **Position Offset**: shift the visual representation when a prefab origin is
+  not centered as expected.
+- **Rotation Offset**: rotate the visual representation to match the GAMA
+  orientation.
+- **Visible**: show or hide the species in preview and runtime.
+- **Reset**: return the species to the values received from GAMA.
+
+You can choose a prefab from the GAMA Panel.
+
+![Change a prefab from the GAMA Panel](../images/tutorial/04-change-prefab-from-gama-panel.png)
 
 ## Prefab Rules
 
@@ -43,13 +78,6 @@ Resource path:
 Visual Prefabs/Character/Ghost
 ```
 
-> Screenshot to add: Unity Project window showing a prefab under
-> `Assets/Resources/...`.
-
-You can choose a prefab from the GAMA Panel.
-
-![Change a prefab from the GAMA Panel](../images/tutorial/04-change-prefab-from-gama-panel.png)
-
 ## Scale Rules
 
 The scale multiplier is a visual multiplier.
@@ -58,13 +86,20 @@ It should not move the logical agent position or change the global runtime root.
 For cell-like species, the logical parent should stay at scale `(1, 1, 1)` and
 the visual child should receive the visual scale.
 
-> Screenshot to add: hierarchy/inspector showing a logical cell parent at scale
-> `(1, 1, 1)` and its visual child scaled.
+## Important Behavior
 
-> Optional before/after screenshots to add: scale changed from `1` to `2`
-> without changing cell spacing.
+Generating a new preview should clean previous generated preview/runtime objects
+before rebuilding the scene. This avoids visual superposition with older example
+scenes or older previews.
 
 ## Result
 
-At the end of this chapter, species look correct in the static preview and the
-same settings are ready for Play Mode.
+At the end of this chapter, the static preview should look close to the desired
+Unity scene, and the same species settings should be ready to reuse in Play
+Mode.
+
+## Navigation
+
+| Previous | Next |
+|---|---|
+| [3. Run the GAMA Experiment in Play Mode](03-generate-preview.md) | [5. Drive Dynamic Properties From GAMA Attributes](05-live-preview.md) |

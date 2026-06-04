@@ -82,3 +82,9 @@ a dynamic tick.
 
 > Optional GIF to add: predator/prey or dynamic agents disappearing and
 > appearing correctly during Play Mode.
+
+## Navigation
+
+| Previous | Next |
+|---|---|
+| [7. Optimize Large Simulations](07-large-models-performance.md) | - |

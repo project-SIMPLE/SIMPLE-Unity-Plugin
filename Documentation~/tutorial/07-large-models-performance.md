@@ -58,3 +58,9 @@ whenever possible.
 - Do not hardcode species names for optimization.
 - Prefer skipping unchanged objects before adding model-specific logic.
 - Use batching only when object-level interaction is not needed.
+
+## Navigation
+
+| Previous | Next |
+|---|---|
+| [6. Apply Preview Settings In Play Mode](06-dynamic-colors.md) | [8. Troubleshooting](08-troubleshooting.md) |

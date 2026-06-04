@@ -28,3 +28,9 @@ GAMA Server behind webplatform: ws://localhost:1000/
 ## Result
 
 Now that every actor of the connection is in place, we'll start launching requests from Unity to explore the agents, geometries and properties of our experiment.
+
+## Navigation
+
+| Previous | Next |
+|---|---|
+| [1. Install the Unity Package](01-installation-and-setup.md) | [3. Run the GAMA Experiment in Play Mode](03-generate-preview.md) |

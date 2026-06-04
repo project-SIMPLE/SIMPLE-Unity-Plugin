@@ -85,3 +85,9 @@ You can verify that the scene contains:
 ## Result
 
 At the end of this chapter, Unity is ready to communicate with the middleware.
+
+## Navigation
+
+| Previous | Next |
+|---|---|
+| [Tutorial overview](README.md) | [2. Middleware and GAMA requirements](02-gama-model-preparation.md) |

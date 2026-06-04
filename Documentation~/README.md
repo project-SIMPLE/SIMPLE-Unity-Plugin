@@ -10,11 +10,11 @@ documentation.
 
 - [Tutorial overview](tutorial/README.md)
 - [1. Install the Unity package](tutorial/01-installation-and-setup.md)
-- [2. Prepare a GAMA experiment for Unity](tutorial/02-gama-model-preparation.md)
-- [3. Generate a GAMA Preview in Unity](tutorial/03-generate-preview.md)
-- [4. Configure species visuals](tutorial/04-configure-species.md)
-- [5. Run the Live Preview from GAMA](tutorial/05-live-preview.md)
-- [6. Drive colors from GAMA attributes](tutorial/06-dynamic-colors.md)
+- [2. Middleware and GAMA requirements](tutorial/02-gama-model-preparation.md)
+- [3. Run the GAMA experiment in Play Mode](tutorial/03-generate-preview.md)
+- [4. Generate and configure the Unity preview](tutorial/04-configure-species.md)
+- [5. Drive dynamic properties from GAMA attributes](tutorial/05-live-preview.md)
+- [6. Apply preview settings in Play Mode](tutorial/06-dynamic-colors.md)
 - [7. Optimize large simulations](tutorial/07-large-models-performance.md)
 - [8. Troubleshooting](tutorial/08-troubleshooting.md)
 

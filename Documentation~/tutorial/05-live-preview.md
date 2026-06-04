@@ -1,73 +1,105 @@
-# 5. Run the Live Preview from GAMA
+# 5. Drive Dynamic Properties From GAMA Attributes
 
-This chapter runs the Unity scene in Play Mode and receives live agents from
-GAMA through `simple.webplatform`.
+Static species settings are not always enough. Some visual properties should
+change continuously while the GAMA simulation runs.
 
-## Steps
+This chapter explains how to drive Unity visuals from per-agent attributes sent
+by GAMA at runtime. The main example is dynamic color, because it is easy to
+verify visually.
 
-1. Generate a static preview.
-2. Configure species visuals.
-3. Click **Validate Preview and Close Panel**.
-4. Press **Play** in Unity.
+## Attribute Requirements
 
-Validate the preview when the species settings are correct.
+The GAMA model must send the attribute in `add_geometries_to_send(...)`.
 
-![Validate Preview and Close Panel](../images/tutorial/05-validate-preview-button.png)
+The attribute list must stay aligned with the agent list sent to Unity.
 
-Then press **Play** in Unity.
+Example boolean attribute:
 
-![Press Play from the preview scene](../images/tutorial/05-press-play-from-preview.png)
+```gaml
+list<bool> people_infected <- people collect each.is_infected;
+map<string, list<bool>> people_atts <- ["is_infected":: people_infected];
 
-Runtime agents are created under:
-
-```text
-[GAMA] Runtime Live Agents
+do add_geometries_to_send(people, up_people, people_atts);
 ```
 
-When Play Mode works, the static preview objects are hidden and runtime objects
-are created.
+Example numeric attribute:
 
-![Play Mode with runtime agents](../images/tutorial/05-play-mode-runtime-preview-hidden.png)
+```gaml
+list<float> prey_energy <- prey collect each.energy;
+map<string, list<float>> prey_atts <- ["energy":: prey_energy];
+
+do add_geometries_to_send(prey, up_prey, prey_atts);
+```
+
+## Discrete Example: Contaminated People
+
+Use this mode when an attribute represents a small set of states.
+
+Goal:
+
+```text
+is_infected = false -> green
+is_infected = true  -> red
+```
+
+Steps:
+
+1. Select the `Game Manager`.
+2. Find the target species, for example `people`.
+3. Enable **Override Dynamic Color**.
+4. Set **Dynamic Color Mode** to **Discrete**.
+5. Select the runtime attribute, for example `is_infected`.
+6. Add two rules: `false` = green and `true` = red.
+
+If Unity has already received attributes for that species, the attribute field is
+shown as a dropdown. If no attributes have been received yet, type the attribute
+name manually, then enter Play Mode again.
+
+## Continuous Example: Prey/Predator Or Vegetation Value
+
+Use this mode when an attribute is numeric and should produce a gradual visual
+change.
+
+Example goal for a prey/predator model:
+
+```text
+low energy  -> light green
+high energy -> dark green
+```
+
+Steps:
+
+1. Select the `Game Manager`.
+2. Find the target species, for example `prey`.
+3. Enable **Override Dynamic Color**.
+4. Set **Dynamic Color Mode** to **Continuous**.
+5. Select the runtime attribute, for example `energy`.
+6. Set **Base Color** to green.
+7. Set **Min Value** and **Max Value** to match the expected GAMA range.
+8. Adjust the light/dark amounts if needed.
+
+The same pattern can be used with vegetation, pollution, health, infection
+probability, hunger, or any numeric value sent by GAMA.
 
 ## Runtime Behavior
 
-During Play Mode:
+Dynamic colors are applied per agent during Play Mode.
 
-- Unity connects to `simple.webplatform`;
-- static preview objects are hidden when live runtime data is available;
-- live agents are created, updated, and removed by stable agent id;
-- species settings from the preview are applied to runtime agents.
+They do not replace the static preview workflow:
 
-> Screenshot to add: Console logs showing successful connection and live JSON
-> flow.
+- the preview defines the default species representation;
+- dynamic rules define how individual agents change during runtime;
+- if the attribute is missing or cannot be parsed, Unity keeps the static/GAMA
+  color instead of crashing.
 
-> Optional GIF to add: agents moving in Unity while GAMA runs.
+## Result
 
-## Dynamic Agents
+At the end of this chapter, Unity should be able to show both static species
+settings and per-agent runtime variations, such as infected people turning red
+or prey becoming greener as a numeric value changes.
 
-Dynamic agents should be synchronized by:
+## Navigation
 
-```text
-speciesName + "::" + agentId
-```
-
-Expected behavior:
-
-- existing agents update instead of duplicating;
-- newborn agents appear;
-- dead agents disappear after a complete live update;
-- static/background species are not pruned just because they are absent from a
-  live tick.
-
-## Player Position
-
-By default, outgoing Unity player position should come from the Main Camera world
-position.
-
-This avoids sending the `Game Manager`, `Connection Manager`, or a fixed root
-position as the player position.
-
-> Screenshot to add: `Game Manager` player position source settings.
-
-> Screenshot to add: Console log `[GAMA][OUT][PLAYER_POS]` showing
-> `source=MainCamera`.
+| Previous | Next |
+|---|---|
+| [4. Generate and Configure the Unity Preview](04-configure-species.md) | [6. Apply Preview Settings In Play Mode](06-dynamic-colors.md) |
