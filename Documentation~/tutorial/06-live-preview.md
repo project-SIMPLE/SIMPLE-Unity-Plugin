@@ -1,4 +1,4 @@
-# 5. Drive Dynamic Properties From GAMA Attributes
+# 6. Drive Dynamic Properties From GAMA Attributes
 
 Static species settings are not always enough. Some visual properties should
 change continuously while the GAMA simulation runs.
@@ -102,4 +102,4 @@ or prey becoming greener as a numeric value changes.
 
 | Previous | Next |
 |---|---|
-| [4. Generate and Configure the Unity Preview](04-configure-species.md) | [6. Apply Preview Settings In Play Mode](06-dynamic-colors.md) |
+| [5. Configure Species Appearance](05-configure-species.md) | [7. Apply Preview Settings In Play Mode](07-dynamic-colors.md) |

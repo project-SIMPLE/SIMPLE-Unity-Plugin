@@ -68,4 +68,4 @@ reuse those settings in Play Mode.
 
 | Previous | Next |
 |---|---|
-| [Installation and Setup](01-installation-and-setup.md) | [Generate a Preview from GAMA](03-generate-preview.md) |
+| [Installation and Setup](01-installation-and-setup.md) | [Personalize Agents During Play Mode](03-personalization.md) |

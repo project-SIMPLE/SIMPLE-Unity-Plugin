@@ -1,12 +1,12 @@
 # 4. Generate and Configure the Unity Preview
 
-After validating Play Mode, generate a static preview to inspect the scene in
+After validating the Play Mode, we'll generate a static preview to inspect the scene in
 Unity Edit Mode.
 
 The preview is useful because it lets you tune visual parameters without
 launching the full live experiment every time.
 
-## Generate The Preview
+## 4.1 Generate The Preview
 
 Open **GAMA > GAMA Panel > Generate Preview from GAMA**.
 
@@ -24,7 +24,7 @@ GAMA may start or update the experiment while Unity receives the preview data.
 
 ![GAMA running during preview capture](../images/tutorial/03-gama-running-during-preview-capture.png)
 
-## Expected Result
+## 4.2 Expected Result
 
 The Unity scene should show the map and detected agents without entering Play
 Mode.
@@ -37,21 +37,14 @@ The GAMA Panel now contains the detected species settings.
 
 ![Captured preview species settings](../images/tutorial/03-preview-captured-species-settings.png)
 
-## Parameters You Can Modify In The Preview
+## 4.3 Parameters You Can Modify In The Preview
 
 For each detected species, the preview exposes visual settings that can later be
 applied to Play Mode runtime agents:
 
-- **Prefab Override**: replace the default GAMA geometry with a Unity prefab.
-- **Resources Path Override**: point runtime loading to a prefab under
-  `Assets/Resources`.
-- **Color Override**: force a stable color for the species.
-- **Scale Multiplier**: change the visual size without changing the logical
-  agent position.
-- **Position Offset**: shift the visual representation when a prefab origin is
-  not centered as expected.
-- **Rotation Offset**: rotate the visual representation to match the GAMA
-  orientation.
+- **Prefab**: replace the default GAMA geometry with a Unity prefab.
+- **Color**: force a stable color for the species.
+- **Scale**: change the visual size without changing the logical
 - **Visible**: show or hide the species in preview and runtime.
 - **Reset**: return the species to the values received from GAMA.
 
@@ -59,7 +52,7 @@ You can choose a prefab from the GAMA Panel.
 
 ![Change a prefab from the GAMA Panel](../images/tutorial/04-change-prefab-from-gama-panel.png)
 
-## Prefab Rules
+### 4.4 Prefab Rules
 
 For Edit Mode preview, Unity can use a direct prefab object reference.
 
@@ -78,7 +71,7 @@ Resource path:
 Visual Prefabs/Character/Ghost
 ```
 
-## Scale Rules
+## 4.5 Scale Rules
 
 The scale multiplier is a visual multiplier.
 
@@ -102,4 +95,4 @@ Mode.
 
 | Previous | Next |
 |---|---|
-| [3. Run the GAMA Experiment in Play Mode](03-generate-preview.md) | [5. Drive Dynamic Properties From GAMA Attributes](05-live-preview.md) |
+| [3. Personalize Agents During Play Mode](03-personalization.md) | [5. Configure Species Appearance](05-configure-species.md) |

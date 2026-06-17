@@ -1,4 +1,4 @@
-# 6. Apply Preview Settings In Play Mode
+# 7. Apply Preview Settings In Play Mode
 
 This chapter closes the loop between Edit Mode preview and live Play Mode.
 
@@ -76,4 +76,4 @@ At the end of this chapter, the workflow should be clear:
 
 | Previous | Next |
 |---|---|
-| [5. Drive Dynamic Properties From GAMA Attributes](05-live-preview.md) | [7. Optimize Large Simulations](07-large-models-performance.md) |
+| [6. Drive Dynamic Properties From GAMA Attributes](06-live-preview.md) | [8. Optimize Large Simulations](08-large-models-performance.md) |

@@ -1,4 +1,4 @@
-# 7. Optimize Large Simulations
+# 8. Optimize Large Simulations
 
 This chapter covers performance options for large GAMA models.
 
@@ -63,4 +63,4 @@ whenever possible.
 
 | Previous | Next |
 |---|---|
-| [6. Apply Preview Settings In Play Mode](06-dynamic-colors.md) | [8. Troubleshooting](08-troubleshooting.md) |
+| [7. Apply Preview Settings In Play Mode](07-dynamic-colors.md) | [9. Troubleshooting](09-troubleshooting.md) |

@@ -1,4 +1,4 @@
-# 8. Troubleshooting
+# 9. Troubleshooting
 
 This chapter lists common problems and the first checks to perform.
 
@@ -87,4 +87,4 @@ a dynamic tick.
 
 | Previous | Next |
 |---|---|
-| [7. Optimize Large Simulations](07-large-models-performance.md) | - |
+| [8. Optimize Large Simulations](08-large-models-performance.md) | - |

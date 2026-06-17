@@ -12,9 +12,11 @@ and tune the scene before running the live simulation again.
 0. Prepare the middleware and the GAMA experiment.
 
 1. Install the Unity package.
-3. Run the experiment in Unity Play Mode to validate the basic live workflow.
+2. Run the experiment in Unity Play Mode to validate the basic live workflow.
+3. Personalize agents during Play Mode.
 4. Generate an Editor preview and configure species visual parameters.
-5. Drive dynamic visual properties from GAMA runtime attributes.
+5. Configure species appearance.
+6. Drive dynamic visual properties from GAMA runtime attributes.
 
 ## Work in Progress
 
