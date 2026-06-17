@@ -63,4 +63,4 @@ whenever possible.
 
 | Previous | Next |
 |---|---|
-| [7. Apply Preview Settings In Play Mode](07-dynamic-colors.md) | [9. Troubleshooting](09-troubleshooting.md) |
+| [7. Apply Preview Settings In Play Mode](07-apply-preview-settings.md) | [9. Troubleshooting](09-troubleshooting.md) |

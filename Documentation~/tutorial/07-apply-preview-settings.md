@@ -76,4 +76,4 @@ At the end of this chapter, the workflow should be clear:
 
 | Previous | Next |
 |---|---|
-| [6. Drive Dynamic Properties From GAMA Attributes](06-live-preview.md) | [8. Optimize Large Simulations](08-large-models-performance.md) |
+| [6. Configure Species Appearance](06-configure-species.md) | [8. Optimize Large Simulations](08-large-models-performance.md) |

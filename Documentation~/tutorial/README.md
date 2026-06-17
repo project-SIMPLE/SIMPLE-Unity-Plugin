@@ -15,8 +15,8 @@ and tune the scene before running the live simulation again.
 2. Run the experiment in Unity Play Mode to validate the basic live workflow.
 3. Personalize agents during Play Mode.
 4. Generate an Editor preview and configure species visual parameters.
-5. Configure species appearance.
-6. Drive dynamic visual properties from GAMA runtime attributes.
+5. Drive dynamic visual properties from GAMA runtime attributes.
+6. Configure species appearance.
 
 ## Work in Progress
 

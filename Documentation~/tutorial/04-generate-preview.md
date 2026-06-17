@@ -95,4 +95,4 @@ Mode.
 
 | Previous | Next |
 |---|---|
-| [3. Personalize Agents During Play Mode](03-personalization.md) | [5. Configure Species Appearance](05-configure-species.md) |
+| [3. Personalize Agents During Play Mode](03-personalization.md) | [5. Dynamic Colors From GAMA Attributes](05-dynamic-colors.md) |

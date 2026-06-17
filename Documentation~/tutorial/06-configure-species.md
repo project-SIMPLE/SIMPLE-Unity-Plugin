@@ -1,4 +1,4 @@
-# 5. Configure Species Appearance
+# 6. Configure Species Appearance
 
 After generating a static preview, use the detected species settings to tune how
 GAMA agents appear in Unity.
@@ -102,4 +102,4 @@ Mode.
 
 | Previous | Next |
 |---|---|
-| [4. Generate and Configure the Unity Preview](04-generate-preview.md) | [6. Drive Dynamic Properties From GAMA Attributes](06-live-preview.md) |
+| [5. Dynamic Colors From GAMA Attributes](05-dynamic-colors.md) | [7. Apply Preview Settings In Play Mode](07-apply-preview-settings.md) |

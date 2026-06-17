@@ -14,11 +14,11 @@ documentation.
 - [2. Run the GAMA experiment in Play Mode](tutorial/02-first-experiment-launching.md)
 - [3. Personalize agents during Play Mode](tutorial/03-personalization.md)
 - [4. Generate and configure the Unity preview](tutorial/04-generate-preview.md)
-- [5. Configure species appearance](tutorial/05-configure-species.md)
-- [6. Drive dynamic properties from GAMA attributes](tutorial/06-live-preview.md)
+- [5. Dynamic colors from GAMA attributes](tutorial/05-dynamic-colors.md)
+- [6. Configure species appearance](tutorial/06-configure-species.md)
 
 ## Work in Progress
-- [7. Apply preview settings in Play Mode](tutorial/07-dynamic-colors.md)
+- [7. Apply preview settings in Play Mode](tutorial/07-apply-preview-settings.md)
 - [8. Optimize large simulations](tutorial/08-large-models-performance.md)
 - [9. Troubleshooting](tutorial/09-troubleshooting.md)
 - [User guide](user-guide/README.md)
