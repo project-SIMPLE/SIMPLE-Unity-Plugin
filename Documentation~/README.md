@@ -9,38 +9,16 @@ documentation.
 ## Tutorial
 
 - [Tutorial overview](tutorial/README.md)
+- [0. Middleware and GAMA requirements](tutorial/02-gama-model-preparation.md)
 - [1. Install the Unity package](tutorial/01-installation-and-setup.md)
-- [2. Middleware and GAMA requirements](tutorial/02-gama-model-preparation.md)
-- [3. Run the GAMA experiment in Play Mode](tutorial/03-generate-preview.md)
-- [4. Generate and configure the Unity preview](tutorial/04-configure-species.md)
-- [5. Drive dynamic properties from GAMA attributes](tutorial/05-live-preview.md)
+- [2. Run the GAMA experiment in Play Mode](tutorial/03-generate-preview.md)
+- [3. Generate and configure the Unity preview](tutorial/04-configure-species.md)
+- [4. Drive dynamic properties from GAMA attributes](tutorial/05-live-preview.md)
+
+## Work in Progress
 - [6. Apply preview settings in Play Mode](tutorial/06-dynamic-colors.md)
 - [7. Optimize large simulations](tutorial/07-large-models-performance.md)
 - [8. Troubleshooting](tutorial/08-troubleshooting.md)
-
-## Documentation To Expand
-
 - [User guide](user-guide/README.md)
 - [Technical documentation](technical/README.md)
 - [Runtime architecture notes](gama-unity.md)
-
-## Screenshots And Media
-
-Store screenshots in [images](images/README.md).
-
-Use this convention when replacing screenshot placeholders:
-
-```md
-Image path example: ../images/tutorial/file-name.png
-```
-
-If a step is easier to understand with motion, add a short GIF or video next to
-the screenshot.
-
-## Writing Workflow
-
-1. Complete the tutorial chapters first.
-2. Validate the tutorial on one small model and one large model.
-3. Convert each tutorial chapter into user-guide pages.
-4. Add technical details only after the workflow is stable.
-5. Keep screenshots close to the step they explain.

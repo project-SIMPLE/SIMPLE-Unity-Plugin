@@ -1,68 +1,95 @@
-# 3. Run the GAMA Experiment in Play Mode
+# 3. Generate and Configure the Unity Preview
 
-Before using the Editor preview, first validate that the live runtime workflow
-works from a clean Unity scene.
+After validating the Play Mode, we'll generate a static preview to inspect the scene in
+Unity Edit Mode.
 
-This chapter shows the baseline behavior: Unity enters Play Mode, connects to
-`simple.webplatform`, receives the live GAMA simulation, and creates runtime
-objects in the scene.
+The preview is useful because it lets you tune visual parameters without
+launching the full live experiment every time.
 
-## Steps
+## 3.1 Generate The Preview
 
-1. Make sure the scene was prepared with **GAMA > GAMA Panel > Setup Scene**.
-2. Start `simple.webplatform`.
-3. Open the target experiment in GAMA.
-4. Start or run the experiment from GAMA.
-5. Press **Play** in Unity.
+Open **GAMA > GAMA Panel > Generate Preview from GAMA**.
 
-Press **Play** from the Unity scene.
+![GAMA Preview page](../images/tutorial/03-gama-preview-page.png)
 
-![Press Play from the preview scene](../images/tutorial/05-press-play-from-preview.png)
+Click **Generate Preview from GAMA**.
 
-Runtime agents are created under:
+![Generate Preview from GAMA button](../images/tutorial/03-generate-preview-button.png)
+
+During capture, the GAMA Panel shows that the preview is being built.
+
+![Preview building in the GAMA Panel](../images/tutorial/03-preview-building-panel.png)
+
+GAMA may start or update the experiment while Unity receives the preview data.
+
+![GAMA running during preview capture](../images/tutorial/03-gama-running-during-preview-capture.png)
+
+## 3.2 Expected Result
+
+The Unity scene should show the map and detected agents without entering Play
+Mode.
+
+The scene now contains the generated static preview.
+
+![Generated static preview scene](../images/tutorial/03-static-preview-scene-built.png)
+
+The GAMA Panel now contains the detected species settings.
+
+![Captured preview species settings](../images/tutorial/03-preview-captured-species-settings.png)
+
+## 3.3 Parameters You Can Modify In The Preview
+
+For each detected species, the preview exposes visual settings that can later be
+applied to Play Mode runtime agents:
+
+- **Prefab**: replace the default GAMA geometry with a Unity prefab.
+- **Color**: force a stable color for the species.
+- **Scale**: change the visual size without changing the logical
+- **Visible**: show or hide the species in preview and runtime.
+- **Reset**: return the species to the values received from GAMA.
+
+You can choose a prefab from the GAMA Panel.
+
+![Change a prefab from the GAMA Panel](../images/tutorial/04-change-prefab-from-gama-panel.png)
+
+### 3.4 Prefab Rules
+
+For Edit Mode preview, Unity can use a direct prefab object reference.
+
+For Play Mode runtime loading, the prefab should be under a Unity `Resources`
+folder so it can be loaded with a resource path.
+
+Recommended example:
 
 ```text
-[GAMA] Runtime Live Agents
+Assets/Resources/Visual Prefabs/Character/Ghost.prefab
 ```
 
-When Play Mode works, Unity receives live objects from GAMA and updates them
-while the experiment is running.
-
-![Play Mode with runtime agents](../images/tutorial/05-play-mode-runtime-preview-hidden.png)
-
-## Expected Result
-
-During Play Mode:
-
-- Unity connects to `simple.webplatform`;
-- live agents are created, updated, and removed by stable agent id;
-- static background species and dynamic agents are grouped by species;
-- the Unity player or camera position can be sent back to GAMA when configured.
-
-Dynamic agents should be synchronized by:
+Resource path:
 
 ```text
-speciesName + "::" + agentId
+Visual Prefabs/Character/Ghost
 ```
 
-Expected behavior:
+## 3.5 Scale Rules
 
-- existing agents update instead of duplicating;
-- newborn agents appear;
-- dead agents disappear after a complete live update;
-- static/background species are not pruned just because they are absent from a
-  dynamic tick.
+The scale multiplier is a visual multiplier.
 
-## Why This Is Not Enough For Visual Setup
+It should not move the logical agent position or change the global runtime root.
+For cell-like species, the logical parent should stay at scale `(1, 1, 1)` and
+the visual child should receive the visual scale.
 
-This direct Play Mode workflow proves that the connection works, but it is slow
-for visual iteration.
+## Important Behavior
 
-Every time you want to check whether a species has the right prefab, scale,
-color, visibility, or offset, you need to run the experiment again. That is why
-the next chapter introduces the Editor preview: it lets you build a static
-snapshot of the experiment in Unity, adjust the visual parameters there, and then
-reuse those settings in Play Mode.
+Generating a new preview should clean previous generated preview/runtime objects
+before rebuilding the scene. This avoids visual superposition with older example
+scenes or older previews.
+
+## Result
+
+At the end of this chapter, the static preview should look close to the desired
+Unity scene, and the same species settings should be ready to reuse in Play
+Mode.
 
 ## Navigation
 

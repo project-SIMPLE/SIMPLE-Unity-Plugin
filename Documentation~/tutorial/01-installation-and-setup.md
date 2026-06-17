@@ -1,15 +1,15 @@
 # 1. Install the Unity Package
 
-This chapter installs the SIMPLE Unity Plugin in a Unity project and prepares the
+This chapter will show you how to install the SIMPLE Unity Plugin in a Unity project and prepare the
 scene for GAMA communication.
 
-## Create and Open a Unity Project
+## 1.1 Create and Open a Unity Project
 
 Start by creating a new Unity project.
 
 ![Create a new Unity project](../images/tutorial/01-create-new-unity-project.png)
 
-Check the choosen Unity version and Create project (you don't have to choose a perticular kind of projetc).
+Check the choosen Unity version and Create project (you don't have to choose a perticular kind of project).
 
 ![Unity version and project creation](../images/tutorial/01-unity-version-create-project.png)
 
@@ -21,7 +21,7 @@ After the project opens, you should be on the Unity home/editor screen.
 
 ![Unity project home](../images/tutorial/01-unity-home.png)
 
-## Install the Package...
+## 1.2 Install the Package...
 ### ...From GitHub
 
 1. Open the Package Manager from Unity.
@@ -58,7 +58,7 @@ For local development:
 1. After clicking on **+** select **Add package from disk...**
 2. Select the package `package.json` file from your local package folder.
 
-## Setup The Unity Scene
+## 1.3 Setup The Unity Scene
 
 1. Open **GAMA > GAMA Panel**
 
@@ -90,4 +90,4 @@ At the end of this chapter, Unity is ready to communicate with the middleware.
 
 | Previous | Next |
 |---|---|
-| [Tutorial overview](README.md) | [2. Middleware and GAMA requirements](02-gama-model-preparation.md) |
+| [Tutorial overview](README.md) | [First Experiment Launching](01-installation-and-setup.md) |
