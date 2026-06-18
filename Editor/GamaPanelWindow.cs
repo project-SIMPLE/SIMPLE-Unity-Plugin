@@ -156,7 +156,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private int previewSamplesPerAgent = 6;
     private Color backgroundColor = Color.black;
 
-    [MenuItem("GAMA/GAMA Panel")]
+    [MenuItem("GAMA/GAMA Panel", false, 10)]
     public static void OpenWindow()
     {
         OpenWindow(0);
@@ -2980,11 +2980,11 @@ public sealed class GamaPanelWindow : EditorWindow
             EditorGUILayout.LabelField(agent.Name, GUILayout.Width(180f));
             EditorGUILayout.LabelField(agent.CountExpression, GUILayout.Width(70f));
 
-            GameObject editedPrefab = GamaPrefabSelectionUtility.DrawCompactPrefabSelector(
+            GameObject editedPrefab = (GameObject)EditorGUILayout.ObjectField(
                 agent.PrefabOverride,
-                agent.Name,
-                agent.PrefabHint,
-                210f);
+                typeof(GameObject),
+                false,
+                GUILayout.Width(210f));
 
             if (editedPrefab != agent.PrefabOverride)
             {

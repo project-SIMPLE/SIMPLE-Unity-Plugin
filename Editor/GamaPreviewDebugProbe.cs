@@ -1,10 +1,10 @@
-﻿#if UNITY_EDITOR
+#if UNITY_EDITOR
 using UnityEditor;
 using UnityEngine;
 
 public static class GamaPreviewDebugProbe
 {
-    [MenuItem("GAMA/Debug/Probe Static Preview")]
+    // [MenuItem("GAMA/Debug/Probe Static Preview")]
     public static void ProbeStaticPreview()
     {
         var root = FindPreviewRoot();
@@ -36,7 +36,7 @@ public static class GamaPreviewDebugProbe
         SceneView.RepaintAll();
     }
 
-    [MenuItem("GAMA/Debug/Force pedestrian red x10")]
+    // [MenuItem("GAMA/Debug/Force pedestrian red x10")]
     public static void ForcePedestrianRedX10()
     {
         var root = FindPreviewRoot();

@@ -25,16 +25,11 @@ internal static class GamaPrefabSelectionUtility
         string speciesName,
         string prefabHint)
     {
-        EditorGUILayout.BeginHorizontal();
-        EditorGUILayout.PrefixLabel(label);
-        GameObject selected = DrawPrefabSelectorControl(
-            "full|" + label + "|" + speciesName + "|" + prefabHint,
+        return (GameObject)EditorGUILayout.ObjectField(
+            new GUIContent(label),
             current,
-            speciesName,
-            prefabHint,
-            GUILayout.ExpandWidth(true));
-        EditorGUILayout.EndHorizontal();
-        return selected;
+            typeof(GameObject),
+            false);
     }
 
     public static GameObject DrawCompactPrefabSelector(
