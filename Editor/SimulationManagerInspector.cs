@@ -15,6 +15,7 @@ public class SimulationManagerInspector : Editor
     private bool showInteractionScenario = false;
     private bool showPerformanceAndStreaming = false;
     private bool showAdvancedDebug = false;
+    private readonly Dictionary<string, bool> dynamicColorFoldoutStates = new Dictionary<string, bool>();
 
     // We keep a HashSet of explicitly mapped fields so we don't double-draw them
     private HashSet<string> explicitFields = new HashSet<string>
@@ -297,11 +298,45 @@ public class SimulationManagerInspector : Editor
             SerializedProperty tag = entry.FindPropertyRelative("tag");
             SerializedProperty importedVisible = entry.FindPropertyRelative("importedVisible");
             SerializedProperty importedColor = entry.FindPropertyRelative("importedColor");
+            SerializedProperty importedBaseScale = entry.FindPropertyRelative("importedBaseScale");
+            SerializedProperty importedYOffset = entry.FindPropertyRelative("importedYOffset");
+            SerializedProperty importedRotationOffsetY = entry.FindPropertyRelative("importedRotationOffsetY");
+            SerializedProperty hasOriginalImportDefaults = entry.FindPropertyRelative("hasOriginalImportDefaults");
+            SerializedProperty originalImportedVisible = entry.FindPropertyRelative("originalImportedVisible");
+            SerializedProperty originalImportedColor = entry.FindPropertyRelative("originalImportedColor");
+            SerializedProperty originalImportedBaseScale = entry.FindPropertyRelative("originalImportedBaseScale");
+            SerializedProperty originalImportedYOffset = entry.FindPropertyRelative("originalImportedYOffset");
+            SerializedProperty originalImportedRotationOffsetY = entry.FindPropertyRelative("originalImportedRotationOffsetY");
 
             string speciesName = propertyId != null ? propertyId.stringValue : "(unknown)";
             string tagStr = tag != null && !string.IsNullOrEmpty(tag.stringValue) ? " [" + tag.stringValue + "]" : "";
-            Color defaultColor = importedColor != null ? importedColor.colorValue : Color.white;
-            bool defaultVisible = importedVisible == null || importedVisible.boolValue;
+            bool useOriginalDefaults = hasOriginalImportDefaults != null && hasOriginalImportDefaults.boolValue;
+            Color defaultColor = useOriginalDefaults && originalImportedColor != null
+                ? originalImportedColor.colorValue
+                : (importedColor != null ? importedColor.colorValue : Color.white);
+            bool defaultVisible = useOriginalDefaults && originalImportedVisible != null
+                ? originalImportedVisible.boolValue
+                : (importedVisible == null || importedVisible.boolValue);
+            bool defaultColorRequiresOverride = useOriginalDefaults &&
+                importedColor != null &&
+                originalImportedColor != null &&
+                !ColorsApproximately(originalImportedColor.colorValue, importedColor.colorValue);
+            bool defaultVisibleRequiresOverride = useOriginalDefaults &&
+                importedVisible != null &&
+                originalImportedVisible != null &&
+                originalImportedVisible.boolValue != importedVisible.boolValue;
+            float defaultScaleMultiplier = ResolveOriginalScaleMultiplier(
+                useOriginalDefaults,
+                importedBaseScale,
+                originalImportedBaseScale);
+            Vector3 defaultPositionOffset = ResolveOriginalPositionOffset(
+                useOriginalDefaults,
+                importedYOffset,
+                originalImportedYOffset);
+            Vector3 defaultRotationOffsetEuler = ResolveOriginalRotationOffsetEuler(
+                useOriginalDefaults,
+                importedRotationOffsetY,
+                originalImportedRotationOffsetY);
 
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
@@ -330,14 +365,11 @@ public class SimulationManagerInspector : Editor
             }
 
             Color editedColor = EditorGUILayout.ColorField("Color", overrideEntry.overrideColor ? overrideEntry.color : defaultColor);
-            overrideEntry.overrideColor = !ColorsApproximately(editedColor, defaultColor);
+            bool preserveOriginalColorOverride = overrideEntry.overrideColor &&
+                defaultColorRequiresOverride &&
+                ColorsApproximately(editedColor, defaultColor);
+            overrideEntry.overrideColor = preserveOriginalColorOverride || !ColorsApproximately(editedColor, defaultColor);
             overrideEntry.color = overrideEntry.overrideColor ? editedColor : defaultColor;
-
-            bool dynamicColorChanged = DrawDynamicColorControls(
-                overrideEntry,
-                manager,
-                speciesName,
-                tag != null ? tag.stringValue : string.Empty);
 
             float editedScale = EditorGUILayout.DelayedFloatField("Scale Multiplier", overrideEntry.GetEffectiveScaleMultiplier());
             editedScale = Mathf.Max(0.0001f, editedScale);
@@ -352,20 +384,44 @@ public class SimulationManagerInspector : Editor
 
             bool editedVisible = EditorGUILayout.Toggle("Visible", overrideEntry.UsesRuntimeVisibilityOverride() ? overrideEntry.GetEffectiveRuntimeVisible() : defaultVisible);
             bool visibilityDiffersFromDefault = editedVisible != defaultVisible;
-            overrideEntry.overridePreviewVisibility = visibilityDiffersFromDefault;
+            bool preserveOriginalVisibilityOverride = overrideEntry.UsesRuntimeVisibilityOverride() &&
+                defaultVisibleRequiresOverride &&
+                editedVisible == defaultVisible;
+            bool visibilityRequiresOverride = preserveOriginalVisibilityOverride || visibilityDiffersFromDefault;
+            overrideEntry.overridePreviewVisibility = visibilityRequiresOverride;
             overrideEntry.visibleInPreview = editedVisible;
-            overrideEntry.overrideRuntimeVisibility = visibilityDiffersFromDefault;
+            overrideEntry.overrideRuntimeVisibility = visibilityRequiresOverride;
             overrideEntry.visibleInRuntime = editedVisible;
-            overrideEntry.overrideVisibility = visibilityDiffersFromDefault;
+            overrideEntry.overrideVisibility = visibilityRequiresOverride;
             overrideEntry.visible = editedVisible;
 
-            bool rowChanged = EditorGUI.EndChangeCheck() || dynamicColorChanged;
+            bool rowChanged = EditorGUI.EndChangeCheck();
+
+            string dynamicColorFoldoutKey = BuildDynamicColorFoldoutKey(
+                modelPath,
+                experimentName,
+                speciesName,
+                tag != null ? tag.stringValue : string.Empty);
+            rowChanged |= DrawDynamicColorControls(
+                overrideEntry,
+                manager,
+                speciesName,
+                tag != null ? tag.stringValue : string.Empty,
+                dynamicColorFoldoutKey);
 
             EditorGUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("Reset to GAMA attributes", GUILayout.Width(180f)))
             {
-                ResetSpeciesOverrideEntry(overrideEntry, defaultColor, defaultVisible);
+                ResetSpeciesOverrideEntry(
+                    overrideEntry,
+                    defaultColor,
+                    defaultColorRequiresOverride,
+                    defaultScaleMultiplier,
+                    defaultPositionOffset,
+                    defaultRotationOffsetEuler,
+                    defaultVisible,
+                    defaultVisibleRequiresOverride);
                 rowChanged = true;
             }
             EditorGUILayout.EndHorizontal();
@@ -434,20 +490,35 @@ public class SimulationManagerInspector : Editor
                Mathf.Abs(a.a - b.a) < 0.001f;
     }
 
-    private static bool DrawDynamicColorControls(
+    private bool DrawDynamicColorControls(
         GamaSpeciesRenderOverrideEntry entry,
         SimulationManager manager,
         string speciesName,
-        string tag)
+        string tag,
+        string foldoutKey)
     {
         if (entry == null)
         {
             return false;
         }
 
+        EditorGUILayout.Space(6);
+        bool isExpanded;
+        dynamicColorFoldoutStates.TryGetValue(foldoutKey ?? string.Empty, out isExpanded);
+
+        EditorGUI.BeginChangeCheck();
+        isExpanded = EditorGUILayout.Foldout(isExpanded, "Dynamic Color", true);
+        if (EditorGUI.EndChangeCheck())
+        {
+            dynamicColorFoldoutStates[foldoutKey ?? string.Empty] = isExpanded;
+        }
+
+        if (!isExpanded)
+        {
+            return false;
+        }
+
         bool changed = false;
-        EditorGUILayout.Space(4);
-        EditorGUILayout.LabelField("Dynamic Color", EditorStyles.miniBoldLabel);
         EditorGUI.indentLevel++;
 
         bool overrideDynamic = EditorGUILayout.Toggle("Override Dynamic Color", entry.overrideDynamicColor);
@@ -491,6 +562,18 @@ public class SimulationManagerInspector : Editor
 
         EditorGUI.indentLevel--;
         return changed;
+    }
+
+    private static string BuildDynamicColorFoldoutKey(
+        string modelPath,
+        string experimentName,
+        string speciesName,
+        string tag)
+    {
+        return (modelPath ?? string.Empty) + "|" +
+               (experimentName ?? string.Empty) + "|" +
+               (speciesName ?? string.Empty) + "|" +
+               (tag ?? string.Empty);
     }
 
     private static string DrawDynamicColorAttributeSelector(
@@ -712,15 +795,6 @@ public class SimulationManagerInspector : Editor
             changed = true;
         }
 
-        if (GUILayout.Button("Configure 0..1 green gradient"))
-        {
-            entry.continuousBaseColor = Color.green;
-            entry.continuousMinValue = 0f;
-            entry.continuousMaxValue = 1f;
-            entry.continuousInvert = false;
-            changed = true;
-        }
-
         return changed;
     }
 
@@ -788,10 +862,64 @@ public class SimulationManagerInspector : Editor
         return !string.IsNullOrWhiteSpace(resourcesPath);
     }
 
+    private static float ResolveOriginalScaleMultiplier(
+        bool useOriginalDefaults,
+        SerializedProperty importedBaseScale,
+        SerializedProperty originalImportedBaseScale)
+    {
+        if (!useOriginalDefaults || importedBaseScale == null || originalImportedBaseScale == null)
+        {
+            return 1f;
+        }
+
+        float currentScale = importedBaseScale.floatValue;
+        float originalScale = originalImportedBaseScale.floatValue;
+        if (Mathf.Abs(currentScale) < 0.0001f)
+        {
+            return 1f;
+        }
+
+        float multiplier = originalScale / currentScale;
+        return Mathf.Abs(multiplier - 1f) > 0.0001f ? Mathf.Max(0.0001f, multiplier) : 1f;
+    }
+
+    private static Vector3 ResolveOriginalPositionOffset(
+        bool useOriginalDefaults,
+        SerializedProperty importedYOffset,
+        SerializedProperty originalImportedYOffset)
+    {
+        if (!useOriginalDefaults || importedYOffset == null || originalImportedYOffset == null)
+        {
+            return Vector3.zero;
+        }
+
+        float deltaY = originalImportedYOffset.floatValue - importedYOffset.floatValue;
+        return Mathf.Abs(deltaY) > 0.0001f ? new Vector3(0f, deltaY, 0f) : Vector3.zero;
+    }
+
+    private static Vector3 ResolveOriginalRotationOffsetEuler(
+        bool useOriginalDefaults,
+        SerializedProperty importedRotationOffsetY,
+        SerializedProperty originalImportedRotationOffsetY)
+    {
+        if (!useOriginalDefaults || importedRotationOffsetY == null || originalImportedRotationOffsetY == null)
+        {
+            return Vector3.zero;
+        }
+
+        float deltaY = originalImportedRotationOffsetY.floatValue - importedRotationOffsetY.floatValue;
+        return Mathf.Abs(deltaY) > 0.0001f ? new Vector3(0f, deltaY, 0f) : Vector3.zero;
+    }
+
     private static void ResetSpeciesOverrideEntry(
         GamaSpeciesRenderOverrideEntry entry,
         Color defaultColor,
-        bool defaultVisible)
+        bool defaultColorRequiresOverride,
+        float defaultScaleMultiplier,
+        Vector3 defaultPositionOffset,
+        Vector3 defaultRotationOffsetEuler,
+        bool defaultVisible,
+        bool defaultVisibleRequiresOverride)
     {
         if (entry == null)
         {
@@ -802,7 +930,7 @@ public class SimulationManagerInspector : Editor
         entry.materialOverride = null;
         entry.prefabResourcePath = string.Empty;
 
-        entry.overrideColor = false;
+        entry.overrideColor = defaultColorRequiresOverride;
         entry.color = defaultColor;
 
         entry.overrideDynamicColor = false;
@@ -820,20 +948,20 @@ public class SimulationManagerInspector : Editor
         entry.continuousDarkAmount = 0.45f;
         entry.fallbackToStaticColor = true;
 
-        entry.overrideScaleMultiplier = false;
-        entry.scaleMultiplier = 1f;
+        entry.overrideScaleMultiplier = Mathf.Abs(defaultScaleMultiplier - 1f) > 0.0001f;
+        entry.scaleMultiplier = entry.overrideScaleMultiplier ? Mathf.Max(0.0001f, defaultScaleMultiplier) : 1f;
 
-        entry.overridePositionOffset = false;
-        entry.positionOffset = Vector3.zero;
+        entry.overridePositionOffset = defaultPositionOffset.sqrMagnitude > 0.0001f;
+        entry.positionOffset = entry.overridePositionOffset ? defaultPositionOffset : Vector3.zero;
 
-        entry.overrideRotationOffset = false;
-        entry.rotationOffsetEuler = Vector3.zero;
+        entry.overrideRotationOffset = defaultRotationOffsetEuler.sqrMagnitude > 0.0001f;
+        entry.rotationOffsetEuler = entry.overrideRotationOffset ? defaultRotationOffsetEuler : Vector3.zero;
 
-        entry.overridePreviewVisibility = false;
+        entry.overridePreviewVisibility = defaultVisibleRequiresOverride;
         entry.visibleInPreview = defaultVisible;
-        entry.overrideRuntimeVisibility = false;
+        entry.overrideRuntimeVisibility = defaultVisibleRequiresOverride;
         entry.visibleInRuntime = defaultVisible;
-        entry.overrideVisibility = false;
+        entry.overrideVisibility = defaultVisibleRequiresOverride;
         entry.visible = defaultVisible;
 
         entry.renderMode = GamaSpeciesRenderMode.Default;

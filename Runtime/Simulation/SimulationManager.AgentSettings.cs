@@ -418,6 +418,12 @@ public class GamaAgentPropertySettings
     [SerializeField] private float importedBaseScale = 1f;
     [SerializeField] private float importedYOffset;
     [SerializeField] private float importedRotationOffsetY;
+    [SerializeField] private bool hasOriginalImportDefaults;
+    [SerializeField] private bool originalImportedVisible = true;
+    [SerializeField] private Color originalImportedColor = Color.white;
+    [SerializeField] private float originalImportedBaseScale = 1f;
+    [SerializeField] private float originalImportedYOffset;
+    [SerializeField] private float originalImportedRotationOffsetY;
     [SerializeField] private GamaAgentManualOverrides manual = new GamaAgentManualOverrides();
 
     public string PropertyId { get { return propertyId; } }
@@ -436,14 +442,37 @@ public class GamaAgentPropertySettings
 
     public void ImportFrom(PropertiesGAMA property, int precision)
     {
+        bool propertyChanged = hasOriginalImportDefaults &&
+            !string.Equals(propertyId, property.id, StringComparison.OrdinalIgnoreCase);
+        if (propertyChanged)
+        {
+            hasOriginalImportDefaults = false;
+        }
+
+        bool currentVisible = property.visible;
+        Color currentColor = property.GetUnityColor();
+        float currentBaseScale = property.GetUnityScale(precision);
+        float currentYOffset = property.yOffsetF;
+        float currentRotationOffsetY = property.rotationOffsetF;
+
         propertyId = property.id;
         tag = property.tag;
         prefab = property.prefab;
-        importedVisible = property.visible;
-        importedColor = property.GetUnityColor();
-        importedBaseScale = property.GetUnityScale(precision);
-        importedYOffset = property.yOffsetF;
-        importedRotationOffsetY = property.rotationOffsetF;
+        importedVisible = currentVisible;
+        importedColor = currentColor;
+        importedBaseScale = currentBaseScale;
+        importedYOffset = currentYOffset;
+        importedRotationOffsetY = currentRotationOffsetY;
+
+        if (!hasOriginalImportDefaults)
+        {
+            originalImportedVisible = currentVisible;
+            originalImportedColor = currentColor;
+            originalImportedBaseScale = currentBaseScale;
+            originalImportedYOffset = currentYOffset;
+            originalImportedRotationOffsetY = currentRotationOffsetY;
+            hasOriginalImportDefaults = true;
+        }
     }
 }
 
