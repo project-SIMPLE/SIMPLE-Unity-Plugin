@@ -55,10 +55,3 @@ read.
 The next step of the tutorial focuses on Play Mode personalization. The goal is
 to adjust the visual parameters of the imported objects directly in Unity so the
 Prey Predator experiment becomes readable while it is running.
-
-## Navigation
-
-| Previous | Next |
-|---|---|
-| [Installation and Setup](01-installation-and-setup.md) | [Personalize Agents During Play Mode](03-personalization.md) |
-
