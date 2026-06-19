@@ -36,11 +36,13 @@ The GAMA Panel now contains the detected species settings.
 For each detected species, the preview exposes visual settings that can later be
 applied to Play Mode runtime agents:
 
-- **Prefab**: replace the default GAMA geometry with a Unity prefab.
-- **Color**: force a stable color for the species.
-- **Scale**: change the visual size without changing the logical
-- **Visible**: show or hide the species in preview and runtime.
-- **Reset**: return the species to the values received from GAMA.
+1. **Info**: details about the captured static preview data.
+2. **Prefab**: replace the default GAMA geometry with a Unity prefab.
+3. **Color**: force a stable color for the species.
+4. **Scale**: change the visual size without changing the logical scale.
+5. **Visible**: show or hide the species in preview and runtime.
+6. **Reset**: return the species to the values received from GAMA.
+7. **Validate**: apply the settings to your Unity agents and close the panel.
 
 You can choose a prefab from the GAMA Panel.
 
