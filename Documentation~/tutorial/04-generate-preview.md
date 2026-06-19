@@ -84,9 +84,3 @@ scenes or older previews.
 At the end of this chapter, the static preview should look close to the desired
 Unity scene, and the same species settings should be ready to reuse in Play
 Mode.
-
-## Navigation
-
-| Previous | Next |
-|---|---|
-| [3. Personalize Agents During Play Mode](03-personalization.md) | [5. Dynamic Colors From GAMA Attributes](05-dynamic-colors.md) |
