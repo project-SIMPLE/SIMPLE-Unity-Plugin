@@ -43,6 +43,7 @@ Using the Inspector, you can change the following attributes directly:
 3. **Scale Multiplier**: Make agents bigger or smaller so they are easier to see.
 4. **Position & Rotation Offset**: Adjust the 3D position and rotation of the instantiated prefab relative to the GAMA agent's center.
 5. **Visible**: Hide species that are not useful for the Unity view.
+6. **Reset to GAMA attributes**: Revert any local changes back to the original attributes sent by GAMA.
 
 This is very useful for quick experimentation because you immediately see whether the selected setup makes sense in the scene.
 
