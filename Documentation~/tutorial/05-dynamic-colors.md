@@ -1,11 +1,13 @@
 # 5. Dynamic Colors From GAMA Attributes
 
-Static species settings are not always enough. Some visual properties should
-change continuously while the GAMA simulation runs.
+Static species settings are not always enough. Some visual properties should be
+driven by values coming from GAMA.
 
-This chapter explains how to drive Unity visuals from per-agent attributes sent
-by GAMA at runtime. The main example is dynamic color, because it is easy to
-verify visually.
+After generating the preview, dynamic colors can be configured in Unity Edit
+Mode from the Inspector. In the **Prey Predator 7** model, a useful example is
+the `food` attribute of each `vegetation_cell`: instead of showing every grass
+cell with the same green, Unity can use a more or less intense green depending
+on the `food` value, like in the GAMA display.
 
 ## Attribute Requirements
 
@@ -31,72 +33,91 @@ map<string, list<float>> prey_atts <- ["energy":: prey_energy];
 do add_geometries_to_send(prey, up_prey, prey_atts);
 ```
 
-## Discrete Example: Contaminated People
-
-Use this mode when an attribute represents a small set of states.
-
-Goal:
-
-```text
-is_infected = false -> green
-is_infected = true  -> red
-```
-
-Steps:
-
-1. Select the `Game Manager`.
-2. Find the target species, for example `people`.
-3. Enable **Override Dynamic Color**.
-4. Set **Dynamic Color Mode** to **Discrete**.
-5. Select the runtime attribute, for example `is_infected`.
-6. Add two rules: `false` = green and `true` = red.
-
-If Unity has already received attributes for that species, the attribute field is
-shown as a dropdown. If no attributes have been received yet, type the attribute
-name manually, then enter Play Mode again.
-
-## Continuous Example: Prey/Predator Or Vegetation Value
+## Continuous Example: Vegetation Food
 
 Use this mode when an attribute is numeric and should produce a gradual visual
 change.
 
-Example goal for a prey/predator model:
+In this example, the `vegetation_cell` species receives a numeric `food`
+attribute. The goal is:
 
 ```text
-low energy  -> light green
-high energy -> dark green
+low food  -> lighter/darker green
+high food -> stronger green
 ```
 
 Steps:
 
 1. Select the `Game Manager`.
-2. Find the target species, for example `prey`.
-3. Enable **Override Dynamic Color**.
-4. Set **Dynamic Color Mode** to **Continuous**.
-5. Select the runtime attribute, for example `energy`.
-6. Set **Base Color** to green.
-7. Set **Min Value** and **Max Value** to match the expected GAMA range.
-8. Adjust the light/dark amounts if needed.
+2. In the Inspector, find `vegetation_cell`.
+3. Open the **Dynamic Color** foldout.
+4. Enable **Override Dynamic Color**.
+5. Set **Dynamic Color Mode** to **Continuous**.
+6. Set **Attribute Name** to `food`.
+7. Set **Base Color** to green.
+8. Set **Min Value** and **Max Value** to the expected GAMA range.
+9. Adjust **Light Amount** and **Dark Amount** until the contrast is readable.
 
-The same pattern can be used with vegetation, pollution, health, infection
-probability, hunger, or any numeric value sent by GAMA.
+The numbered close-up below shows the important controls:
+
+![Dynamic food color settings legend](../images/tutorial/05-dynamic-color-food-settings-legend.png)
+
+1. Open the **Dynamic Color** foldout.
+2. Enable the override.
+3. Choose **Continuous** mode.
+4. Enter the attribute name, here `food`.
+5. Pick the base color.
+6. Set the numeric range.
+7. Tune the light and dark variation.
+
+Before enabling the dynamic color rule, the preview already shows the species
+with static colors and prefabs, but the grass cells do not yet reveal their
+individual `food` values.
+
+![Preview before food dynamic color](../images/tutorial/05-dynamic-color-preview-before-food.png)
+
+After enabling the `food` dynamic color on `vegetation_cell`, each grass square
+uses its own GAMA value to modulate the green color. This makes the food
+distribution easier to read directly in Unity.
+
+![Preview with food dynamic color](../images/tutorial/05-dynamic-color-preview-food-result.png)
+
+## Discrete Colors For States
+
+Continuous colors are useful for numeric values such as food, energy, pollution,
+health, infection probability, or hunger.
+
+For attributes that represent a small set of states, use **Discrete** mode
+instead. This is useful for experiments with states such as:
+
+- contaminated, dead, or recovered agents;
+- voters choosing between several opinions;
+- agents belonging to different roles or categories.
+
+For example:
+
+```text
+state = contaminated -> red
+state = recovered    -> green
+state = dead         -> black
+```
 
 ## Runtime Behavior
 
-Dynamic colors are applied per agent during Play Mode.
+Dynamic colors are applied per agent when Unity receives GAMA attributes.
 
 They do not replace the static preview workflow:
 
 - the preview defines the default species representation;
-- dynamic rules define how individual agents change during runtime;
+- dynamic rules define how individual agents change from their own attributes;
 - if the attribute is missing or cannot be parsed, Unity keeps the static/GAMA
   color instead of crashing.
 
 ## Result
 
 At the end of this chapter, Unity should be able to show both static species
-settings and per-agent runtime variations, such as infected people turning red
-or prey becoming greener as a numeric value changes.
+settings and per-agent attribute variations, such as vegetation cells becoming
+more or less green depending on their `food` value.
 
 ## Navigation
 

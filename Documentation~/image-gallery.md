@@ -306,6 +306,30 @@ Use this page as a visual index for documentation images. Copy the path under ea
 ../images/tutorial/04-preview-vegetation-settings.png
 ```
 
+## `../images/tutorial/05-dynamic-color-food-settings-legend.png`
+
+<img src="images/tutorial/05-dynamic-color-food-settings-legend.png" width="360">
+
+```md
+../images/tutorial/05-dynamic-color-food-settings-legend.png
+```
+
+## `../images/tutorial/05-dynamic-color-preview-before-food.png`
+
+<img src="images/tutorial/05-dynamic-color-preview-before-food.png" width="360">
+
+```md
+../images/tutorial/05-dynamic-color-preview-before-food.png
+```
+
+## `../images/tutorial/05-dynamic-color-preview-food-result.png`
+
+<img src="images/tutorial/05-dynamic-color-preview-food-result.png" width="360">
+
+```md
+../images/tutorial/05-dynamic-color-preview-food-result.png
+```
+
 ## `../images/tutorial/05-play-mode-runtime-preview-hidden.png`
 
 <img src="images/tutorial/05-play-mode-runtime-preview-hidden.png" width="360">
