@@ -50,11 +50,6 @@ With the same model, start by checking that the static background
 species is visible. Here, only the vegetation grid is clearly displayed in the
 Unity preview.
 
-![Preview with vegetation only](../images/tutorial/04-preview-vegetation-only.png)
-
-The GAMA Panel can be used to keep the vegetation visible while preparing the
-other species.
-
 ![Vegetation preview settings](../images/tutorial/04-preview-vegetation-settings.png)
 
 Then enable the prey and predator species and increase their scale in the GAMA
