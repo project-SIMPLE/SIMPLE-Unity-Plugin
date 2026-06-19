@@ -25,4 +25,4 @@ You need:
 - GAMA;
 - `simple.webplatform`;
 
-Unity connects to `simple.webplatform`, not directly to GAMA Server/
+Unity connects to `simple.webplatform`, not directly to GAMA Server.

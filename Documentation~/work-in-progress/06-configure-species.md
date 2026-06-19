@@ -97,9 +97,3 @@ scenes or older previews.
 At the end of this chapter, the static preview should look close to the desired
 Unity scene, and the same species settings should be ready to reuse in Play
 Mode.
-
-## Navigation
-
-| Previous | Next |
-|---|---|
-| [5. Dynamic Colors From GAMA Attributes](../tutorial/05-dynamic-colors.md) | [7. Apply Preview Settings In Play Mode](07-apply-preview-settings.md) |

@@ -71,9 +71,3 @@ At the end of this chapter, the workflow should be clear:
 2. generate a preview to tune the Unity representation faster;
 3. validate the preview settings;
 4. press Play again and check that those settings apply to live agents.
-
-## Navigation
-
-| Previous | Next |
-|---|---|
-| [6. Configure Species Appearance](06-configure-species.md) | [8. Optimize Large Simulations](08-large-models-performance.md) |

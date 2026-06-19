@@ -23,9 +23,3 @@ Unity runtime / headset WebSocket: ws://localhost:8080/
 Monitor WebSocket: ws://localhost:8001/
 GAMA Server behind webplatform: ws://localhost:1000/
 ```
-
-## Navigation
-
-| Previous | Next |
-|---|---|
-| [Tutorial Overview](README.md) | [1. Package Installation and Setup](01-installation-and-setup.md) |
