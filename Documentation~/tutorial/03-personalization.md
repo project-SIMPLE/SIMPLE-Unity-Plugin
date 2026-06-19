@@ -14,6 +14,8 @@ Start Play Mode and wait until the GAMA agents appear in the Unity scene.
 In the **Hierarchy**, select the object that manages the GAMA connection and
 simulation settings:
 
+![Game Manager Hierarchy](./images/game-manager-hierarchy.png)
+
 ```text
 Game Manager
 ```
