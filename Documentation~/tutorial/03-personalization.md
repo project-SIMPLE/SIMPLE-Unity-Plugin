@@ -28,58 +28,23 @@ For example, here we have the species `prey`, `predator`, and `vegetation_cell`:
 
 ![Species in Inspector](./images/inspector-species.png)
 
-## Change A Species Color
+## 3.2 Modify Species Attributes Live
 
-Pick one species in the Inspector and change its color.
+Pick one species in the Inspector. You will see several attributes you can modify live.
 
-This lets you quickly verify that Unity can override the visual appearance of a
-GAMA species without changing the GAMA model itself.
+This lets you quickly verify that Unity can override the visual appearance of a GAMA species without changing the GAMA model itself. The scene should update while Play Mode is still running, or on the next visual refresh received from GAMA.
 
-For example:
+![Species Attributes](./images/inspector-attributes.png)
 
-- make `pedestrian` agents blue;
-- make `wall` agents dark gray;
-- make `road` agents black;
-- make `people` agents green.
+Using the Inspector, you can change the following attributes directly:
 
-The scene should update while Play Mode is still running, or on the next visual
-refresh received from GAMA.
+1. **Prefab Override**: Assign a Unity prefab instead of displaying a default geometric shape. For Play Mode runtime loading, the prefab must be placed under a Unity `Resources` folder (e.g., `Assets/Resources/Visual Prefabs/Character/Ghost.prefab`).
+2. **Color**: Quickly change the species color to separate them visually.
+3. **Scale Multiplier**: Make agents bigger or smaller so they are easier to see.
+4. **Position & Rotation Offset**: Adjust the 3D position and rotation of the instantiated prefab relative to the GAMA agent's center.
+5. **Visible**: Hide species that are not useful for the Unity view.
 
-## 3.2 Assign A Prefab
-
-You can also assign a Unity prefab to a species.
-
-For example, instead of displaying a default geometric shape for `pedestrian`,
-you can assign a character prefab.
-
-For Play Mode runtime loading, the prefab should be placed under a Unity
-`Resources` folder.
-
-Recommended example:
-
-```text
-Assets/Resources/Visual Prefabs/Character/Ghost.prefab
-```
-
-Runtime resource path:
-
-```text
-Visual Prefabs/Character/Ghost
-```
-
-This allows Unity to load the prefab while the simulation is running.
-
-## 3.3 Useful Live Settings
-
-During Play Mode, the most useful settings to test are:
-
-- **Color**: quickly separate species visually.
-- **Prefab**: replace simple GAMA geometry with a Unity asset.
-- **Scale**: make agents easier to see.
-- **Visible**: hide species that are not useful for the Unity view.
-
-This is useful for quick experimentation because you immediately see whether the
-selected color, prefab, or scale makes sense in the scene.
+This is very useful for quick experimentation because you immediately see whether the selected setup makes sense in the scene.
 
 ## 3.4 Why This Is Not The Best Workflow
 
