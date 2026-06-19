@@ -10,10 +10,6 @@ launching the full live experiment every time.
 
 Open **GAMA > GAMA Panel > Generate Preview from GAMA**.
 
-![GAMA Preview page](../images/tutorial/03-gama-preview-page.png)
-
-Click **Generate Preview from GAMA**.
-
 ![Generate Preview from GAMA button](../images/tutorial/03-generate-preview-button.png)
 
 During capture, the GAMA Panel shows that the preview is being built.
