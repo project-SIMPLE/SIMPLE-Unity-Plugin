@@ -118,3 +118,5 @@ They do not replace the static preview workflow:
 At the end of this chapter, Unity should be able to show both static species
 settings and per-agent attribute variations, such as vegetation cells becoming
 more or less green depending on their `food` value.
+
+You came to the end of this tutorial! Thank you for following it : it is now time to experiment it yourself...
