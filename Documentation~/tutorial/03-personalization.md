@@ -7,7 +7,7 @@ At this stage, the goal is not yet to build the final visual setup. The goal is
 to show that the imported GAMA species can be modified live from Unity while the
 simulation is running.
 
-## Open The Game Manager
+## 3.1 Open The Game Manager
 
 Start Play Mode and wait until the GAMA agents appear in the Unity scene.
 
@@ -49,7 +49,7 @@ For example:
 The scene should update while Play Mode is still running, or on the next visual
 refresh received from GAMA.
 
-## Assign A Prefab
+## 3.2 Assign A Prefab
 
 You can also assign a Unity prefab to a species.
 
@@ -73,7 +73,7 @@ Visual Prefabs/Character/Ghost
 
 This allows Unity to load the prefab while the simulation is running.
 
-## Useful Live Settings
+## 3.3 Useful Live Settings
 
 During Play Mode, the most useful settings to test are:
 
@@ -85,7 +85,7 @@ During Play Mode, the most useful settings to test are:
 This is useful for quick experimentation because you immediately see whether the
 selected color, prefab, or scale makes sense in the scene.
 
-## Why This Is Not The Best Workflow
+## 3.4 Why This Is Not The Best Workflow
 
 Live modification proves that the Unity side can customize GAMA agents, but it
 is not comfortable for real visual iteration.
@@ -104,9 +104,3 @@ To make this easier, the next step introduces the **GAMA Preview** workflow. The
 preview lets you generate a static snapshot of the GAMA experiment in Edit Mode,
 then adjust colors, prefabs, scale, and visibility before entering Play Mode
 again.
-
-## Navigation
-
-| Previous | Next |
-|---|---|
-| [2. Run the First Experiment](02-first-experiment-launching.md) | [4. Generate the Preview](04-generate-preview.md) |
