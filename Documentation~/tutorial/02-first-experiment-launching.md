@@ -50,7 +50,7 @@ agents are imported into Unity while the experiment is running.
 ## 2.3 Into the Next Step
 
 This is already useful: we now have a functional connection between GAMA,
-`simple.webplatform`, and Unity. The **Prey Predator 7** agents are imported and
+`simple.webplatform`, and Unity. The preys, predators and vegetation cells agents are imported and
 converted into Unity objects automatically.
 
 However, the raw Unity rendering is still not clear enough to understand the
