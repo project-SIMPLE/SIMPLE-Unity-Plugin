@@ -44,10 +44,6 @@ applied to Play Mode runtime agents:
 6. **Reset**: return the species to the values received from GAMA.
 7. **Validate**: apply the settings to your Unity agents and close the panel.
 
-You can choose a prefab from the GAMA Panel.
-
-![Change a prefab from the GAMA Panel](../images/tutorial/04-change-prefab-from-gama-panel.png)
-
 ## Important Behavior
 
 Generating a new preview should clean previous generated preview/runtime objects
