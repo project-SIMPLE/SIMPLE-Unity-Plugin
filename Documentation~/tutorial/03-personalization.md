@@ -16,10 +16,7 @@ simulation settings:
 
 ![Game Manager Hierarchy](./images/game-manager-hierarchy.png)
 
-Depending on the scene setup, this object may also be the object that contains
-the `SimulationManager` component.
-
-In the **Inspector**, find the GAMA agent or species settings. Unity should show
+In the **Inspector** window, find the GAMA agent or species settings. Unity should show
 the species detected from the running GAMA experiment.
 
 > [!TIP]
