@@ -16,10 +16,6 @@ simulation settings:
 
 ![Game Manager Hierarchy](./images/game-manager-hierarchy.png)
 
-```text
-Game Manager
-```
-
 Depending on the scene setup, this object may also be the object that contains
 the `SimulationManager` component.
 
