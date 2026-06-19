@@ -1,4 +1,4 @@
-# 2. Run the Prey Predator 7 Experiment in Play Mode
+# 2. Run the GAMA Experiment in Play Mode
 
 It is time to run the first GAMA experiment in Unity with this package. In this
 tutorial, use the **Prey Predator 7** model from GAMA.
