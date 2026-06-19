@@ -3,6 +3,12 @@
 It is time to run the first GAMA experiment in Unity with this package. In this
 tutorial, use the **Prey Predator 7** model from GAMA.
 
+![Prey Predator 7 model location](../images/tutorial/02-prey-predator-7-location.png)
+
+This experiment is used throughout the rest of the tutorial because it covers the
+main features provided by the package: static background species, dynamic agents,
+species-specific rendering, live updates, and interaction with Unity objects.
+
 This chapter validates the baseline live workflow: Unity enters Play Mode,
 connects to `simple.webplatform`, receives the running GAMA simulation, and
 creates Unity objects from the GAMA agents.

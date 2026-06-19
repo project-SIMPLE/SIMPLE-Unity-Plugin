@@ -138,6 +138,14 @@ Use this page as a visual index for documentation images. Copy the path under ea
 ../images/tutorial/02-open-middleware.png
 ```
 
+## `../images/tutorial/02-prey-predator-7-location.png`
+
+<img src="images/tutorial/02-prey-predator-7-location.png" width="360">
+
+```md
+../images/tutorial/02-prey-predator-7-location.png
+```
+
 ## `../images/tutorial/02-runtime-live-overview.png`
 
 <img src="images/tutorial/02-runtime-live-overview.png" width="360">
