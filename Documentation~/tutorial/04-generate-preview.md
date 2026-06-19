@@ -27,14 +27,14 @@ The scene now contains the generated static preview.
 
 ![Generated static preview scene](../images/tutorial/03-static-preview-scene-built.png)
 
-The GAMA Panel now contains the detected species settings.
-
-![Captured preview species settings](../images/tutorial/03-preview-captured-species-settings.png)
 
 ## 4.3 Parameters You Can Modify In The Preview
 
 For each detected species, the preview exposes visual settings that can later be
 applied to Play Mode runtime agents:
+
+![Captured preview species settings](../images/tutorial/03-preview-captured-species-settings.png)
+
 
 1. **Info**: details about the captured static preview data.
 2. **Prefab**: replace the default GAMA geometry with a Unity prefab.
