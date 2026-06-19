@@ -1,4 +1,4 @@
-﻿# 2. Run the GAMA Experiment in Play Mode
+# 2. Run the GAMA Experiment in Play Mode
 
 It is time to run our first experiment in Unity with this package. It is a way to first validate that the live runtime workflow corresponding to a certain experiment
 works from a clean Unity scene.
@@ -13,7 +13,7 @@ objects in the scene.
 2. Start `simple.webplatform` with  `npm start`
 3. Open the target experiment in GAMA.
 
-![Windows Overview](../images/tutorial/Capture%20d'%C3%A9cran%202026-06-16%20114917.png)
+![Windows Overview](../images/tutorial/02-windows-overview-gama-unity.png)
 4. Press **Play** in Unity.
 
 ![Unity Play Mode button](../images/tutorial/02-unity-play-mode-button-cropped.png)
