@@ -46,7 +46,7 @@ applied to Play Mode runtime agents:
 
 ## 4.4 Preview Configuration Example
 
-With the **Prey Predator 7** model, start by checking that the static background
+With the same model, start by checking that the static background
 species is visible. Here, only the vegetation grid is clearly displayed in the
 Unity preview.
 
