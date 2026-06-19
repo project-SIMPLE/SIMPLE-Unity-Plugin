@@ -62,8 +62,6 @@ example, prey are blue and predators are red.
 
 ![Colored prey and predator settings](../images/tutorial/04-preview-colored-agents-settings.png)
 
-![Colored prey and predator result](../images/tutorial/04-preview-colored-agents-result.png)
-
 ## Important Behavior
 
 Generating a new preview should clean previous generated preview/runtime objects
