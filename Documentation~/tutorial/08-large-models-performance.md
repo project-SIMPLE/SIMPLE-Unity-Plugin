@@ -58,9 +58,3 @@ whenever possible.
 - Do not hardcode species names for optimization.
 - Prefer skipping unchanged objects before adding model-specific logic.
 - Use batching only when object-level interaction is not needed.
-
-## Navigation
-
-| Previous | Next |
-|---|---|
-| [7. Apply Preview Settings In Play Mode](07-apply-preview-settings.md) | [9. Troubleshooting](09-troubleshooting.md) |
