@@ -16,10 +16,10 @@ and tune the scene before running the live simulation again.
 3. Personalize agents during Play Mode.
 4. Generate an Editor preview and configure species visual parameters.
 5. Drive dynamic visual properties from GAMA runtime attributes.
-6. Configure species appearance.
 
 ## Work in Progress
 
+6. Configure species appearance.
 7. Apply preview settings back to Play Mode and validate the live result.
 8. Optimize large models when needed.
 9. Troubleshoot common issues.

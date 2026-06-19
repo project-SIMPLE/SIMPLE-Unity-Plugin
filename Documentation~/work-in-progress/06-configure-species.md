@@ -102,4 +102,4 @@ Mode.
 
 | Previous | Next |
 |---|---|
-| [5. Dynamic Colors From GAMA Attributes](05-dynamic-colors.md) | [7. Apply Preview Settings In Play Mode](07-apply-preview-settings.md) |
+| [5. Dynamic Colors From GAMA Attributes](../tutorial/05-dynamic-colors.md) | [7. Apply Preview Settings In Play Mode](07-apply-preview-settings.md) |

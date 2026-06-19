@@ -16,12 +16,13 @@ documentation.
 - [3. Personalize agents during Play Mode](tutorial/03-personalization.md)
 - [4. Generate and configure the Unity preview](tutorial/04-generate-preview.md)
 - [5. Dynamic colors from GAMA attributes](tutorial/05-dynamic-colors.md)
-- [6. Configure species appearance](tutorial/06-configure-species.md)
 
 ## Work in Progress
-- [7. Apply preview settings in Play Mode](tutorial/07-apply-preview-settings.md)
-- [8. Optimize large simulations](tutorial/08-large-models-performance.md)
-- [9. Troubleshooting](tutorial/09-troubleshooting.md)
+- [Work in progress overview](work-in-progress/README.md)
+- [6. Configure species appearance](work-in-progress/06-configure-species.md)
+- [7. Apply preview settings in Play Mode](work-in-progress/07-apply-preview-settings.md)
+- [8. Optimize large simulations](work-in-progress/08-large-models-performance.md)
+- [9. Troubleshooting](work-in-progress/09-troubleshooting.md)
 - [User guide](user-guide/README.md)
 - [Technical documentation](technical/README.md)
 - [Runtime architecture notes](gama-unity.md)
