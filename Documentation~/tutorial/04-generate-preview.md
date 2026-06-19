@@ -57,8 +57,6 @@ vegetation grid.
 
 ![Grey prey and predator settings](../images/tutorial/04-preview-gray-agents-settings.png)
 
-![Grey prey and predator result](../images/tutorial/04-preview-gray-agents-result.png)
-
 Finally, assign stable colors to distinguish the two dynamic species. In this
 example, prey are blue and predators are red.
 
