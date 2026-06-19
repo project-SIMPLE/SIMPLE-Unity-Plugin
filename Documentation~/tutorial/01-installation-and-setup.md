@@ -27,9 +27,12 @@ After the project opens, you should be on the Unity home/editor screen.
 1. Open the Package Manager from Unity.
 
 ![Open Package Manager from Unity](../images/tutorial/Capture%20d'%C3%A9cran%202026-0dfgedfgdfg6-18%20161333.png)
-3. Click the **+** button.
 
 ![Package Manager add button](../images/tutorial/01-package-manager-add-button.png)
+
+
+3. Click the **+** button.
+
 
 5. Select **Add package from git URL...**.
 
@@ -61,12 +64,11 @@ For local development:
 
 1. Open **GAMA > GAMA Panel**
 
-![Open a new GAMA tab](../images/tutorial/02-gama-new-tab.png)
-![Open the GAMA Panel menu](../images/tutorial/01-open-gama-panel-menu.gif)
+![Open a new GAMA tab](../images/tutorial/Capture%20d'%C3%A9cran%2020fsfsdfsz26-06-18%20161411.png)
 
 2. Click **Setup Scene**
-![GAMA Panel opened](../images/tutorial/01-gama-panel-open.png)
-![Setup Scene button](../images/tutorial/01-setup-scene-button.png)
+
+![Setup Scene button](../images/tutorial/Capture%20d'%C3%A9cran%202026-06-18%20161833.png)
 
 
 3. After a quick build...
@@ -78,15 +80,10 @@ You can verify that the scene contains:
    - a `Connection Manager`;
    - a `Game Manager`;
    - required scene roots for preview and runtime objects.
+   - 
 ![Scene ready for middleware](../images/tutorial/01-scene-ready-for-middleware.png)
 
 
 ## Result
 
 At the end of this chapter, Unity is ready to communicate with the middleware.
-
-## Navigation
-
-| Previous | Next |
-|---|---|
-| [Tutorial overview](README.md) | [First Experiment Launching](02-first-experiment-launching.md) |
