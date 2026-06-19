@@ -29,6 +29,8 @@ The scene now contains the generated static preview.
 
 The GAMA Panel now contains the detected species settings.
 
+![Captured preview species settings](../images/tutorial/03-preview-captured-species-settings.png)
+
 ## 4.3 Parameters You Can Modify In The Preview
 
 For each detected species, the preview exposes visual settings that can later be
