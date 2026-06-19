@@ -26,7 +26,7 @@ After the project opens, you should be on the Unity home/editor screen.
 
 1. Open the Package Manager from Unity.
 
-![Open Package Manager from Unity](../images/tutorial/01-package-manager-menu.png)
+![Open Package Manager from Unity](../images/tutorial/Capture d'écran 2026-0dfgedfgdfg6-18 161333.png)
 
 3. Click the **+** button.
 
