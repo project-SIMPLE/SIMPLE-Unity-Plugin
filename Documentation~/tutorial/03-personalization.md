@@ -24,13 +24,9 @@ the species detected from the running GAMA experiment.
 >
 > <img width="1013" height="557" alt="Open Inspector Menu" src="https://github.com/user-attachments/assets/523641bb-b849-44dc-a32c-6e4e1643b94c" />
 
-Examples of species can be:
+For example, here we have the species `prey`, `predator`, and `vegetation_cell`:
 
-- `pedestrian`
-- `wall`
-- `building`
-- `road`
-- `people`
+![Species in Inspector](./images/inspector-species.png)
 
 ## Change A Species Color
 
