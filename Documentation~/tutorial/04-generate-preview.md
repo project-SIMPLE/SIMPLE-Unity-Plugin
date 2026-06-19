@@ -62,11 +62,10 @@ example, prey are blue and predators are red.
 
 ![Colored prey and predator settings](../images/tutorial/04-preview-colored-agents-settings.png)
 
-## Important Behavior
-
-Generating a new preview should clean previous generated preview/runtime objects
-before rebuilding the scene. This avoids visual superposition with older example
-scenes or older previews.
+> [!TIP]
+> Generating a new preview should clean previous generated preview/runtime
+> objects before rebuilding the scene. This avoids visual superposition with
+> older example scenes or older previews.
 
 ## Result
 
