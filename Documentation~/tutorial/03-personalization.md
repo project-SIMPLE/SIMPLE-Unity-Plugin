@@ -34,6 +34,11 @@ Pick one species in the Inspector. You will see several attributes you can modif
 
 This lets you quickly verify that Unity can override the visual appearance of a GAMA species without changing the GAMA model itself. The scene should update while Play Mode is still running, or on the next visual refresh received from GAMA.
 
+For example, the prey and predator species can be given different prefabs,
+colors, and scales so the running experiment becomes readable from Unity.
+
+![Play Mode personalization example](../images/tutorial/03-play-mode-personalization-example.png)
+
 ![Species Attributes](./images/inspector-attributes.png)
 
 Using the Inspector, you can change the following attributes directly:

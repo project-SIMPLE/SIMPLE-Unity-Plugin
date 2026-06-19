@@ -210,6 +210,14 @@ Use this page as a visual index for documentation images. Copy the path under ea
 ../images/tutorial/03-open-gama-preview-menu.png
 ```
 
+## `../images/tutorial/03-play-mode-personalization-example.png`
+
+<img src="images/tutorial/03-play-mode-personalization-example.png" width="360">
+
+```md
+../images/tutorial/03-play-mode-personalization-example.png
+```
+
 ## `../images/tutorial/03-preview-building-panel.png`
 
 <img src="images/tutorial/03-preview-building-panel.png" width="360">
