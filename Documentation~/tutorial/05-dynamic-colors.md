@@ -68,19 +68,22 @@ The numbered close-up below shows the important controls:
 4. Enter the attribute name, here `food`.
 5. Pick the base color.
 6. Set the numeric range.
-7. Tune the light and dark variation.
+7. Tune the light and dark variation. In the example below, both sliders are set
+   to `0.5`.
 
-Before enabling the dynamic color rule, the preview already shows the species
-with static colors and prefabs, but the grass cells do not yet reveal their
-individual `food` values.
+With **Base Color** set to green, **Min Value** set to `0`, **Max Value** set to
+`1`, **Invert** disabled, and both light/dark sliders set to `0.5`, Unity maps
+the `food` value directly to green intensity. This gives a first readable view
+of the grass food distribution.
 
-![Preview before food dynamic color](../images/tutorial/05-dynamic-color-preview-before-food.png)
+![Food dynamic color without invert](../images/tutorial/05-dynamic-color-preview-before-food.png)
 
-After enabling the `food` dynamic color on `vegetation_cell`, each grass square
-uses its own GAMA value to modulate the green color. This makes the food
-distribution easier to read directly in Unity.
+If **Invert** is enabled, the same `food` values are mapped in the opposite
+direction. This is useful when the first gradient reads backwards for the
+meaning of the attribute: for example, when low values should look visually
+stronger than high values.
 
-![Preview with food dynamic color](../images/tutorial/05-dynamic-color-preview-food-result.png)
+![Food dynamic color with invert enabled](../images/tutorial/05-dynamic-color-preview-food-result.png)
 
 ## Discrete Colors For States
 
