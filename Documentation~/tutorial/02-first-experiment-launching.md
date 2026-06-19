@@ -27,7 +27,7 @@ Runtime agents are created under:
 When Play Mode works, Unity receives live objects from GAMA and updates them
 while the experiment is running.
 
-![Press Play from the preview scene](../images/tutorial/05-press-play-from-preview.png)
+![Runtime live overview](../images/tutorial/02-runtime-live-overview.png)
 
 ## 2.2 Expected Result
 

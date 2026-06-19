@@ -130,6 +130,14 @@ Use this page as a visual index for documentation images. Copy the path under ea
 ../images/tutorial/02-open-middleware.png
 ```
 
+## `../images/tutorial/02-runtime-live-overview.png`
+
+<img src="images/tutorial/02-runtime-live-overview.png" width="360">
+
+```md
+../images/tutorial/02-runtime-live-overview.png
+```
+
 ## `../images/tutorial/02-unity-play-mode-button.png`
 
 <img src="images/tutorial/02-unity-play-mode-button.png" width="360">
