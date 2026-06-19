@@ -13,8 +13,7 @@ objects in the scene.
 2. Start `simple.webplatform` with  `npm start`
 3. Open the target experiment in GAMA.
 
-//Mettre une screen des 3 pages ouvertes en simultané les unes a côté des autres toutes en mmee temps dans un seul écran
-
+![Windows Overview](../images/tutorial/Capture%20d'%C3%A9cran%202026-06-16%20114917.png)
 4. Press **Play** in Unity.
 
 ![Unity Play Mode button](../images/tutorial/02-unity-play-mode-button.png)
