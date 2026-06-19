@@ -234,6 +234,14 @@ Use this page as a visual index for documentation images. Copy the path under ea
 ../images/tutorial/03-preview-captured-species-settings.png
 ```
 
+## `../images/tutorial/03-quick-personalization-example.png`
+
+<img src="images/tutorial/03-quick-personalization-example.png" width="360">
+
+```md
+../images/tutorial/03-quick-personalization-example.png
+```
+
 ## `../images/tutorial/03-static-preview-scene-built.png`
 
 <img src="images/tutorial/03-static-preview-scene-built.png" width="360">

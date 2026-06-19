@@ -72,6 +72,12 @@ Using the Inspector, you can change the following attributes directly:
 
 This is very useful for quick experimentation because you immediately see whether the selected setup makes sense in the scene.
 
+For example, you can quickly try exaggerated prefabs, colors, or scales to check
+that the override pipeline works, even if the result is not meant to be a final
+visual design.
+
+![Quick personalization example](../images/tutorial/03-quick-personalization-example.png)
+
 ## 3.4 Why This Is Not The Best Workflow
 
 Live modification proves that the Unity side can customize GAMA agents, but it
