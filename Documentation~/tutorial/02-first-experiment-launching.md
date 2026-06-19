@@ -36,6 +36,9 @@ During Play Mode:
 - Unity connects to `simple.webplatform`;
 - live agents are created, updated, and removed by stable agent id;
 - static background species and dynamic agents are grouped by species;
+
+![Agents grouped by species](../images/tutorial/02-agents-grouped-by-species.png)
+
 - the Unity player or camera position can be sent back to GAMA when configured.
 
 Dynamic agents should be synchronized by:

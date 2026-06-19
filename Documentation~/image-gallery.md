@@ -106,6 +106,14 @@ Use this page as a visual index for documentation images. Copy the path under ea
 ../images/tutorial/01-unity-version-create-project.png
 ```
 
+## `../images/tutorial/02-agents-grouped-by-species.png`
+
+<img src="images/tutorial/02-agents-grouped-by-species.png" width="360">
+
+```md
+../images/tutorial/02-agents-grouped-by-species.png
+```
+
 ## `../images/tutorial/02-gama-new-tab.png`
 
 <img src="images/tutorial/02-gama-new-tab.png" width="360">
