@@ -17,7 +17,7 @@ objects in the scene.
 
 4. Press **Play** in Unity.
 
-//mettre une photo por trouver le modeplay
+![Unity Play Mode button](../images/tutorial/02-unity-play-mode-button.png)
 
 Runtime agents are created under:
 
