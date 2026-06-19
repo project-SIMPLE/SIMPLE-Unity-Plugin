@@ -4,7 +4,7 @@ Static species settings are not always enough. Some visual properties should be
 driven by values coming from GAMA.
 
 After generating the preview, dynamic colors can be configured in Unity Edit
-Mode from the Inspector. In the **Prey Predator 7** model, a useful example is
+Mode from the Inspector. In the previous **Prey Predator** model, a useful example is
 the `food` attribute of each `vegetation_cell`: instead of showing every grass
 cell with the same green, Unity can use a more or less intense green depending
 on the `food` value, like in the GAMA display.
