@@ -38,7 +38,27 @@ This lets you quickly verify that Unity can override the visual appearance of a 
 
 Using the Inspector, you can change the following attributes directly:
 
-1. **Prefab Override**: Assign a Unity prefab instead of displaying a default geometric shape. For Play Mode runtime loading, the prefab must be placed under a Unity `Resources` folder (e.g., `Assets/Resources/Visual Prefabs/Character/Ghost.prefab`).
+1. **Prefab Override**: Assign a Unity prefab instead of displaying a default geometric shape.
+   
+   To change it, click on the small circle icon on the right of the field:
+   
+   ![Click Prefab Circle](./images/prefab-override-circle.png)
+   
+   You will see a list of prefab previews (like Boy, Car, Cube, Ghost, Scooter). These are default prefabs downloaded into the project during the package installation (if you clicked "OK" when prompted to bring prefabs into the project).
+   
+   ![Select Prefab Window](./images/select-prefab-window.png)
+   
+   > [!NOTE]
+   > **Missing Prefabs?**
+   > If you don't see these prefabs in the list, you can import them at any time by going to the top Unity menu: **GAMA > Import Default Prefabs**.
+   > 
+   > ![Import Prefabs Menu](./images/gama-menu-import-prefabs.png)
+   > 
+   > Click **Import** when the prompt appears, and Unity will copy them into your project.
+   > 
+   > ![Import Prefabs Prompt](./images/import-prefabs-prompt.png)
+   > 
+   > ![Import Success](./images/import-prefabs-success.png)
 2. **Color**: Quickly change the species color to separate them visually.
 3. **Scale Multiplier**: Make agents bigger or smaller so they are easier to see.
 4. **Position & Rotation Offset**: Adjust the 3D position and rotation of the instantiated prefab relative to the GAMA agent's center.
