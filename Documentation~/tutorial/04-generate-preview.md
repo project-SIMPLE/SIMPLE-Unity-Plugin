@@ -18,8 +18,6 @@ During capture, the GAMA Panel shows that the preview is being built.
 
 GAMA may start or update the experiment while Unity receives the preview data.
 
-![GAMA running during preview capture](../images/tutorial/03-gama-running-during-preview-capture.png)
-
 ## 4.2 Expected Result
 
 The Unity scene should show the map and detected agents without entering Play
