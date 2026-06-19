@@ -1,4 +1,4 @@
-# 2. Run the GAMA Experiment in Play Mode
+﻿# 2. Run the GAMA Experiment in Play Mode
 
 It is time to run our first experiment in Unity with this package. It is a way to first validate that the live runtime workflow corresponding to a certain experiment
 works from a clean Unity scene.
@@ -16,7 +16,7 @@ objects in the scene.
 ![Windows Overview](../images/tutorial/Capture%20d'%C3%A9cran%202026-06-16%20114917.png)
 4. Press **Play** in Unity.
 
-![Unity Play Mode button](../images/tutorial/02-unity-play-mode-button.png)
+![Unity Play Mode button](../images/tutorial/02-unity-play-mode-button-cropped.png)
 
 Runtime agents are created under:
 
@@ -68,3 +68,4 @@ reuse those settings in Play Mode.
 | Previous | Next |
 |---|---|
 | [Installation and Setup](01-installation-and-setup.md) | [Personalize Agents During Play Mode](03-personalization.md) |
+
