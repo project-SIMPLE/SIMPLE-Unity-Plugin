@@ -52,7 +52,7 @@ Unity preview.
 
 ![Vegetation preview settings](../images/tutorial/04-preview-vegetation-settings.png)
 
-Then, increase the prey and predator scales in the previous panel so we can visualiza them. Before assigning colors, they appear as grey points on top of the
+Then, increase the prey and predator scales in the previous panel so we can visualize them. Before assigning colors, they appear as grey points on top of the
 vegetation grid.
 
 ![Grey prey and predator settings](../images/tutorial/04-preview-gray-agents-settings.png)
