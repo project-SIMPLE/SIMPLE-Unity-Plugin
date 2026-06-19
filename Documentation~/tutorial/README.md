@@ -32,10 +32,4 @@ You need:
 - GAMA;
 - `simple.webplatform`;
 
-Unity connects to `simple.webplatform`, not directly to GAMA Server.
-
-## Navigation
-
-| Previous | Next |
-|---|---|
-| - | [1. Install the Unity Package](01-installation-and-setup.md) |
+Unity connects to `simple.webplatform`, not directly to GAMA Server/
