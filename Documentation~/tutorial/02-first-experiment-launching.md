@@ -1,17 +1,17 @@
-# 2. Run the GAMA Experiment in Play Mode
+# 2. Run the Prey Predator 7 Experiment in Play Mode
 
-It is time to run our first experiment in Unity with this package. It is a way to first validate that the live runtime workflow corresponding to a certain experiment
-works from a clean Unity scene.
+It is time to run the first GAMA experiment in Unity with this package. In this
+tutorial, use the **Prey Predator 7** model from GAMA.
 
-This chapter shows the baseline behavior: Unity enters Play Mode, connects to
-`simple.webplatform`, receives the live GAMA simulation, and creates runtime
-objects in the scene.
+This chapter validates the baseline live workflow: Unity enters Play Mode,
+connects to `simple.webplatform`, receives the running GAMA simulation, and
+creates Unity objects from the GAMA agents.
 
 ## 2.1 Steps
 
 1. Make sure the scene was prepared with **GAMA > GAMA Panel > Setup Scene**.
 2. Start `simple.webplatform` with  `npm start`
-3. Open the target experiment in GAMA.
+3. Open and run the **Prey Predator 7** experiment in GAMA.
 
 ![Windows Overview](../images/tutorial/02-windows-overview-gama-unity.png)
 4. Press **Play** in Unity.
@@ -31,40 +31,30 @@ while the experiment is running.
 
 ## 2.2 Expected Result
 
-During Play Mode:
+During Play Mode, Unity should connect to `simple.webplatform` and create live
+Unity objects from the agents received from the **Prey Predator 7** model.
 
-- Unity connects to `simple.webplatform`;
-- live agents are created, updated, and removed by stable agent id;
-- static background species and dynamic agents are grouped by species;
+The imported agents are grouped by species in the Unity hierarchy.
 
 ![Agents grouped by species](../images/tutorial/02-agents-grouped-by-species.png)
 
-- the Unity player or camera position can be sent back to GAMA when configured.
-
-Dynamic agents should be synchronized by:
-
-```text
-speciesName + "::" + agentId
-```
-
-Expected behavior:
-
-- existing agents update instead of duplicating;
-- newborn agents appear;
-- dead agents disappear after a complete live update;
-- static/background species are not pruned just because they are absent from a
-  dynamic tick.
+At this stage, the important result is that the connection works and that GAMA
+agents are imported into Unity while the experiment is running.
 
 ## 2.3 Into the Next Step
 
-This direct Play Mode workflow proves that the connection works, but it is slow
-for visual iteration.
+This is already useful: we now have a functional connection between GAMA,
+`simple.webplatform`, and Unity. The **Prey Predator 7** agents are imported and
+converted into Unity objects automatically.
 
-Every time you want to check whether a species has the right prefab, scale,
-color, visibility, or offset, you need to run the experiment again. That is why
-the next chapter introduces the Editor preview: it lets you build a static
-snapshot of the experiment in Unity, adjust the visual parameters there, and then
-reuse those settings in Play Mode.
+However, the raw Unity rendering is still not clear enough to understand the
+experiment visually. At this point, objects are created blindly: they exist in
+the scene, but their default appearance does not make the simulation easy to
+read.
+
+The next step of the tutorial focuses on Play Mode personalization. The goal is
+to adjust the visual parameters of the imported objects directly in Unity so the
+Prey Predator experiment becomes readable while it is running.
 
 ## Navigation
 
