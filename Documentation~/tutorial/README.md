@@ -24,5 +24,3 @@ You need:
 - Unity 6000.3.2f1;
 - GAMA;
 - `simple.webplatform`;
-
-Unity connects to `simple.webplatform`, not directly to GAMA Server.
