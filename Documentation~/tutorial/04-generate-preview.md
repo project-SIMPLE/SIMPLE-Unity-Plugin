@@ -44,6 +44,34 @@ applied to Play Mode runtime agents:
 6. **Reset**: return the species to the values received from GAMA.
 7. **Validate**: apply the settings to your Unity agents and close the panel.
 
+## 4.4 Preview Configuration Example
+
+With the **Prey Predator 7** model, start by checking that the static background
+species is visible. Here, only the vegetation grid is clearly displayed in the
+Unity preview.
+
+![Preview with vegetation only](../images/tutorial/04-preview-vegetation-only.png)
+
+The GAMA Panel can be used to keep the vegetation visible while preparing the
+other species.
+
+![Vegetation preview settings](../images/tutorial/04-preview-vegetation-settings.png)
+
+Then enable the prey and predator species and increase their scale in the GAMA
+Panel. Before assigning colors, they appear as grey points on top of the
+vegetation grid.
+
+![Grey prey and predator settings](../images/tutorial/04-preview-gray-agents-settings.png)
+
+![Grey prey and predator result](../images/tutorial/04-preview-gray-agents-result.png)
+
+Finally, assign stable colors to distinguish the two dynamic species. In this
+example, prey are blue and predators are red.
+
+![Colored prey and predator settings](../images/tutorial/04-preview-colored-agents-settings.png)
+
+![Colored prey and predator result](../images/tutorial/04-preview-colored-agents-result.png)
+
 ## Important Behavior
 
 Generating a new preview should clean previous generated preview/runtime objects

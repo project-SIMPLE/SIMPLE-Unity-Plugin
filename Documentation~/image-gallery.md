@@ -258,6 +258,54 @@ Use this page as a visual index for documentation images. Copy the path under ea
 ../images/tutorial/04-change-prefab-from-gama-panel.png
 ```
 
+## `../images/tutorial/04-preview-colored-agents-result.png`
+
+<img src="images/tutorial/04-preview-colored-agents-result.png" width="360">
+
+```md
+../images/tutorial/04-preview-colored-agents-result.png
+```
+
+## `../images/tutorial/04-preview-colored-agents-settings.png`
+
+<img src="images/tutorial/04-preview-colored-agents-settings.png" width="360">
+
+```md
+../images/tutorial/04-preview-colored-agents-settings.png
+```
+
+## `../images/tutorial/04-preview-gray-agents-result.png`
+
+<img src="images/tutorial/04-preview-gray-agents-result.png" width="360">
+
+```md
+../images/tutorial/04-preview-gray-agents-result.png
+```
+
+## `../images/tutorial/04-preview-gray-agents-settings.png`
+
+<img src="images/tutorial/04-preview-gray-agents-settings.png" width="360">
+
+```md
+../images/tutorial/04-preview-gray-agents-settings.png
+```
+
+## `../images/tutorial/04-preview-vegetation-only.png`
+
+<img src="images/tutorial/04-preview-vegetation-only.png" width="360">
+
+```md
+../images/tutorial/04-preview-vegetation-only.png
+```
+
+## `../images/tutorial/04-preview-vegetation-settings.png`
+
+<img src="images/tutorial/04-preview-vegetation-settings.png" width="360">
+
+```md
+../images/tutorial/04-preview-vegetation-settings.png
+```
+
 ## `../images/tutorial/05-play-mode-runtime-preview-hidden.png`
 
 <img src="images/tutorial/05-play-mode-runtime-preview-hidden.png" width="360">
