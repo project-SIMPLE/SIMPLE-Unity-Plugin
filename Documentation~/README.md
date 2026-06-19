@@ -7,8 +7,6 @@ same structure so each tutorial chapter can later be expanded into reference
 documentation.
 
 ## Tutorial
-
-- [Image gallery](images/image-gallery.md)
 - [Tutorial overview](tutorial/README.md)
 - [0. Middleware and GAMA requirements](tutorial/00-gama-model-preparation.md)
 - [1. Install the Unity package](tutorial/01-installation-and-setup.md)
