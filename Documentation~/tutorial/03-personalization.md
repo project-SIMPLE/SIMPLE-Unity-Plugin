@@ -22,6 +22,11 @@ the `SimulationManager` component.
 In the **Inspector**, find the GAMA agent or species settings. Unity should show
 the species detected from the running GAMA experiment.
 
+> [!TIP]
+> **Can't find the Inspector?** If the Inspector window is not visible in your Unity layout, you can open it via the top menu: **Window > General > Inspector**, or by pressing `Ctrl + 3` (Windows) / `Cmd + 3` (macOS).
+>
+> <img width="1013" height="557" alt="Open Inspector Menu" src="https://github.com/user-attachments/assets/523641bb-b849-44dc-a32c-6e4e1643b94c" />
+
 Examples of species can be:
 
 - `pedestrian`
