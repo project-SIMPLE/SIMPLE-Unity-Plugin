@@ -44,25 +44,6 @@ You can choose a prefab from the GAMA Panel.
 
 ![Change a prefab from the GAMA Panel](../images/tutorial/04-change-prefab-from-gama-panel.png)
 
-### 4.4 Prefab Rules
-
-For Edit Mode preview, Unity can use a direct prefab object reference.
-
-For Play Mode runtime loading, the prefab should be under a Unity `Resources`
-folder so it can be loaded with a resource path.
-
-Recommended example:
-
-```text
-Assets/Resources/Visual Prefabs/Character/Ghost.prefab
-```
-
-Resource path:
-
-```text
-Visual Prefabs/Character/Ghost
-```
-
 ## 4.5 Scale Rules
 
 The scale multiplier is a visual multiplier.
