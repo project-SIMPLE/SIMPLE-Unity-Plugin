@@ -44,14 +44,6 @@ You can choose a prefab from the GAMA Panel.
 
 ![Change a prefab from the GAMA Panel](../images/tutorial/04-change-prefab-from-gama-panel.png)
 
-## 4.5 Scale Rules
-
-The scale multiplier is a visual multiplier.
-
-It should not move the logical agent position or change the global runtime root.
-For cell-like species, the logical parent should stay at scale `(1, 1, 1)` and
-the visual child should receive the visual scale.
-
 ## Important Behavior
 
 Generating a new preview should clean previous generated preview/runtime objects
