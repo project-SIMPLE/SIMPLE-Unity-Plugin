@@ -84,9 +84,6 @@ distribution easier to read directly in Unity.
 
 ## Discrete Colors For States
 
-Continuous colors are useful for numeric values such as food, energy, pollution,
-health, infection probability, or hunger.
-
 For attributes that represent a small set of states, use **Discrete** mode
 instead. This is useful for experiments with states such as:
 
