@@ -871,7 +871,7 @@ internal static class GamaEditorFirstTickCapture
                     append("[GAMA] Capture terminée sans agents dans le monde — parcourez les ticks (world_tick_*.json) dans l’aperçu statique.");
                 }
 
-                if (managedFromUnity && pauseExperimentAfterPreview && !directGamaServer)
+                if (!directGamaServer)
                 {
                     try
                     {
@@ -879,7 +879,8 @@ internal static class GamaEditorFirstTickCapture
                                 hostNorm,
                                 monitorPort,
                                 captureCts.Token,
-                                append)
+                                append,
+                                "preview réussie")
                             .ConfigureAwait(false);
                         if (!paused)
                         {

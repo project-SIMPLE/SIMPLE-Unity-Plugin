@@ -10,6 +10,7 @@ public static class GamaPreviewPlayModeGuard
     private const string SessionStateKey = "GamaPreviewWasActiveBeforePlay";
     private const string AutoHidePreviewOnPlayPrefKey = "ProjectSimple.GamaUnity.Panel.AutoHidePreviewOnPlay";
     private const string AutoLaunchGamaOnPlayPrefKey = "ProjectSimple.GamaUnity.Play.AutoLaunchMonitor";
+    private const string PauseGamaOnPlayExitPrefKey = "ProjectSimple.GamaUnity.Play.PauseOnExit";
     private const string GamaCaptureHostPrefKey = "ProjectSimple.GamaUnity.Panel.GamaCaptureHost";
     private const string GamaCapturePortPrefKey = "ProjectSimple.GamaUnity.Panel.GamaCapturePort";
     private const string GamaCaptureMonitorPortPrefKey = "ProjectSimple.GamaUnity.Panel.GamaCaptureMonitorPort";
@@ -20,6 +21,7 @@ public static class GamaPreviewPlayModeGuard
     static GamaPreviewPlayModeGuard()
     {
         EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+        EditorApplication.pauseStateChanged += OnPauseStateChanged;
     }
 
     private static void OnPlayModeStateChanged(PlayModeStateChange state)
@@ -45,6 +47,10 @@ public static class GamaPreviewPlayModeGuard
 
             TryPrepareGamaForPlay();
         }
+        else if (state == PlayModeStateChange.ExitingPlayMode)
+        {
+            TryPauseGamaFromUnity("Unity Play stopped");
+        }
         else if (state == PlayModeStateChange.EnteredEditMode)
         {
             if (SessionState.GetBool(SessionStateKey, false))
@@ -61,6 +67,100 @@ public static class GamaPreviewPlayModeGuard
                 }
             }
             SessionState.EraseBool(SessionStateKey);
+        }
+    }
+
+    private static void OnPauseStateChanged(PauseState state)
+    {
+        if (state == PauseState.Paused && EditorApplication.isPlaying)
+        {
+            TryPauseGamaFromUnity("Unity Play paused");
+        }
+        else if (state == PauseState.Unpaused && EditorApplication.isPlaying)
+        {
+            TryResumeGamaFromUnity("Unity Play resumed");
+        }
+    }
+
+    private static void TryPauseGamaFromUnity(string reason)
+    {
+        if (!EditorPrefs.GetBool(PauseGamaOnPlayExitPrefKey, true))
+        {
+            return;
+        }
+
+        string host = EditorPrefs.GetString(GamaCaptureHostPrefKey, PlayerPrefs.GetString("IP", "localhost"));
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            host = "localhost";
+        }
+        host = host.Trim();
+
+        int monitorPort = EditorPrefs.GetInt(
+            GamaCaptureMonitorPortPrefKey,
+            GamaEditorMiddlewareOrchestrator.DefaultMonitorPort);
+
+        try
+        {
+            using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+            {
+                bool paused = GamaEditorMiddlewareOrchestrator.PauseExperimentAsync(
+                        host,
+                        monitorPort,
+                        cts.Token,
+                        reason: reason)
+                    .GetAwaiter()
+                    .GetResult();
+                if (!paused)
+                {
+                    Debug.LogWarning("[GAMA][PLAY] " + reason + ", but pause_experiment was not confirmed on monitor " + monitorPort + ".");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[GAMA][PLAY] Failed to pause GAMA after " + reason + ": " + ex.Message);
+        }
+    }
+
+    private static void TryResumeGamaFromUnity(string reason)
+    {
+        if (!EditorPrefs.GetBool(PauseGamaOnPlayExitPrefKey, true))
+        {
+            return;
+        }
+
+        string host = EditorPrefs.GetString(GamaCaptureHostPrefKey, PlayerPrefs.GetString("IP", "localhost"));
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            host = "localhost";
+        }
+        host = host.Trim();
+
+        int monitorPort = EditorPrefs.GetInt(
+            GamaCaptureMonitorPortPrefKey,
+            GamaEditorMiddlewareOrchestrator.DefaultMonitorPort);
+
+        try
+        {
+            using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+            {
+                bool resumed = GamaEditorMiddlewareOrchestrator.ResumeExperimentAsync(
+                        host,
+                        monitorPort,
+                        cts.Token,
+                        reason: reason)
+                    .GetAwaiter()
+                    .GetResult();
+                if (!resumed)
+                {
+                    Debug.LogWarning("[GAMA][PLAY] " + reason + ", but resume_experiment was not confirmed on monitor " + monitorPort + ".");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[GAMA][PLAY] Failed to resume GAMA after " + reason + ": " + ex.Message);
         }
     }
 

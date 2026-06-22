@@ -1487,12 +1487,13 @@ internal static class GamaEditorMiddlewareOrchestrator
         }
     }
 
-    /// <summary>Met l'expérience en pause via le monitor (après capture d'aperçu).</summary>
+    /// <summary>Met l'expérience en pause via le monitor.</summary>
     public static async Task<bool> PauseExperimentAsync(
         string host,
         int monitorPort,
         CancellationToken ct,
-        Action<string> log = null)
+        Action<string> log = null,
+        string reason = "fin capture aperçu")
     {
         string hostNorm = string.IsNullOrWhiteSpace(host) ? "localhost" : host.Trim();
         int port = monitorPort > 0 ? monitorPort : DefaultMonitorPort;
@@ -1525,7 +1526,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             MonitorSession session = new MonitorSession(ws, Append);
             Task receiveTask = session.RunReceiveLoopAsync(ct);
             await Task.Delay(200, ct).ConfigureAwait(false);
-            Append("[GAMA][ORCH] → pause_experiment (fin capture aperçu)");
+            Append("[GAMA][ORCH] → pause_experiment (" + reason + ")");
             await session.SendAsync(new JObject { ["type"] = "pause_experiment" }, ct).ConfigureAwait(false);
             await Task.Delay(500, ct).ConfigureAwait(false);
             session.Stop();
@@ -1545,6 +1546,78 @@ internal static class GamaEditorMiddlewareOrchestrator
                     using (CancellationTokenSource closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(2)))
                     {
                         await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "pause done", closeCts.Token)
+                            .ConfigureAwait(false);
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Relance l'expérience via le monitor.</summary>
+    public static async Task<bool> ResumeExperimentAsync(
+        string host,
+        int monitorPort,
+        CancellationToken ct,
+        Action<string> log = null,
+        string reason = "Unity Play resumed")
+    {
+        string hostNorm = string.IsNullOrWhiteSpace(host) ? "localhost" : host.Trim();
+        int port = monitorPort > 0 ? monitorPort : DefaultMonitorPort;
+        Uri monitorUri = new Uri("ws://" + hostNorm + ":" + port + "/");
+
+        void Append(string line)
+        {
+            try
+            {
+                log?.Invoke(line);
+            }
+            catch
+            {
+                // ignore
+            }
+
+            UnityEngine.Debug.Log(line);
+        }
+
+        if (!await IsTcpPortOpenAsync(hostNorm, port, 3000, ct).ConfigureAwait(false))
+        {
+            Append("[GAMA][ORCH] resume_experiment : monitor injoignable sur " + monitorUri);
+            return false;
+        }
+
+        using (ClientWebSocket ws = new ClientWebSocket())
+        {
+            ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(5);
+            await ws.ConnectAsync(monitorUri, ct).ConfigureAwait(false);
+            MonitorSession session = new MonitorSession(ws, Append);
+            Task receiveTask = session.RunReceiveLoopAsync(ct);
+            await Task.Delay(200, ct).ConfigureAwait(false);
+            Append("[GAMA][ORCH] → resume_experiment (" + reason + ")");
+            await session.SendAsync(new JObject { ["type"] = "resume_experiment" }, ct).ConfigureAwait(false);
+            await Task.Delay(500, ct).ConfigureAwait(false);
+            session.Stop();
+            try
+            {
+                await receiveTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                if (ws.State == WebSocketState.Open)
+                {
+                    using (CancellationTokenSource closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(2)))
+                    {
+                        await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "resume done", closeCts.Token)
                             .ConfigureAwait(false);
                     }
                 }
