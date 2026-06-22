@@ -11,7 +11,6 @@ The current demo workflow is centered around the **GAMA Panel**, which groups sc
 - [Tutorial](Documentation~/tutorial/README.md)
 - [Runtime architecture notes](Documentation~/gama-unity.md)
 
----
 
 ## Installation
 
