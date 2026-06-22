@@ -70,7 +70,7 @@ Do not add another copy of NativeWebSocket unless you remove the vendored copy f
 - SIMPLE Webplatform middleware
 - Middleware headset/player WebSocket port: `8080`
 - GAMA connected to the middleware
-- `simple.webplatform` launched manually
+- `simple.webplatform` from branch dev launched manually
 
 This Unity package does **not** modify or automatically launch `simple.webplatform`. The middleware is expected to be started separately.
 
