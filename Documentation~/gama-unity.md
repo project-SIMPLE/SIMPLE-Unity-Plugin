@@ -45,4 +45,4 @@ WebSocketSharp is intentionally not part of the runtime assembly. The legacy geo
 2. Add this package through Package Manager with **Add package from disk...**.
 3. Import each sample from the Package Manager package details panel.
 4. Check the Unity console for compile errors and missing asset references.
-5. Run `simple.webplatform` and connect the Unity runtime to `ws://<host>:8080/`.
+5. Run `simple.webplatform` on dev branch and connect the Unity runtime to `ws://<host>:8080/`.
