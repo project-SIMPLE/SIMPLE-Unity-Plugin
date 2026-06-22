@@ -12,6 +12,9 @@ _Exemple of an opened experiment in "Library models\Tutorials\Predator Prey\mode
 
 ## 0.2 Middleware Requirements
 
+Use the branch dev with : 
+git clone -b dev --single-branch https://github.com/project-SIMPLE/simple.webplatform.git
+
 Open the Websocket connection thanks to [this tutorial](https://github.com/project-SIMPLE/simple.webplatform).
 
 ![Open the middleware](../images/tutorial/02-open-middleware.png)
