@@ -9,8 +9,6 @@ The current demo workflow is centered around the **GAMA Panel**, which groups sc
 ## Documentation
 
 - [Tutorial](Documentation~/tutorial/README.md)
-- [User guide draft](Documentation~/user-guide/README.md)
-- [Technical documentation draft](Documentation~/technical/README.md)
 - [Runtime architecture notes](Documentation~/gama-unity.md)
 
 ---
