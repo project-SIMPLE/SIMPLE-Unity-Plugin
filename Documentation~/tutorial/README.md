@@ -23,5 +23,4 @@ You need:
 
 - Unity 6000.3.2f1;
 - GAMA;
-- `simple.webplatform` on branch **dev** using : 
-git clone -b dev --single-branch https://github.com/project-SIMPLE/simple.webplatform.git;
+- `simple.webplatform` on branch **dev** using : `git clone -b dev --single-branch https://github.com/project-SIMPLE/simple.webplatform.git`;
