@@ -392,9 +392,6 @@ Notes:
 - `Samples~/`  
   Importable Unity scenes and templates.
 
-- `Tests/`  
-  Runtime and editor test assemblies.
-
 - `Documentation~/`  
   Package notes and protocol details.
 
