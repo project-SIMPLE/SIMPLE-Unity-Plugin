@@ -58,14 +58,12 @@ public static class GamaPreviewPlayModeGuard
         }
         else if (state == PlayModeStateChange.ExitingPlayMode)
         {
+            string runtimePlayerId = StaticInformation.getId();
             GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
-            if (ConnectionManager.Instance != null)
-            {
-                ConnectionManager.Instance.DisconnectProperly();
-            }
 
-            TryRemoveRuntimePlayerFromUnity("Unity Play stopped", null);
-            TryPauseGamaFromUnity("Unity Play stopped");
+            TryPauseGamaFromUnity("Unity Play stopped", 2);
+            TryDisconnectRuntimePlayer("Unity Play stopped");
+            TryRemoveRuntimePlayerFromUnity("Unity Play stopped", runtimePlayerId);
         }
         else if (state == PlayModeStateChange.EnteredEditMode)
         {
@@ -100,7 +98,7 @@ public static class GamaPreviewPlayModeGuard
         }
     }
 
-    private static void TryPauseGamaFromUnity(string reason)
+    private static void TryPauseGamaFromUnity(string reason, int attempts = 1)
     {
         if (!EditorPrefs.GetBool(PauseGamaOnPlayExitPrefKey, true))
         {
@@ -120,19 +118,30 @@ public static class GamaPreviewPlayModeGuard
 
         try
         {
-            using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+            attempts = Math.Max(1, attempts);
+            bool paused = false;
+            for (int attempt = 1; attempt <= attempts && !paused; attempt++)
             {
-                bool paused = GamaEditorMiddlewareOrchestrator.PauseExperimentAsync(
-                        host,
-                        monitorPort,
-                        cts.Token,
-                        reason: reason)
-                    .GetAwaiter()
-                    .GetResult();
-                if (!paused)
+                using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
                 {
-                    Debug.LogWarning("[GAMA][PLAY] " + reason + ", but pause_experiment was not confirmed on monitor " + monitorPort + ".");
+                    paused = GamaEditorMiddlewareOrchestrator.PauseExperimentAsync(
+                            host,
+                            monitorPort,
+                            cts.Token,
+                            reason: reason + (attempts > 1 ? " attempt " + attempt : string.Empty))
+                        .GetAwaiter()
+                        .GetResult();
                 }
+
+                if (!paused && attempt < attempts)
+                {
+                    Thread.Sleep(350);
+                }
+            }
+
+            if (!paused)
+            {
+                Debug.LogWarning("[GAMA][PLAY] " + reason + ", but pause_experiment was not confirmed on monitor " + monitorPort + ".");
             }
         }
         catch (Exception ex)
@@ -179,6 +188,26 @@ public static class GamaPreviewPlayModeGuard
         catch (Exception ex)
         {
             Debug.LogWarning("[GAMA][PLAY] Failed to resume GAMA after " + reason + ": " + ex.Message);
+        }
+    }
+
+    private static void TryDisconnectRuntimePlayer(string reason)
+    {
+        ConnectionManager manager = ConnectionManager.Instance;
+        if (manager == null)
+        {
+            return;
+        }
+
+        try
+        {
+            manager.DisconnectProperlyAsync().GetAwaiter().GetResult();
+            Thread.Sleep(150);
+            Debug.Log("[GAMA][PLAY] " + reason + ": runtime websocket disconnected cleanly.");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[GAMA][PLAY] Failed to disconnect runtime websocket after " + reason + ": " + ex.Message);
         }
     }
 

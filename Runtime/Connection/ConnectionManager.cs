@@ -383,6 +383,10 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
     }
 
     public async void DisconnectProperly() {
+        await DisconnectProperlyAsync();
+    }
+
+    public async System.Threading.Tasks.Task DisconnectProperlyAsync() {
         await SendDisconnectProperlyAsync();
         DisconnectFromServer();
     }

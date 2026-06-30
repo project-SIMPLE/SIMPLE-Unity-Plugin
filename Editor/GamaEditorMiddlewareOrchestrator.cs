@@ -1547,6 +1547,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             return false;
         }
 
+        bool pauseConfirmed = false;
         using (ClientWebSocket ws = new ClientWebSocket())
         {
             ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(5);
@@ -1556,7 +1557,30 @@ internal static class GamaEditorMiddlewareOrchestrator
             await Task.Delay(200, ct).ConfigureAwait(false);
             Append("[GAMA][ORCH] → pause_experiment (" + reason + ")");
             await session.SendAsync(new JObject { ["type"] = "pause_experiment" }, ct).ConfigureAwait(false);
-            await Task.Delay(500, ct).ConfigureAwait(false);
+            DateTime pauseDeadline = DateTime.UtcNow.AddSeconds(3);
+            string lastState = session.LastExperimentState ?? string.Empty;
+            while (DateTime.UtcNow < pauseDeadline && !ct.IsCancellationRequested)
+            {
+                lastState = session.LastExperimentState ?? lastState;
+                if (string.Equals(lastState, "PAUSED", StringComparison.OrdinalIgnoreCase))
+                {
+                    pauseConfirmed = true;
+                    break;
+                }
+
+                await Task.Delay(200, ct).ConfigureAwait(false);
+            }
+
+            if (pauseConfirmed)
+            {
+                Append("[GAMA][ORCH] pause_experiment confirmé : experiment_state=PAUSED");
+            }
+            else
+            {
+                Append("[GAMA][ORCH] pause_experiment non confirmé : experiment_state=" +
+                       (string.IsNullOrEmpty(lastState) ? "?" : lastState));
+            }
+
             session.Stop();
             try
             {
@@ -1584,7 +1608,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             }
         }
 
-        return true;
+        return pauseConfirmed;
     }
 
     /// <summary>Relance l'expérience via le monitor.</summary>
@@ -1619,6 +1643,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             return false;
         }
 
+        bool resumeConfirmed = false;
         using (ClientWebSocket ws = new ClientWebSocket())
         {
             ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(5);
@@ -1628,7 +1653,30 @@ internal static class GamaEditorMiddlewareOrchestrator
             await Task.Delay(200, ct).ConfigureAwait(false);
             Append("[GAMA][ORCH] → resume_experiment (" + reason + ")");
             await session.SendAsync(new JObject { ["type"] = "resume_experiment" }, ct).ConfigureAwait(false);
-            await Task.Delay(500, ct).ConfigureAwait(false);
+            DateTime resumeDeadline = DateTime.UtcNow.AddSeconds(3);
+            string lastState = session.LastExperimentState ?? string.Empty;
+            while (DateTime.UtcNow < resumeDeadline && !ct.IsCancellationRequested)
+            {
+                lastState = session.LastExperimentState ?? lastState;
+                if (string.Equals(lastState, "RUNNING", StringComparison.OrdinalIgnoreCase))
+                {
+                    resumeConfirmed = true;
+                    break;
+                }
+
+                await Task.Delay(200, ct).ConfigureAwait(false);
+            }
+
+            if (resumeConfirmed)
+            {
+                Append("[GAMA][ORCH] resume_experiment confirmé : experiment_state=RUNNING");
+            }
+            else
+            {
+                Append("[GAMA][ORCH] resume_experiment non confirmé : experiment_state=" +
+                       (string.IsNullOrEmpty(lastState) ? "?" : lastState));
+            }
+
             session.Stop();
             try
             {
@@ -1656,7 +1704,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             }
         }
 
-        return true;
+        return resumeConfirmed;
     }
 
     /// <summary>Removes a player from the middleware/GAMA through the monitor socket.</summary>
