@@ -52,6 +52,12 @@ public static class StaticInformation
         return connectionId;
     }
 
+    public static bool TryGetCurrentId(out string id)
+    {
+        id = connectionId;
+        return !string.IsNullOrWhiteSpace(id);
+    }
+
     private static string BuildUniqueSessionId(string prefix)
     {
         string safePrefix = string.IsNullOrWhiteSpace(prefix) ? "unity_play" : prefix.Trim();

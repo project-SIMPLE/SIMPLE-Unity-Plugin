@@ -284,7 +284,9 @@ public class SimulationManagerInspector : Editor
 
         AssignOverrideContextToTargetManager(asset, modelPath, experimentName);
 
+        bool editRuntimeOnly = EditorApplication.isPlaying;
         bool assetChanged = false;
+        bool runtimeChanged = false;
         List<string> changedSpecies = new List<string>();
         SimulationManager manager = target as SimulationManager;
 
@@ -347,7 +349,13 @@ public class SimulationManagerInspector : Editor
             EditorGUILayout.LabelField("Agent Attributes", EditorStyles.miniBoldLabel);
             EditorGUI.indentLevel++;
             
-            GamaSpeciesRenderOverrideEntry overrideEntry = asset.GetOrCreateEntry(modelPath, experimentName, speciesName);
+            GamaSpeciesRenderOverrideEntry overrideEntry = editRuntimeOnly
+                ? GamaRuntimePreviewOverrideApplier.GetOrCreateRuntimeSessionOverride(
+                    asset,
+                    modelPath,
+                    experimentName,
+                    speciesName)
+                : asset.GetOrCreateEntry(modelPath, experimentName, speciesName);
 
             EditorGUI.BeginChangeCheck();
 
@@ -428,7 +436,15 @@ public class SimulationManagerInspector : Editor
 
             if (rowChanged)
             {
-                assetChanged = true;
+                if (editRuntimeOnly)
+                {
+                    runtimeChanged = true;
+                }
+                else
+                {
+                    assetChanged = true;
+                }
+
                 TrackChangedSpecies(changedSpecies, speciesName, tag != null ? tag.stringValue : string.Empty);
                 Debug.Log($"[GAMA][OVERRIDES] GameManager editing species={speciesName} scale={overrideEntry.GetEffectiveScaleMultiplier()}");
             }
@@ -443,6 +459,10 @@ public class SimulationManagerInspector : Editor
             EditorUtility.SetDirty(asset);
             AssetDatabase.SaveAssets();
             GamaEditorPreviewOverrideApplier.ScheduleApplyOverridesToCurrentPreview();
+            ApplyRuntimeOverridesIfPlaying(changedSpecies);
+        }
+        else if (runtimeChanged)
+        {
             ApplyRuntimeOverridesIfPlaying(changedSpecies);
         }
     }
@@ -460,7 +480,10 @@ public class SimulationManagerInspector : Editor
 
         if (manager.SetSpeciesRenderOverridesContext(asset, modelPath, experimentName))
         {
-            EditorUtility.SetDirty(manager);
+            if (!EditorApplication.isPlaying)
+            {
+                EditorUtility.SetDirty(manager);
+            }
         }
     }
 

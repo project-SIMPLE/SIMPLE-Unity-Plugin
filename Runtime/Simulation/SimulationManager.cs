@@ -16,6 +16,8 @@ public abstract partial class SimulationManager : MonoBehaviour
     {
         public string Key;
         public string SpeciesName;
+        public string PropertyId;
+        public string PropertyTag;
         public string AgentId;
         public GameObject Root;
         public GameObject VisualRoot;
@@ -939,7 +941,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                 ApplyAgentVisualState(obj, prop, visualState, true, Vector3.zero);
                 ApplyImmediateStreamingState(obj, prop, immediateStreamingCamera, immediateFrustumEnabled);
                 //obj.SetActive(true);
-                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, attributes, basePos, baseRotation, basePos);
+                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, attributes, basePos, baseRotation, basePos, prop.id, prop.tag);
                 if(toRemove != null)
                 {
                     toRemove.Remove(agentKey);
@@ -988,10 +990,10 @@ public abstract partial class SimulationManager : MonoBehaviour
 
                 int[] pt = pointGeom.c.ToArray();
                 float yOffset = (0.0f + rawOffsetY) / (0.0f + parameters.precision);
-                Vector3 polygonBasePosition = new Vector3(0f, yOffset, 0f);
                 bool polygonInputValid = IsRuntimePolygonInputValid(pt);
 
                 Vector3 computedWorldAnchor = Vector3.zero;
+                bool hasComputedWorldAnchor = false;
                 if (pt != null && pt.Length >= 2)
                 {
                     int pointCount = pt.Length / 2;
@@ -1004,15 +1006,24 @@ public abstract partial class SimulationManager : MonoBehaviour
                             sum += new Vector3(pt2d.x, yOffset, pt2d.y);
                         }
                         computedWorldAnchor = sum / pointCount;
+                        hasComputedWorldAnchor = true;
                     }
                 }
 
+                Vector3 polygonBasePosition = polygonInputValid && hasComputedWorldAnchor
+                    ? computedWorldAnchor
+                    : new Vector3(0f, yOffset, 0f);
 
                 if(!geometryMap.ContainsKey(agentKey))
                 {
                     obj = polygonInputValid
                         ? polyGen.GeneratePolygons(false, name, pt, prop, parameters.precision)
                         : new GameObject(name);
+                    if (polygonInputValid && hasComputedWorldAnchor)
+                    {
+                        RecenterPolygonMeshForStableScale(obj, computedWorldAnchor);
+                    }
+
                    if(prop.hasCollider)
                     {
                         MeshFilter meshFilter = obj.GetComponent<MeshFilter>();
@@ -1042,6 +1053,10 @@ public abstract partial class SimulationManager : MonoBehaviour
                         if (polygonInputValid)
                         {
                             polyGen.UpdatePolygon(obj, pt);
+                            if (hasComputedWorldAnchor)
+                            {
+                                RecenterPolygonMeshForStableScale(obj, computedWorldAnchor);
+                            }
                         }
 
                         if(prop.hasCollider)
@@ -1060,7 +1075,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                 ApplyAgentVisualState(obj, prop, visualState, false, polygonBasePosition, computedWorldAnchor, geometryBaseRotation);
                 HandleInvalidDynamicGeometryFallback(obj, speciesName, visualState, computedWorldAnchor, dynamicUpdate, !polygonInputValid, geometryBaseRotation);
                 ApplyImmediateStreamingState(obj, prop, immediateStreamingCamera, immediateFrustumEnabled);
-                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, attributes, polygonBasePosition, geometryBaseRotation, computedWorldAnchor);
+                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, attributes, polygonBasePosition, geometryBaseRotation, computedWorldAnchor, prop.id, prop.tag);
                 if(toRemove != null)
                 {
                     toRemove.Remove(agentKey);
@@ -1798,7 +1813,9 @@ public abstract partial class SimulationManager : MonoBehaviour
         Attributes attributes = null,
         Vector3? basePosition = null,
         Quaternion? baseRotation = null,
-        Vector3? visualAnchor = null)
+        Vector3? visualAnchor = null,
+        string propertyId = null,
+        string propertyTag = null)
     {
         if (string.IsNullOrWhiteSpace(key) || root == null)
         {
@@ -1815,6 +1832,14 @@ public abstract partial class SimulationManager : MonoBehaviour
 
         record.Key = key;
         record.SpeciesName = string.IsNullOrWhiteSpace(speciesName) ? "unknown" : speciesName.Trim();
+        if (!string.IsNullOrWhiteSpace(propertyId))
+        {
+            record.PropertyId = propertyId.Trim();
+        }
+        if (!string.IsNullOrWhiteSpace(propertyTag))
+        {
+            record.PropertyTag = propertyTag.Trim();
+        }
         record.AgentId = string.IsNullOrWhiteSpace(agentId) ? key : agentId.Trim();
         record.Root = root;
         record.VisualRoot = ResolveRuntimeVisualRoot(root);
@@ -1964,7 +1989,16 @@ public abstract partial class SimulationManager : MonoBehaviour
             return false;
         }
 
-        RegisterRuntimeAgent(key, speciesName, agentId, obj, dynamicUpdate, visualState, attributes);
+        RegisterRuntimeAgent(
+            key,
+            speciesName,
+            agentId,
+            obj,
+            dynamicUpdate,
+            visualState,
+            attributes,
+            propertyId: prop != null ? prop.id : null,
+            propertyTag: prop != null ? prop.tag : null);
         if (removalSet != null)
         {
             removalSet.Remove(key);
@@ -3098,7 +3132,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             RuntimeAgentRecord record = pair.Value;
             if (record == null ||
                 record.Root == null ||
-                !string.Equals(record.SpeciesName, speciesName, StringComparison.OrdinalIgnoreCase))
+                !RuntimeRecordMatchesSpeciesSelection(record, speciesName))
             {
                 continue;
             }
@@ -3138,7 +3172,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
             if (prop.hasPrefab)
             {
-                string desiredSignature = ResolvePrefabSignature(prop, null);
+                string desiredSignature = ResolvePrefabSignature(prop, record.LastAttributes);
                 if (NeedsPrefabRebuild(root, desiredSignature))
                 {
                     if (toFollow != null && toFollow.Contains(root))
@@ -3147,7 +3181,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                     }
 
                     ReleasePrefabInstance(root);
-                    root = instantiatePrefab(record.AgentId, key, record.SpeciesName, prop, null, desiredSignature, initGame: false);
+                    root = instantiatePrefab(record.AgentId, key, record.SpeciesName, prop, record.LastAttributes, desiredSignature, initGame: false);
                     entry[0] = root;
                     record.Root = root;
                     record.VisualRoot = ResolveRuntimeVisualRoot(root);
@@ -3187,10 +3221,24 @@ public abstract partial class SimulationManager : MonoBehaviour
                 previousPrefabPositions[key] = basePosition;
                 previousPrefabPropertyIds[key] = prop.id ?? string.Empty;
             }
+            lastImportSignatureByName.Remove(key);
             updated++;
         }
 
         Debug.Log("[GAMA][RUNTIME][OVERRIDE] refreshed species=" + speciesName + " agents=" + updated);
+    }
+
+    private static bool RuntimeRecordMatchesSpeciesSelection(RuntimeAgentRecord record, string speciesSelection)
+    {
+        if (record == null || string.IsNullOrWhiteSpace(speciesSelection))
+        {
+            return false;
+        }
+
+        string wanted = speciesSelection.Trim();
+        return string.Equals(record.SpeciesName, wanted, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(record.PropertyId, wanted, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(record.PropertyTag, wanted, StringComparison.OrdinalIgnoreCase);
     }
 
     private static Vector3 GetRuntimeAgentWorldAnchor(GameObject agentRoot)
@@ -3376,6 +3424,35 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
 
         LogInvalidGeometryFallback(speciesName);
+    }
+
+    private static void RecenterPolygonMeshForStableScale(GameObject obj, Vector3 worldAnchor)
+    {
+        if (obj == null)
+        {
+            return;
+        }
+
+        MeshFilter[] meshFilters = obj.GetComponentsInChildren<MeshFilter>(true);
+        for (int i = 0; i < meshFilters.Length; i++)
+        {
+            MeshFilter filter = meshFilters[i];
+            Mesh mesh = filter != null ? filter.sharedMesh : null;
+            if (mesh == null || mesh.vertexCount == 0 || IsRuntimeAuxiliaryVisual(filter.transform))
+            {
+                continue;
+            }
+
+            Vector3[] vertices = mesh.vertices;
+            for (int v = 0; v < vertices.Length; v++)
+            {
+                vertices[v].x -= worldAnchor.x;
+                vertices[v].z -= worldAnchor.z;
+            }
+
+            mesh.vertices = vertices;
+            mesh.RecalculateBounds();
+        }
     }
 
     private bool IsRuntimePolygonInputValid(int[] points)
@@ -3955,18 +4032,17 @@ public abstract partial class SimulationManager : MonoBehaviour
     private void HandleConnectionStateChanged(ConnectionState state)
     {
         SyncConnectionIdFromManager();
+        ConnectionManager manager = subscribedConnectionManager != null
+            ? subscribedConnectionManager
+            : ConnectionManager.Instance;
 
         // player has been added to the simulation by the middleware
         if (state == ConnectionState.AUTHENTICATED)
         {
-            if (!runtimePlayerBootstrapConfirmed && runtimePlayerBootstrapAttempts == 0)
+            if (manager != null && !manager.IsCurrentPlayerAuthenticated)
             {
-                // Middleware says we're authenticated (stale player from previous session).
-                // Force a create_player first so GAMA actually registers us.
-                Debug.Log("[GAMA] Authenticated with stale session, forcing create_player before loading data");
                 runtimePlayerBootstrapConfirmed = false;
                 UpdateGameState(GameState.WAITING);
-                // Immediately trigger the bootstrap so we don't wait for next FixedUpdate
                 TryBootstrapRuntimePlayer();
             }
             else
@@ -4610,10 +4686,13 @@ public abstract partial class SimulationManager : MonoBehaviour
             return;
         }
 
-        if (manager.IsConnectionState(ConnectionState.AUTHENTICATED) && runtimePlayerBootstrapAttempts > 0)
+        if (manager.IsCurrentPlayerAuthenticated)
         {
             runtimePlayerBootstrapConfirmed = true;
-            UpdateGameState(GameState.LOADING_DATA);
+            if (!IsGameState(GameState.LOADING_DATA) && !IsGameState(GameState.GAME))
+            {
+                UpdateGameState(GameState.LOADING_DATA);
+            }
             return;
         }
 

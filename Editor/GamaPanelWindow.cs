@@ -324,6 +324,14 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private void AbortCaptureIfRunning(string reason, bool purgePlayer = true)
     {
+        if (captureTask != null && captureTask.IsCompleted)
+        {
+            System.Threading.Tasks.Task<GamaEditorFirstTickCapture.CaptureResult> finished = captureTask;
+            captureTask = null;
+            OnCaptureFinished(finished);
+            return;
+        }
+
         if (captureTask == null && captureGamaProcess == null && captureMiddlewareProcess == null)
         {
             return;

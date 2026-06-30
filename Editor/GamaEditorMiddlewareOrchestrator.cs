@@ -707,7 +707,11 @@ internal static class GamaEditorMiddlewareOrchestrator
             MonitorSession session = new MonitorSession(ws, Append);
             Task receiveTask = session.RunReceiveLoopAsync(ct);
 
-            DateTime initialStateDeadline = DateTime.UtcNow.AddSeconds(3);
+            await Task.Delay(200, ct).ConfigureAwait(false);
+            Append("[GAMA][ORCH][PLAY] -> get_simulation_informations");
+            await session.SendAsync(new JObject { ["type"] = "get_simulation_informations" }, ct).ConfigureAwait(false);
+
+            DateTime initialStateDeadline = DateTime.UtcNow.AddSeconds(8);
             while (DateTime.UtcNow < initialStateDeadline && !ct.IsCancellationRequested)
             {
                 string state = session.LastExperimentState ?? string.Empty;
@@ -720,6 +724,30 @@ internal static class GamaEditorMiddlewareOrchestrator
             }
 
             string expState = session.LastExperimentState ?? string.Empty;
+            if (string.IsNullOrEmpty(expState) ||
+                string.Equals(expState, "NONE", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(expState, "NOTREADY", StringComparison.OrdinalIgnoreCase))
+            {
+                Append("[GAMA][ORCH][PLAY] No active experiment detected (state=" +
+                       (string.IsNullOrEmpty(expState) ? "?" : expState) +
+                       "), launching current monitor selection.");
+                await session.SendAsync(new JObject { ["type"] = "launch_experiment" }, ct).ConfigureAwait(false);
+
+                DateTime launchDeadline = DateTime.UtcNow.AddSeconds(90);
+                while (DateTime.UtcNow < launchDeadline && !ct.IsCancellationRequested)
+                {
+                    expState = session.LastExperimentState ?? expState;
+                    if (!string.IsNullOrEmpty(expState) &&
+                        !string.Equals(expState, "NONE", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(expState, "NOTREADY", StringComparison.OrdinalIgnoreCase))
+                    {
+                        break;
+                    }
+
+                    await Task.Delay(200, ct).ConfigureAwait(false);
+                }
+            }
+
             if (string.Equals(expState, "PAUSED", StringComparison.OrdinalIgnoreCase))
             {
                 Append("[GAMA][ORCH][PLAY] → resume_experiment (état PAUSED)");
@@ -745,8 +773,8 @@ internal static class GamaEditorMiddlewareOrchestrator
             if (!result.Success)
             {
                 result.Error = "Aucune expérience GAMA active détectée par le monitor (état=" +
-                               (string.IsNullOrEmpty(result.FinalExperimentState) ? "?" : result.FinalExperimentState) +
-                               "). Unity n'envoie pas launch_experiment en mode sélection GAMA active pour éviter le prompt de fermeture.";
+                                (string.IsNullOrEmpty(result.FinalExperimentState) ? "?" : result.FinalExperimentState) +
+                                ") après tentative de lancement de la sélection monitor courante.";
             }
             else
             {
@@ -1519,6 +1547,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             return false;
         }
 
+        bool pauseConfirmed = false;
         using (ClientWebSocket ws = new ClientWebSocket())
         {
             ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(5);
@@ -1528,7 +1557,30 @@ internal static class GamaEditorMiddlewareOrchestrator
             await Task.Delay(200, ct).ConfigureAwait(false);
             Append("[GAMA][ORCH] → pause_experiment (" + reason + ")");
             await session.SendAsync(new JObject { ["type"] = "pause_experiment" }, ct).ConfigureAwait(false);
-            await Task.Delay(500, ct).ConfigureAwait(false);
+            DateTime pauseDeadline = DateTime.UtcNow.AddSeconds(3);
+            string lastState = session.LastExperimentState ?? string.Empty;
+            while (DateTime.UtcNow < pauseDeadline && !ct.IsCancellationRequested)
+            {
+                lastState = session.LastExperimentState ?? lastState;
+                if (string.Equals(lastState, "PAUSED", StringComparison.OrdinalIgnoreCase))
+                {
+                    pauseConfirmed = true;
+                    break;
+                }
+
+                await Task.Delay(200, ct).ConfigureAwait(false);
+            }
+
+            if (pauseConfirmed)
+            {
+                Append("[GAMA][ORCH] pause_experiment confirmé : experiment_state=PAUSED");
+            }
+            else
+            {
+                Append("[GAMA][ORCH] pause_experiment non confirmé : experiment_state=" +
+                       (string.IsNullOrEmpty(lastState) ? "?" : lastState));
+            }
+
             session.Stop();
             try
             {
@@ -1556,7 +1608,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             }
         }
 
-        return true;
+        return pauseConfirmed;
     }
 
     /// <summary>Relance l'expérience via le monitor.</summary>
@@ -1591,6 +1643,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             return false;
         }
 
+        bool resumeConfirmed = false;
         using (ClientWebSocket ws = new ClientWebSocket())
         {
             ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(5);
@@ -1600,7 +1653,30 @@ internal static class GamaEditorMiddlewareOrchestrator
             await Task.Delay(200, ct).ConfigureAwait(false);
             Append("[GAMA][ORCH] → resume_experiment (" + reason + ")");
             await session.SendAsync(new JObject { ["type"] = "resume_experiment" }, ct).ConfigureAwait(false);
-            await Task.Delay(500, ct).ConfigureAwait(false);
+            DateTime resumeDeadline = DateTime.UtcNow.AddSeconds(3);
+            string lastState = session.LastExperimentState ?? string.Empty;
+            while (DateTime.UtcNow < resumeDeadline && !ct.IsCancellationRequested)
+            {
+                lastState = session.LastExperimentState ?? lastState;
+                if (string.Equals(lastState, "RUNNING", StringComparison.OrdinalIgnoreCase))
+                {
+                    resumeConfirmed = true;
+                    break;
+                }
+
+                await Task.Delay(200, ct).ConfigureAwait(false);
+            }
+
+            if (resumeConfirmed)
+            {
+                Append("[GAMA][ORCH] resume_experiment confirmé : experiment_state=RUNNING");
+            }
+            else
+            {
+                Append("[GAMA][ORCH] resume_experiment non confirmé : experiment_state=" +
+                       (string.IsNullOrEmpty(lastState) ? "?" : lastState));
+            }
+
             session.Stop();
             try
             {
@@ -1628,7 +1704,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             }
         }
 
-        return true;
+        return resumeConfirmed;
     }
 
     /// <summary>Removes a player from the middleware/GAMA through the monitor socket.</summary>

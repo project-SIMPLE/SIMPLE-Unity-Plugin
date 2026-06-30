@@ -110,11 +110,18 @@ public abstract class WebSocketConnector : MonoBehaviour
 
     private async void OnApplicationQuit()
     {
+        await BeforeSocketCloseAsync();
         await CloseSocketAsync();
     }
 
     async void OnDestroy() {
+        await BeforeSocketCloseAsync();
         await CloseSocketAsync();
+    }
+
+    protected virtual Task BeforeSocketCloseAsync()
+    {
+        return Task.CompletedTask;
     }
 
     // ############################## HANDLERS ##############################

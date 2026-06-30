@@ -16,6 +16,7 @@ public static class GamaPreviewPlayModeGuard
     private const string GamaCaptureMonitorPortPrefKey = "ProjectSimple.GamaUnity.Panel.GamaCaptureMonitorPort";
     private const string PlayModelPathPrefKey = "ProjectSimple.GamaUnity.Play.ModelPath";
     private const string PlayExperimentPrefKey = "ProjectSimple.GamaUnity.Play.Experiment";
+    private const string PlaySessionIdPrefKey = "ProjectSimple.GamaUnity.Play.PlayerId";
     private const string StaticPreviewRootName = "[GAMA] Static Experiment Preview";
 
     static GamaPreviewPlayModeGuard()
@@ -28,8 +29,16 @@ public static class GamaPreviewPlayModeGuard
     {
         if (state == PlayModeStateChange.ExitingEditMode)
         {
-            StaticInformation.EnsureSessionIdPrefix("unity_play");
+            GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
+            EnsureStableUnityPlayId();
+
+            if (StaticInformation.TryGetCurrentId(out string previousPlayerId))
+            {
+                TryRemoveRuntimePlayerFromUnity("Before new Unity Play", previousPlayerId);
+            }
+
             Debug.Log("[GAMA][PLAY] Unity Play player id: " + StaticInformation.getId());
+            AssignSpeciesOverrideContextForPlay();
 
             GameObject root = FindPreviewRoot();
             if (root != null)
@@ -49,10 +58,17 @@ public static class GamaPreviewPlayModeGuard
         }
         else if (state == PlayModeStateChange.ExitingPlayMode)
         {
-            TryPauseGamaFromUnity("Unity Play stopped");
+            string runtimePlayerId = StaticInformation.getId();
+            GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
+
+            TryPauseGamaFromUnity("Unity Play stopped", 2);
+            TryDisconnectRuntimePlayer("Unity Play stopped");
+            TryRemoveRuntimePlayerFromUnity("Unity Play stopped", runtimePlayerId);
         }
         else if (state == PlayModeStateChange.EnteredEditMode)
         {
+            GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
+
             if (SessionState.GetBool(SessionStateKey, false))
             {
                 GameObject root = FindPreviewRoot();
@@ -82,7 +98,7 @@ public static class GamaPreviewPlayModeGuard
         }
     }
 
-    private static void TryPauseGamaFromUnity(string reason)
+    private static void TryPauseGamaFromUnity(string reason, int attempts = 1)
     {
         if (!EditorPrefs.GetBool(PauseGamaOnPlayExitPrefKey, true))
         {
@@ -102,19 +118,30 @@ public static class GamaPreviewPlayModeGuard
 
         try
         {
-            using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+            attempts = Math.Max(1, attempts);
+            bool paused = false;
+            for (int attempt = 1; attempt <= attempts && !paused; attempt++)
             {
-                bool paused = GamaEditorMiddlewareOrchestrator.PauseExperimentAsync(
-                        host,
-                        monitorPort,
-                        cts.Token,
-                        reason: reason)
-                    .GetAwaiter()
-                    .GetResult();
-                if (!paused)
+                using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
                 {
-                    Debug.LogWarning("[GAMA][PLAY] " + reason + ", but pause_experiment was not confirmed on monitor " + monitorPort + ".");
+                    paused = GamaEditorMiddlewareOrchestrator.PauseExperimentAsync(
+                            host,
+                            monitorPort,
+                            cts.Token,
+                            reason: reason + (attempts > 1 ? " attempt " + attempt : string.Empty))
+                        .GetAwaiter()
+                        .GetResult();
                 }
+
+                if (!paused && attempt < attempts)
+                {
+                    Thread.Sleep(350);
+                }
+            }
+
+            if (!paused)
+            {
+                Debug.LogWarning("[GAMA][PLAY] " + reason + ", but pause_experiment was not confirmed on monitor " + monitorPort + ".");
             }
         }
         catch (Exception ex)
@@ -164,6 +191,71 @@ public static class GamaPreviewPlayModeGuard
         }
     }
 
+    private static void TryDisconnectRuntimePlayer(string reason)
+    {
+        ConnectionManager manager = ConnectionManager.Instance;
+        if (manager == null)
+        {
+            return;
+        }
+
+        try
+        {
+            manager.DisconnectProperlyAsync().GetAwaiter().GetResult();
+            Thread.Sleep(150);
+            Debug.Log("[GAMA][PLAY] " + reason + ": runtime websocket disconnected cleanly.");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[GAMA][PLAY] Failed to disconnect runtime websocket after " + reason + ": " + ex.Message);
+        }
+    }
+
+    private static void TryRemoveRuntimePlayerFromUnity(string reason, string playerId)
+    {
+        if (string.IsNullOrWhiteSpace(playerId))
+        {
+            playerId = StaticInformation.getId();
+        }
+
+        if (string.IsNullOrWhiteSpace(playerId) ||
+            !playerId.Trim().StartsWith("unity_play_", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        string host = EditorPrefs.GetString(GamaCaptureHostPrefKey, PlayerPrefs.GetString("IP", "localhost"));
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            host = "localhost";
+        }
+        host = host.Trim();
+
+        int monitorPort = EditorPrefs.GetInt(
+            GamaCaptureMonitorPortPrefKey,
+            GamaEditorMiddlewareOrchestrator.DefaultMonitorPort);
+
+        try
+        {
+            using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+            {
+                bool removed = GamaEditorMiddlewareOrchestrator.RemovePlayerHeadsetAsync(
+                        host,
+                        monitorPort,
+                        playerId,
+                        cts.Token,
+                        Debug.Log)
+                    .GetAwaiter()
+                    .GetResult();
+                Debug.Log("[GAMA][PLAY] " + reason + ": runtime player cleanup id=" + playerId + " removed=" + removed);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[GAMA][PLAY] Failed to remove runtime player after " + reason + ": " + ex.Message);
+        }
+    }
+
     private static GameObject FindPreviewRoot()
     {
         GamaPreviewSession session = UnityEngine.Object.FindFirstObjectByType<GamaPreviewSession>(FindObjectsInactive.Include);
@@ -173,6 +265,98 @@ public static class GamaPreviewPlayModeGuard
         }
 
         return GameObject.Find(StaticPreviewRootName);
+    }
+
+    private static void EnsureStableUnityPlayId()
+    {
+        string persistedId = PlayerPrefs.GetString(PlaySessionIdPrefKey, string.Empty);
+        if (!string.IsNullOrWhiteSpace(persistedId))
+        {
+            StaticInformation.AdoptSessionId(persistedId.Trim());
+            return;
+        }
+
+        StaticInformation.EnsureSessionIdPrefix("unity_play");
+        PlayerPrefs.SetString(PlaySessionIdPrefKey, StaticInformation.getId());
+        PlayerPrefs.Save();
+    }
+
+    private static void AssignSpeciesOverrideContextForPlay()
+    {
+        GamaSpeciesRenderOverrides asset = null;
+        string modelPath = string.Empty;
+        string experimentName = string.Empty;
+
+        GamaPreviewSession session = FindCurrentPreviewSession();
+        if (session != null)
+        {
+            asset = session.speciesOverrides != null
+                ? session.speciesOverrides
+                : GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
+            if (asset != null && session.speciesOverrides == null)
+            {
+                session.speciesOverrides = asset;
+                EditorUtility.SetDirty(session);
+            }
+
+            modelPath = session.modelPath ?? string.Empty;
+            experimentName = session.experimentName ?? string.Empty;
+        }
+
+        if (asset == null)
+        {
+            asset = GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
+        }
+
+        if (asset == null)
+        {
+            return;
+        }
+
+        SimulationManager[] managers = UnityEngine.Object.FindObjectsByType<SimulationManager>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+        for (int i = 0; i < managers.Length; i++)
+        {
+            if (managers[i] != null)
+            {
+                managers[i].SetSpeciesRenderOverridesContext(asset, modelPath, experimentName);
+            }
+        }
+    }
+
+    private static GamaPreviewSession FindCurrentPreviewSession()
+    {
+        GamaPreviewSession[] sessions = UnityEngine.Object.FindObjectsByType<GamaPreviewSession>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+
+        GamaPreviewSession fallback = null;
+        for (int i = 0; i < sessions.Length; i++)
+        {
+            GamaPreviewSession session = sessions[i];
+            if (session == null)
+            {
+                continue;
+            }
+
+            if (session.useThisPreviewForPlay && !session.stale)
+            {
+                return session;
+            }
+
+            if (fallback == null)
+            {
+                fallback = session;
+            }
+
+            if (!session.stale && session.gameObject != null && session.gameObject.name == StaticPreviewRootName)
+            {
+                fallback = session;
+            }
+        }
+
+        return fallback;
     }
 
     private static void TryPrepareGamaForPlay()
