@@ -66,6 +66,93 @@ public class GamaPreviewObject : MonoBehaviour
         return hasVisualAnchor;
     }
 
+    public bool NormalizePivotToVisualAnchorForStableScale()
+    {
+        if (!hasBaseState || !hasVisualAnchor || visualAnchorLocal.sqrMagnitude <= 0.000001f)
+        {
+            return false;
+        }
+
+        MeshFilter[] meshFilters = GetComponentsInChildren<MeshFilter>(true);
+        List<MeshFilter> editableFilters = new List<MeshFilter>();
+        for (int i = 0; i < meshFilters.Length; i++)
+        {
+            MeshFilter filter = meshFilters[i];
+            if (filter == null || IsUnderGeneratedVisual(filter.transform))
+            {
+                continue;
+            }
+
+            Mesh mesh = filter.sharedMesh;
+            if (mesh != null && mesh.vertexCount > 0)
+            {
+                editableFilters.Add(filter);
+            }
+        }
+
+        if (editableFilters.Count == 0)
+        {
+            return false;
+        }
+
+        transform.localPosition = baseLocalPosition;
+        transform.localRotation = baseLocalRotation;
+        transform.localScale = baseLocalScale;
+
+        Vector3 worldAnchor = transform.TransformPoint(visualAnchorLocal);
+        List<Vector3[]> worldVerticesByFilter = new List<Vector3[]>(editableFilters.Count);
+        for (int i = 0; i < editableFilters.Count; i++)
+        {
+            MeshFilter filter = editableFilters[i];
+            Vector3[] vertices = filter.sharedMesh.vertices;
+            Vector3[] worldVertices = new Vector3[vertices.Length];
+            for (int v = 0; v < vertices.Length; v++)
+            {
+                worldVertices[v] = filter.transform.TransformPoint(vertices[v]);
+            }
+
+            worldVerticesByFilter.Add(worldVertices);
+        }
+
+        transform.position = worldAnchor;
+
+        for (int i = 0; i < editableFilters.Count; i++)
+        {
+            MeshFilter filter = editableFilters[i];
+            Mesh mesh = filter.sharedMesh;
+            Vector3[] vertices = mesh.vertices;
+            Vector3[] worldVertices = worldVerticesByFilter[i];
+            for (int v = 0; v < vertices.Length && v < worldVertices.Length; v++)
+            {
+                vertices[v] = filter.transform.InverseTransformPoint(worldVertices[v]);
+            }
+
+            mesh.vertices = vertices;
+            mesh.RecalculateBounds();
+        }
+
+        baseLocalPosition = transform.localPosition;
+        visualAnchorLocal = Vector3.zero;
+        return true;
+    }
+
+    private static bool IsUnderGeneratedVisual(Transform t)
+    {
+        Transform current = t;
+        while (current != null)
+        {
+            string name = current.name;
+            if (name == "Visual" || name == "VisualOverride" || name == "InvalidGeometryFallback")
+            {
+                return true;
+            }
+
+            current = current.parent;
+        }
+
+        return false;
+    }
+
     public void RestoreBaseLocalScaleIfCaptured()
     {
         if (hasBaseState)

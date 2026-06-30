@@ -285,6 +285,7 @@ public static class GamaEditorPreviewOverrideApplier
         bool visible = ResolvePreviewVisible(entry);
         bool hasPrefabOverride = entry.prefabOverride != null;
         previewObj.gameObject.SetActive(true);
+        EnsureStableScalePivot(previewObj);
 
         if (hasPrefabOverride)
         {
@@ -336,6 +337,22 @@ public static class GamaEditorPreviewOverrideApplier
 
         previewObj.ApplySpeciesOverride(entry);
         return SetOriginalGeometryRenderersEnabled(parent, null, visible);
+    }
+
+    private static void EnsureStableScalePivot(GamaPreviewObject previewObj)
+    {
+        if (previewObj == null)
+        {
+            return;
+        }
+
+        if (previewObj.NormalizePivotToVisualAnchorForStableScale())
+        {
+            EditorUtility.SetDirty(previewObj);
+            EditorUtility.SetDirty(previewObj.gameObject);
+            Debug.Log("[GAMA][PREVIEW][SCALE] Recentered preview pivot for species=" +
+                      (string.IsNullOrWhiteSpace(previewObj.speciesName) ? "unknown" : previewObj.speciesName));
+        }
     }
 
     private static Transform EnsurePrefabVisual(Transform parent, GameObject prefab)
