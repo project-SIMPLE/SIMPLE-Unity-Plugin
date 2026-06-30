@@ -16,6 +16,7 @@ public static class GamaPreviewPlayModeGuard
     private const string GamaCaptureMonitorPortPrefKey = "ProjectSimple.GamaUnity.Panel.GamaCaptureMonitorPort";
     private const string PlayModelPathPrefKey = "ProjectSimple.GamaUnity.Play.ModelPath";
     private const string PlayExperimentPrefKey = "ProjectSimple.GamaUnity.Play.Experiment";
+    private const string PlaySessionIdPrefKey = "ProjectSimple.GamaUnity.Play.PlayerId";
     private const string StaticPreviewRootName = "[GAMA] Static Experiment Preview";
 
     static GamaPreviewPlayModeGuard()
@@ -29,14 +30,15 @@ public static class GamaPreviewPlayModeGuard
         if (state == PlayModeStateChange.ExitingEditMode)
         {
             GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
+            EnsureStableUnityPlayId();
 
             if (StaticInformation.TryGetCurrentId(out string previousPlayerId))
             {
                 TryRemoveRuntimePlayerFromUnity("Before new Unity Play", previousPlayerId);
             }
 
-            StaticInformation.ResetSessionId("unity_play");
             Debug.Log("[GAMA][PLAY] Unity Play player id: " + StaticInformation.getId());
+            AssignSpeciesOverrideContextForPlay();
 
             GameObject root = FindPreviewRoot();
             if (root != null)
@@ -57,6 +59,11 @@ public static class GamaPreviewPlayModeGuard
         else if (state == PlayModeStateChange.ExitingPlayMode)
         {
             GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
+            if (ConnectionManager.Instance != null)
+            {
+                ConnectionManager.Instance.DisconnectProperly();
+            }
+
             TryRemoveRuntimePlayerFromUnity("Unity Play stopped", null);
             TryPauseGamaFromUnity("Unity Play stopped");
         }
@@ -229,6 +236,98 @@ public static class GamaPreviewPlayModeGuard
         }
 
         return GameObject.Find(StaticPreviewRootName);
+    }
+
+    private static void EnsureStableUnityPlayId()
+    {
+        string persistedId = PlayerPrefs.GetString(PlaySessionIdPrefKey, string.Empty);
+        if (!string.IsNullOrWhiteSpace(persistedId))
+        {
+            StaticInformation.AdoptSessionId(persistedId.Trim());
+            return;
+        }
+
+        StaticInformation.EnsureSessionIdPrefix("unity_play");
+        PlayerPrefs.SetString(PlaySessionIdPrefKey, StaticInformation.getId());
+        PlayerPrefs.Save();
+    }
+
+    private static void AssignSpeciesOverrideContextForPlay()
+    {
+        GamaSpeciesRenderOverrides asset = null;
+        string modelPath = string.Empty;
+        string experimentName = string.Empty;
+
+        GamaPreviewSession session = FindCurrentPreviewSession();
+        if (session != null)
+        {
+            asset = session.speciesOverrides != null
+                ? session.speciesOverrides
+                : GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
+            if (asset != null && session.speciesOverrides == null)
+            {
+                session.speciesOverrides = asset;
+                EditorUtility.SetDirty(session);
+            }
+
+            modelPath = session.modelPath ?? string.Empty;
+            experimentName = session.experimentName ?? string.Empty;
+        }
+
+        if (asset == null)
+        {
+            asset = GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
+        }
+
+        if (asset == null)
+        {
+            return;
+        }
+
+        SimulationManager[] managers = UnityEngine.Object.FindObjectsByType<SimulationManager>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+        for (int i = 0; i < managers.Length; i++)
+        {
+            if (managers[i] != null)
+            {
+                managers[i].SetSpeciesRenderOverridesContext(asset, modelPath, experimentName);
+            }
+        }
+    }
+
+    private static GamaPreviewSession FindCurrentPreviewSession()
+    {
+        GamaPreviewSession[] sessions = UnityEngine.Object.FindObjectsByType<GamaPreviewSession>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+
+        GamaPreviewSession fallback = null;
+        for (int i = 0; i < sessions.Length; i++)
+        {
+            GamaPreviewSession session = sessions[i];
+            if (session == null)
+            {
+                continue;
+            }
+
+            if (session.useThisPreviewForPlay && !session.stale)
+            {
+                return session;
+            }
+
+            if (fallback == null)
+            {
+                fallback = session;
+            }
+
+            if (!session.stale && session.gameObject != null && session.gameObject.name == StaticPreviewRootName)
+            {
+                fallback = session;
+            }
+        }
+
+        return fallback;
     }
 
     private static void TryPrepareGamaForPlay()

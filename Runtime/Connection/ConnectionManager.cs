@@ -7,7 +7,8 @@ using System.Linq;
 
 public class ConnectionManager : WebSocketConnector
 {
-     
+    private const string PlaySessionIdPrefKey = "ProjectSimple.GamaUnity.Play.PlayerId";
+
     private ConnectionState currentState;
     private bool connectionRequested;
     private string lastStalePlayerStateWarning;
@@ -38,7 +39,7 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
     // ############################################# UNITY FUNCTIONS #############################################
     void Awake()
     {
-        StaticInformation.EnsureSessionIdPrefix("unity_play");
+        InitializeRuntimePlayId();
         Debug.Log("[GAMA][CONNECTION][ID] Runtime player id=" + StaticInformation.getId());
         Instance = this;
         UpdateConnectionState(ConnectionState.DISCONNECTED);
@@ -112,17 +113,19 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
                         bool connected = (bool)jsonObj["connected"];
                         if (IsStaleUnityPlayState(serverPlayerId))
                         {
-                            LogStaleUnityPlayState(serverPlayerId, connected, authenticated);
-                            IsCurrentPlayerAuthenticated = false;
-                            HasCurrentPlayerState = false;
-                            if (connected && !IsConnectionState(ConnectionState.CONNECTED))
+                            if (!TryAdoptMiddlewareUnityPlayState(serverPlayerId, connected, authenticated))
                             {
-                                connectionRequested = false;
-                                UpdateConnectionState(ConnectionState.CONNECTED);
-                                OnConnectionAttempted?.Invoke(true);
-                            }
+                                IsCurrentPlayerAuthenticated = false;
+                                HasCurrentPlayerState = false;
+                                if (connected && !IsConnectionState(ConnectionState.CONNECTED))
+                                {
+                                    connectionRequested = false;
+                                    UpdateConnectionState(ConnectionState.CONNECTED);
+                                    OnConnectionAttempted?.Invoke(true);
+                                }
 
-                            break;
+                                break;
+                            }
                         }
 
                         if (connected)
@@ -218,8 +221,13 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
                !string.Equals(currentId, cleanServerPlayerId, StringComparison.Ordinal);
     }
 
-    private void LogStaleUnityPlayState(string serverPlayerId, bool connected, bool authenticated)
+    private bool TryAdoptMiddlewareUnityPlayState(string serverPlayerId, bool connected, bool authenticated)
     {
+        if (!connected || string.IsNullOrWhiteSpace(serverPlayerId))
+        {
+            return false;
+        }
+
         string currentId = StaticInformation.getId();
         string cleanServerPlayerId = string.IsNullOrWhiteSpace(serverPlayerId)
             ? string.Empty
@@ -227,14 +235,35 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
         string warningKey = cleanServerPlayerId + "|" + currentId + "|" + connected + "|" + authenticated;
         if (string.Equals(lastStalePlayerStateWarning, warningKey, StringComparison.Ordinal))
         {
-            return;
+            StaticInformation.AdoptSessionId(cleanServerPlayerId);
+            PlayerPrefs.SetString(PlaySessionIdPrefKey, cleanServerPlayerId);
+            PlayerPrefs.Save();
+            return true;
         }
 
         lastStalePlayerStateWarning = warningKey;
         Debug.LogWarning(
-            "[GAMA][CONNECTION][STALE_STATE] Middleware reports player id=" + cleanServerPlayerId +
+            "[GAMA][CONNECTION][REBIND] Middleware reports player id=" + cleanServerPlayerId +
             " while Unity requested id=" + currentId +
-            ". Treating this as middleware-connected but not authenticated for the current Play session.");
+            ". Adopting the middleware id for this Play reconnect.");
+        StaticInformation.AdoptSessionId(cleanServerPlayerId);
+        PlayerPrefs.SetString(PlaySessionIdPrefKey, cleanServerPlayerId);
+        PlayerPrefs.Save();
+        return true;
+    }
+
+    private static void InitializeRuntimePlayId()
+    {
+        string persistedId = PlayerPrefs.GetString(PlaySessionIdPrefKey, string.Empty);
+        if (!string.IsNullOrWhiteSpace(persistedId))
+        {
+            StaticInformation.AdoptSessionId(persistedId.Trim());
+            return;
+        }
+
+        StaticInformation.EnsureSessionIdPrefix("unity_play");
+        PlayerPrefs.SetString(PlaySessionIdPrefKey, StaticInformation.getId());
+        PlayerPrefs.Save();
     }
 
     private static bool IsUnityPlaySessionId(string id)
@@ -354,12 +383,27 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
     }
 
     public async void DisconnectProperly() {
+        await SendDisconnectProperlyAsync();
+        DisconnectFromServer();
+    }
+
+    protected override async System.Threading.Tasks.Task BeforeSocketCloseAsync()
+    {
+        await SendDisconnectProperlyAsync();
+    }
+
+    private async System.Threading.Tasks.Task SendDisconnectProperlyAsync()
+    {
+        if (!IsSocketOpen)
+        {
+            return;
+        }
+
         Dictionary<string,string> jsonExpression = new Dictionary<string,string> {
             {"type", "disconnect_properly"}
         };
         string jsonStringExpression = JsonConvert.SerializeObject(jsonExpression);
         await SendMessageToServerAsync(jsonStringExpression);
-        DisconnectFromServer();
     }
 
     public string GetConnectionId() {
