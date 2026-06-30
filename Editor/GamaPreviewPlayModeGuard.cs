@@ -28,6 +28,8 @@ public static class GamaPreviewPlayModeGuard
     {
         if (state == PlayModeStateChange.ExitingEditMode)
         {
+            GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
+
             if (StaticInformation.TryGetCurrentId(out string previousPlayerId))
             {
                 TryRemoveRuntimePlayerFromUnity("Before new Unity Play", previousPlayerId);
@@ -54,11 +56,14 @@ public static class GamaPreviewPlayModeGuard
         }
         else if (state == PlayModeStateChange.ExitingPlayMode)
         {
+            GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
             TryRemoveRuntimePlayerFromUnity("Unity Play stopped", null);
             TryPauseGamaFromUnity("Unity Play stopped");
         }
         else if (state == PlayModeStateChange.EnteredEditMode)
         {
+            GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
+
             if (SessionState.GetBool(SessionStateKey, false))
             {
                 GameObject root = FindPreviewRoot();
