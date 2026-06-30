@@ -367,7 +367,12 @@ internal static class GamaEditorStaticPreviewFromJson
                         continue;
                     }
 
-                    Vector3 polygonBasePosition = new Vector3(0f, yOffsetGeom, 0f);
+                    Vector3 polygonWorldAnchor = polygonInputValid
+                        ? ResolveRawGeometryAnchorLocal(rawGeom, converter, yOffsetGeom)
+                        : Vector3.zero;
+                    Vector3 polygonBasePosition = polygonInputValid
+                        ? polygonWorldAnchor
+                        : new Vector3(0f, yOffsetGeom, 0f);
                     GameObject obj = polygonInputValid
                         ? polyGen.GeneratePolygons(true, name, ptArr, prop, precision)
                         : CreateInvalidGeometryFallbackObject(name, speciesKey, rawGeom, converter, yOffsetGeom, visualState);
@@ -377,6 +382,11 @@ internal static class GamaEditorStaticPreviewFromJson
                         Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip geometry i=" + i + " name=" + name + " reason=GeneratePolygons returned null");
                         cptGeom++;
                         continue;
+                    }
+
+                    if (polygonInputValid)
+                    {
+                        RecenterPolygonMeshForStableScale(obj, polygonWorldAnchor);
                     }
 
                     Undo.RegisterCreatedObjectUndo(obj, "GAMA static preview geometry");
@@ -459,7 +469,8 @@ internal static class GamaEditorStaticPreviewFromJson
                         continue;
                     }
 
-                    Vector3 polygonBasePosition = new Vector3(0f, yOffsetGeom, 0f);
+                    Vector3 polygonWorldAnchor = ResolveRawGeometryAnchorLocal(rawGeom, converter, yOffsetGeom);
+                    Vector3 polygonBasePosition = polygonWorldAnchor;
                     GameObject obj = polyGen.GeneratePolygons(true, geomName, ptArr, prop, precision);
                     if (obj == null)
                     {
@@ -467,6 +478,8 @@ internal static class GamaEditorStaticPreviewFromJson
                         Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip standalone geometry g=" + g + " reason=GeneratePolygons returned null");
                         continue;
                     }
+
+                    RecenterPolygonMeshForStableScale(obj, polygonWorldAnchor);
 
                     Undo.RegisterCreatedObjectUndo(obj, "GAMA static preview geometry");
                     obj.transform.SetParent(parent, false);
@@ -976,6 +989,35 @@ internal static class GamaEditorStaticPreviewFromJson
         Vector3 worldCenter = sum / pointCount;
         anchor = obj.transform.InverseTransformPoint(worldCenter);
         return true;
+    }
+
+    private static void RecenterPolygonMeshForStableScale(GameObject obj, Vector3 worldAnchor)
+    {
+        if (obj == null)
+        {
+            return;
+        }
+
+        MeshFilter[] meshFilters = obj.GetComponentsInChildren<MeshFilter>(true);
+        for (int i = 0; i < meshFilters.Length; i++)
+        {
+            MeshFilter filter = meshFilters[i];
+            Mesh mesh = filter != null ? filter.sharedMesh : null;
+            if (mesh == null || mesh.vertexCount == 0)
+            {
+                continue;
+            }
+
+            Vector3[] vertices = mesh.vertices;
+            for (int v = 0; v < vertices.Length; v++)
+            {
+                vertices[v].x -= worldAnchor.x;
+                vertices[v].z -= worldAnchor.z;
+            }
+
+            mesh.vertices = vertices;
+            mesh.RecalculateBounds();
+        }
     }
 
     private static string BuildIntListHash(IList<int> values)

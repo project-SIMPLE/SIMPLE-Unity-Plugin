@@ -990,10 +990,10 @@ public abstract partial class SimulationManager : MonoBehaviour
 
                 int[] pt = pointGeom.c.ToArray();
                 float yOffset = (0.0f + rawOffsetY) / (0.0f + parameters.precision);
-                Vector3 polygonBasePosition = new Vector3(0f, yOffset, 0f);
                 bool polygonInputValid = IsRuntimePolygonInputValid(pt);
 
                 Vector3 computedWorldAnchor = Vector3.zero;
+                bool hasComputedWorldAnchor = false;
                 if (pt != null && pt.Length >= 2)
                 {
                     int pointCount = pt.Length / 2;
@@ -1006,15 +1006,24 @@ public abstract partial class SimulationManager : MonoBehaviour
                             sum += new Vector3(pt2d.x, yOffset, pt2d.y);
                         }
                         computedWorldAnchor = sum / pointCount;
+                        hasComputedWorldAnchor = true;
                     }
                 }
 
+                Vector3 polygonBasePosition = polygonInputValid && hasComputedWorldAnchor
+                    ? computedWorldAnchor
+                    : new Vector3(0f, yOffset, 0f);
 
                 if(!geometryMap.ContainsKey(agentKey))
                 {
                     obj = polygonInputValid
                         ? polyGen.GeneratePolygons(false, name, pt, prop, parameters.precision)
                         : new GameObject(name);
+                    if (polygonInputValid && hasComputedWorldAnchor)
+                    {
+                        RecenterPolygonMeshForStableScale(obj, computedWorldAnchor);
+                    }
+
                    if(prop.hasCollider)
                     {
                         MeshFilter meshFilter = obj.GetComponent<MeshFilter>();
@@ -1044,6 +1053,10 @@ public abstract partial class SimulationManager : MonoBehaviour
                         if (polygonInputValid)
                         {
                             polyGen.UpdatePolygon(obj, pt);
+                            if (hasComputedWorldAnchor)
+                            {
+                                RecenterPolygonMeshForStableScale(obj, computedWorldAnchor);
+                            }
                         }
 
                         if(prop.hasCollider)
@@ -3411,6 +3424,35 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
 
         LogInvalidGeometryFallback(speciesName);
+    }
+
+    private static void RecenterPolygonMeshForStableScale(GameObject obj, Vector3 worldAnchor)
+    {
+        if (obj == null)
+        {
+            return;
+        }
+
+        MeshFilter[] meshFilters = obj.GetComponentsInChildren<MeshFilter>(true);
+        for (int i = 0; i < meshFilters.Length; i++)
+        {
+            MeshFilter filter = meshFilters[i];
+            Mesh mesh = filter != null ? filter.sharedMesh : null;
+            if (mesh == null || mesh.vertexCount == 0 || IsRuntimeAuxiliaryVisual(filter.transform))
+            {
+                continue;
+            }
+
+            Vector3[] vertices = mesh.vertices;
+            for (int v = 0; v < vertices.Length; v++)
+            {
+                vertices[v].x -= worldAnchor.x;
+                vertices[v].z -= worldAnchor.z;
+            }
+
+            mesh.vertices = vertices;
+            mesh.RecalculateBounds();
+        }
     }
 
     private bool IsRuntimePolygonInputValid(int[] points)
