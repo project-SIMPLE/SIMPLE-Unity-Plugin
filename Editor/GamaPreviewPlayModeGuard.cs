@@ -28,7 +28,12 @@ public static class GamaPreviewPlayModeGuard
     {
         if (state == PlayModeStateChange.ExitingEditMode)
         {
-            StaticInformation.EnsureSessionIdPrefix("unity_play");
+            if (StaticInformation.TryGetCurrentId(out string previousPlayerId))
+            {
+                TryRemoveRuntimePlayerFromUnity("Before new Unity Play", previousPlayerId);
+            }
+
+            StaticInformation.ResetSessionId("unity_play");
             Debug.Log("[GAMA][PLAY] Unity Play player id: " + StaticInformation.getId());
 
             GameObject root = FindPreviewRoot();
@@ -49,6 +54,7 @@ public static class GamaPreviewPlayModeGuard
         }
         else if (state == PlayModeStateChange.ExitingPlayMode)
         {
+            TryRemoveRuntimePlayerFromUnity("Unity Play stopped", null);
             TryPauseGamaFromUnity("Unity Play stopped");
         }
         else if (state == PlayModeStateChange.EnteredEditMode)
@@ -161,6 +167,51 @@ public static class GamaPreviewPlayModeGuard
         catch (Exception ex)
         {
             Debug.LogWarning("[GAMA][PLAY] Failed to resume GAMA after " + reason + ": " + ex.Message);
+        }
+    }
+
+    private static void TryRemoveRuntimePlayerFromUnity(string reason, string playerId)
+    {
+        if (string.IsNullOrWhiteSpace(playerId))
+        {
+            playerId = StaticInformation.getId();
+        }
+
+        if (string.IsNullOrWhiteSpace(playerId) ||
+            !playerId.Trim().StartsWith("unity_play_", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        string host = EditorPrefs.GetString(GamaCaptureHostPrefKey, PlayerPrefs.GetString("IP", "localhost"));
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            host = "localhost";
+        }
+        host = host.Trim();
+
+        int monitorPort = EditorPrefs.GetInt(
+            GamaCaptureMonitorPortPrefKey,
+            GamaEditorMiddlewareOrchestrator.DefaultMonitorPort);
+
+        try
+        {
+            using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+            {
+                bool removed = GamaEditorMiddlewareOrchestrator.RemovePlayerHeadsetAsync(
+                        host,
+                        monitorPort,
+                        playerId,
+                        cts.Token,
+                        Debug.Log)
+                    .GetAwaiter()
+                    .GetResult();
+                Debug.Log("[GAMA][PLAY] " + reason + ": runtime player cleanup id=" + playerId + " removed=" + removed);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[GAMA][PLAY] Failed to remove runtime player after " + reason + ": " + ex.Message);
         }
     }
 

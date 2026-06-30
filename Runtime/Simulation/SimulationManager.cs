@@ -16,6 +16,8 @@ public abstract partial class SimulationManager : MonoBehaviour
     {
         public string Key;
         public string SpeciesName;
+        public string PropertyId;
+        public string PropertyTag;
         public string AgentId;
         public GameObject Root;
         public GameObject VisualRoot;
@@ -939,7 +941,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                 ApplyAgentVisualState(obj, prop, visualState, true, Vector3.zero);
                 ApplyImmediateStreamingState(obj, prop, immediateStreamingCamera, immediateFrustumEnabled);
                 //obj.SetActive(true);
-                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, attributes, basePos, baseRotation, basePos);
+                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, attributes, basePos, baseRotation, basePos, prop.id, prop.tag);
                 if(toRemove != null)
                 {
                     toRemove.Remove(agentKey);
@@ -1060,7 +1062,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                 ApplyAgentVisualState(obj, prop, visualState, false, polygonBasePosition, computedWorldAnchor, geometryBaseRotation);
                 HandleInvalidDynamicGeometryFallback(obj, speciesName, visualState, computedWorldAnchor, dynamicUpdate, !polygonInputValid, geometryBaseRotation);
                 ApplyImmediateStreamingState(obj, prop, immediateStreamingCamera, immediateFrustumEnabled);
-                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, attributes, polygonBasePosition, geometryBaseRotation, computedWorldAnchor);
+                RegisterRuntimeAgent(agentKey, speciesName, name, obj, dynamicUpdate, visualState, attributes, polygonBasePosition, geometryBaseRotation, computedWorldAnchor, prop.id, prop.tag);
                 if(toRemove != null)
                 {
                     toRemove.Remove(agentKey);
@@ -1798,7 +1800,9 @@ public abstract partial class SimulationManager : MonoBehaviour
         Attributes attributes = null,
         Vector3? basePosition = null,
         Quaternion? baseRotation = null,
-        Vector3? visualAnchor = null)
+        Vector3? visualAnchor = null,
+        string propertyId = null,
+        string propertyTag = null)
     {
         if (string.IsNullOrWhiteSpace(key) || root == null)
         {
@@ -1815,6 +1819,14 @@ public abstract partial class SimulationManager : MonoBehaviour
 
         record.Key = key;
         record.SpeciesName = string.IsNullOrWhiteSpace(speciesName) ? "unknown" : speciesName.Trim();
+        if (!string.IsNullOrWhiteSpace(propertyId))
+        {
+            record.PropertyId = propertyId.Trim();
+        }
+        if (!string.IsNullOrWhiteSpace(propertyTag))
+        {
+            record.PropertyTag = propertyTag.Trim();
+        }
         record.AgentId = string.IsNullOrWhiteSpace(agentId) ? key : agentId.Trim();
         record.Root = root;
         record.VisualRoot = ResolveRuntimeVisualRoot(root);
@@ -1964,7 +1976,16 @@ public abstract partial class SimulationManager : MonoBehaviour
             return false;
         }
 
-        RegisterRuntimeAgent(key, speciesName, agentId, obj, dynamicUpdate, visualState, attributes);
+        RegisterRuntimeAgent(
+            key,
+            speciesName,
+            agentId,
+            obj,
+            dynamicUpdate,
+            visualState,
+            attributes,
+            propertyId: prop != null ? prop.id : null,
+            propertyTag: prop != null ? prop.tag : null);
         if (removalSet != null)
         {
             removalSet.Remove(key);
@@ -3098,7 +3119,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             RuntimeAgentRecord record = pair.Value;
             if (record == null ||
                 record.Root == null ||
-                !string.Equals(record.SpeciesName, speciesName, StringComparison.OrdinalIgnoreCase))
+                !RuntimeRecordMatchesSpeciesSelection(record, speciesName))
             {
                 continue;
             }
@@ -3138,7 +3159,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
             if (prop.hasPrefab)
             {
-                string desiredSignature = ResolvePrefabSignature(prop, null);
+                string desiredSignature = ResolvePrefabSignature(prop, record.LastAttributes);
                 if (NeedsPrefabRebuild(root, desiredSignature))
                 {
                     if (toFollow != null && toFollow.Contains(root))
@@ -3147,7 +3168,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                     }
 
                     ReleasePrefabInstance(root);
-                    root = instantiatePrefab(record.AgentId, key, record.SpeciesName, prop, null, desiredSignature, initGame: false);
+                    root = instantiatePrefab(record.AgentId, key, record.SpeciesName, prop, record.LastAttributes, desiredSignature, initGame: false);
                     entry[0] = root;
                     record.Root = root;
                     record.VisualRoot = ResolveRuntimeVisualRoot(root);
@@ -3187,10 +3208,24 @@ public abstract partial class SimulationManager : MonoBehaviour
                 previousPrefabPositions[key] = basePosition;
                 previousPrefabPropertyIds[key] = prop.id ?? string.Empty;
             }
+            lastImportSignatureByName.Remove(key);
             updated++;
         }
 
         Debug.Log("[GAMA][RUNTIME][OVERRIDE] refreshed species=" + speciesName + " agents=" + updated);
+    }
+
+    private static bool RuntimeRecordMatchesSpeciesSelection(RuntimeAgentRecord record, string speciesSelection)
+    {
+        if (record == null || string.IsNullOrWhiteSpace(speciesSelection))
+        {
+            return false;
+        }
+
+        string wanted = speciesSelection.Trim();
+        return string.Equals(record.SpeciesName, wanted, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(record.PropertyId, wanted, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(record.PropertyTag, wanted, StringComparison.OrdinalIgnoreCase);
     }
 
     private static Vector3 GetRuntimeAgentWorldAnchor(GameObject agentRoot)

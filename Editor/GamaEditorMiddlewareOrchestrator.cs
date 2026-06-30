@@ -707,7 +707,11 @@ internal static class GamaEditorMiddlewareOrchestrator
             MonitorSession session = new MonitorSession(ws, Append);
             Task receiveTask = session.RunReceiveLoopAsync(ct);
 
-            DateTime initialStateDeadline = DateTime.UtcNow.AddSeconds(3);
+            await Task.Delay(200, ct).ConfigureAwait(false);
+            Append("[GAMA][ORCH][PLAY] -> get_simulation_informations");
+            await session.SendAsync(new JObject { ["type"] = "get_simulation_informations" }, ct).ConfigureAwait(false);
+
+            DateTime initialStateDeadline = DateTime.UtcNow.AddSeconds(8);
             while (DateTime.UtcNow < initialStateDeadline && !ct.IsCancellationRequested)
             {
                 string state = session.LastExperimentState ?? string.Empty;
@@ -720,6 +724,30 @@ internal static class GamaEditorMiddlewareOrchestrator
             }
 
             string expState = session.LastExperimentState ?? string.Empty;
+            if (string.IsNullOrEmpty(expState) ||
+                string.Equals(expState, "NONE", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(expState, "NOTREADY", StringComparison.OrdinalIgnoreCase))
+            {
+                Append("[GAMA][ORCH][PLAY] No active experiment detected (state=" +
+                       (string.IsNullOrEmpty(expState) ? "?" : expState) +
+                       "), launching current monitor selection.");
+                await session.SendAsync(new JObject { ["type"] = "launch_experiment" }, ct).ConfigureAwait(false);
+
+                DateTime launchDeadline = DateTime.UtcNow.AddSeconds(90);
+                while (DateTime.UtcNow < launchDeadline && !ct.IsCancellationRequested)
+                {
+                    expState = session.LastExperimentState ?? expState;
+                    if (!string.IsNullOrEmpty(expState) &&
+                        !string.Equals(expState, "NONE", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(expState, "NOTREADY", StringComparison.OrdinalIgnoreCase))
+                    {
+                        break;
+                    }
+
+                    await Task.Delay(200, ct).ConfigureAwait(false);
+                }
+            }
+
             if (string.Equals(expState, "PAUSED", StringComparison.OrdinalIgnoreCase))
             {
                 Append("[GAMA][ORCH][PLAY] → resume_experiment (état PAUSED)");
@@ -745,8 +773,8 @@ internal static class GamaEditorMiddlewareOrchestrator
             if (!result.Success)
             {
                 result.Error = "Aucune expérience GAMA active détectée par le monitor (état=" +
-                               (string.IsNullOrEmpty(result.FinalExperimentState) ? "?" : result.FinalExperimentState) +
-                               "). Unity n'envoie pas launch_experiment en mode sélection GAMA active pour éviter le prompt de fermeture.";
+                                (string.IsNullOrEmpty(result.FinalExperimentState) ? "?" : result.FinalExperimentState) +
+                                ") après tentative de lancement de la sélection monitor courante.";
             }
             else
             {
