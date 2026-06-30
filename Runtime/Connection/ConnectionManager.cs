@@ -9,7 +9,11 @@ public class ConnectionManager : WebSocketConnector
 {
      
     private ConnectionState currentState;
-    private bool connectionRequested; 
+    private bool connectionRequested;
+    private string lastStalePlayerStateWarning;
+
+    public bool IsCurrentPlayerAuthenticated { get; private set; }
+    public bool HasCurrentPlayerState { get; private set; }
 
     // called when the connection state is manually changed
     public event Action<ConnectionState> OnConnectionStateChanged;
@@ -49,7 +53,12 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
 
     // ############################################# CONNECTION HANDLER #############################################
     public void UpdateConnectionState(ConnectionState newState) {
-        
+        if (newState == ConnectionState.DISCONNECTED)
+        {
+            IsCurrentPlayerAuthenticated = false;
+            HasCurrentPlayerState = false;
+        }
+
         switch (newState) {
             case ConnectionState.PENDING:
                 break;
@@ -101,11 +110,28 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
                         string serverPlayerId = (string)jsonObj["id_player"] ?? (string)jsonObj["id"];
                         bool authenticated = (bool)jsonObj["in_game"];
                         bool connected = (bool)jsonObj["connected"];
+                        if (IsStaleUnityPlayState(serverPlayerId))
+                        {
+                            LogStaleUnityPlayState(serverPlayerId, connected, authenticated);
+                            IsCurrentPlayerAuthenticated = false;
+                            HasCurrentPlayerState = false;
+                            if (connected && !IsConnectionState(ConnectionState.CONNECTED))
+                            {
+                                connectionRequested = false;
+                                UpdateConnectionState(ConnectionState.CONNECTED);
+                                OnConnectionAttempted?.Invoke(true);
+                            }
+
+                            break;
+                        }
+
                         if (connected)
                         {
                             AdoptMiddlewarePlayerIdIfNeeded(serverPlayerId);
                         }
 
+                        HasCurrentPlayerState = connected;
+                        IsCurrentPlayerAuthenticated = authenticated && connected;
                         OnConnectionStateReceived?.Invoke(jsonObj);
 
                         if (authenticated && connected)
@@ -177,6 +203,38 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
                 " while Unity requested id=" + currentId +
                 ". Adopting middleware id for this Play session.");
         }
+    }
+
+    private bool IsStaleUnityPlayState(string serverPlayerId)
+    {
+        if (string.IsNullOrWhiteSpace(serverPlayerId))
+        {
+            return false;
+        }
+
+        string currentId = StaticInformation.getId();
+        string cleanServerPlayerId = serverPlayerId.Trim();
+        return IsUnityPlaySessionId(currentId) &&
+               !string.Equals(currentId, cleanServerPlayerId, StringComparison.Ordinal);
+    }
+
+    private void LogStaleUnityPlayState(string serverPlayerId, bool connected, bool authenticated)
+    {
+        string currentId = StaticInformation.getId();
+        string cleanServerPlayerId = string.IsNullOrWhiteSpace(serverPlayerId)
+            ? string.Empty
+            : serverPlayerId.Trim();
+        string warningKey = cleanServerPlayerId + "|" + currentId + "|" + connected + "|" + authenticated;
+        if (string.Equals(lastStalePlayerStateWarning, warningKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        lastStalePlayerStateWarning = warningKey;
+        Debug.LogWarning(
+            "[GAMA][CONNECTION][STALE_STATE] Middleware reports player id=" + cleanServerPlayerId +
+            " while Unity requested id=" + currentId +
+            ". Treating this as middleware-connected but not authenticated for the current Play session.");
     }
 
     private static bool IsUnityPlaySessionId(string id)
