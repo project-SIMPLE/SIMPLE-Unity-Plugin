@@ -49,7 +49,7 @@ public static class GamaRuntimePreviewOverrideApplier
         else if (!runtimeContextAvailable && logCount < MaxLogs)
         {
             logCount++;
-            Debug.LogWarning("[GAMA][RUNTIME][OVERRIDE_WARN] missing context, refusing global fallback species=" + speciesKey);
+            Debug.Log("[GAMA][RUNTIME][OVERRIDE] No species-only override for species=" + speciesKey);
         }
         else if (!found && logCount < MaxLogs)
         {
@@ -137,8 +137,7 @@ public static class GamaRuntimePreviewOverrideApplier
                   " experiment=" + (experimentName ?? string.Empty));
         if (!runtimeContextAvailable)
         {
-            Debug.LogWarning("[GAMA][RUNTIME][OVERRIDE_WARN] missing context, refusing global fallback for runtime overrides.");
-            return;
+            Debug.LogWarning("[GAMA][RUNTIME][OVERRIDE_WARN] missing context; using species-only runtime overrides from the active SimulationManager.");
         }
 
         string wantedModel = GamaSpeciesRenderOverrides.NormalizeKey(modelPath);
@@ -325,7 +324,7 @@ public static class GamaRuntimePreviewOverrideApplier
         if (!runtimeContextAvailable && logCount < MaxLogs)
         {
             logCount++;
-            Debug.LogWarning("[GAMA][RUNTIME][OVERRIDE_WARN] missing context, refusing global fallback species=" + speciesKey);
+            Debug.Log("[GAMA][RUNTIME][OVERRIDE] No species-only override for species=" + speciesKey);
         }
 
         return false;

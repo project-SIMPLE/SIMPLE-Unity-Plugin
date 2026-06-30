@@ -161,6 +161,15 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
             return;
         }
 
+        if (IsUnityPlaySessionId(currentId))
+        {
+            Debug.LogWarning(
+                "[GAMA][CONNECTION][REBIND] Middleware reports player id=" + cleanServerPlayerId +
+                " while Unity requested id=" + currentId +
+                ". Keeping the current Unity Play id and treating the middleware id as stale.");
+            return;
+        }
+
         if (StaticInformation.AdoptSessionId(cleanServerPlayerId))
         {
             Debug.LogWarning(
@@ -168,6 +177,12 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
                 " while Unity requested id=" + currentId +
                 ". Adopting middleware id for this Play session.");
         }
+    }
+
+    private static bool IsUnityPlaySessionId(string id)
+    {
+        return !string.IsNullOrWhiteSpace(id) &&
+               id.Trim().StartsWith("unity_play_", StringComparison.OrdinalIgnoreCase);
     }
 
     protected override void HandleConnectionClosed() {
