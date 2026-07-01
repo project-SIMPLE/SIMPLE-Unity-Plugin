@@ -6,6 +6,8 @@ public static class GamaEditorPreviewOverrideApplier
 {
     private const string PreviewRootName = "[GAMA] Static Experiment Preview";
     private const string VisualChildName = "Visual";
+    private const float ActiveSpreadReferenceOverflowWarnRatio = 0.12f;
+    private const float ActiveSpreadEpsilon = 0.0001f;
     private static readonly HashSet<string> MissingAnchorWarnings = new HashSet<string>();
     private static readonly HashSet<string> OverridePickLogKeys = new HashSet<string>();
 
@@ -134,6 +136,8 @@ public static class GamaEditorPreviewOverrideApplier
             }
         }
 
+        RunActivePreviewSpreadDiagnostics(root.transform, "all-overrides");
+
         if (totalUpdated > 0)
         {
             SceneView.RepaintAll();
@@ -243,6 +247,7 @@ public static class GamaEditorPreviewOverrideApplier
                           " renderers=" + updatedRenderers);
             }
 
+            RunActivePreviewSpreadDiagnostics(root.transform, "species=" + speciesName);
             SceneView.RepaintAll();
             EditorApplication.QueuePlayerLoopUpdate();
         }
@@ -399,6 +404,227 @@ public static class GamaEditorPreviewOverrideApplier
         }
 
         return path;
+    }
+
+    private static void RunActivePreviewSpreadDiagnostics(Transform root, string reason)
+    {
+        if (root == null)
+        {
+            return;
+        }
+
+        GamaPreviewObject[] previewObjects = root.GetComponentsInChildren<GamaPreviewObject>(true);
+        if (previewObjects == null || previewObjects.Length == 0)
+        {
+            return;
+        }
+
+        Dictionary<string, ActiveSpreadProbe> probes =
+            new Dictionary<string, ActiveSpreadProbe>(System.StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < previewObjects.Length; i++)
+        {
+            GamaPreviewObject previewObject = previewObjects[i];
+            if (previewObject == null)
+            {
+                continue;
+            }
+
+            string species = string.IsNullOrWhiteSpace(previewObject.speciesName)
+                ? "unknown"
+                : previewObject.speciesName.Trim();
+            if (!probes.TryGetValue(species, out ActiveSpreadProbe probe) || probe == null)
+            {
+                probe = new ActiveSpreadProbe(species);
+                probes[species] = probe;
+            }
+
+            probe.Add(previewObject.transform.position, previewObject.transform.localScale);
+            if (HasScaledContainerBetween(previewObject.transform, root))
+            {
+                probe.ScaledContainerObjectCount++;
+            }
+        }
+
+        ActiveSpreadProbe reference = ResolveActiveReferenceProbe(probes);
+        string referenceName = reference != null ? reference.SpeciesKey : "none";
+        foreach (KeyValuePair<string, ActiveSpreadProbe> pair in probes)
+        {
+            ActiveSpreadProbe probe = pair.Value;
+            if (probe == null || !probe.HasBounds)
+            {
+                continue;
+            }
+
+            float diagonal = probe.DiagonalXZ;
+            float referenceOverflow = reference != null && reference != probe && reference.HasBounds
+                ? ComputeReferenceOverflowRatio(probe.Bounds, reference.Bounds)
+                : 0f;
+            bool parentScaled = probe.ScaledContainerObjectCount > 0;
+            bool outsideReference = reference != null &&
+                reference != probe &&
+                referenceOverflow > ActiveSpreadReferenceOverflowWarnRatio &&
+                probe.Count > 1;
+
+            string line = "[GAMA][PREVIEW][SPREAD][ACTIVE] reason=" + (reason ?? string.Empty) +
+                          " species=" + probe.SpeciesKey +
+                          " count=" + probe.Count +
+                          " actualXZ=" + FormatFloat(diagonal) +
+                          " reference=" + referenceName +
+                          " referenceOverflow=" + FormatFloat(referenceOverflow) +
+                          " scaleRange=" + FormatFloat(probe.MinObservedScale) + ".." + FormatFloat(probe.MaxObservedScale) +
+                          " scaledContainerObjects=" + probe.ScaledContainerObjectCount;
+            Debug.Log(line);
+
+            if (outsideReference || parentScaled)
+            {
+                Debug.LogWarning("[GAMA][PREVIEW][SPREAD][ACTIVE][WARN] species=" + probe.SpeciesKey +
+                                 " outsideReference=" + outsideReference +
+                                 " parentScaled=" + parentScaled +
+                                 " details={" + line + "}");
+            }
+        }
+    }
+
+    private static bool HasScaledContainerBetween(Transform leaf, Transform root)
+    {
+        Transform current = leaf != null ? leaf.parent : null;
+        while (current != null)
+        {
+            if ((current.localScale - Vector3.one).sqrMagnitude > 0.000001f)
+            {
+                return true;
+            }
+
+            if (current == root)
+            {
+                return false;
+            }
+
+            current = current.parent;
+        }
+
+        return false;
+    }
+
+    private static ActiveSpreadProbe ResolveActiveReferenceProbe(Dictionary<string, ActiveSpreadProbe> probes)
+    {
+        ActiveSpreadProbe bestNamed = null;
+        ActiveSpreadProbe bestCount = null;
+        foreach (KeyValuePair<string, ActiveSpreadProbe> pair in probes)
+        {
+            ActiveSpreadProbe probe = pair.Value;
+            if (probe == null || !probe.HasBounds || probe.Count <= 0)
+            {
+                continue;
+            }
+
+            if (IsReferenceSpeciesName(probe.SpeciesKey) &&
+                (bestNamed == null || probe.Count > bestNamed.Count))
+            {
+                bestNamed = probe;
+            }
+
+            if (bestCount == null || probe.Count > bestCount.Count)
+            {
+                bestCount = probe;
+            }
+        }
+
+        return bestNamed ?? bestCount;
+    }
+
+    private static bool IsReferenceSpeciesName(string speciesKey)
+    {
+        if (string.IsNullOrWhiteSpace(speciesKey))
+        {
+            return false;
+        }
+
+        string lower = speciesKey.ToLowerInvariant();
+        return lower.Contains("vegetation") ||
+               lower.Contains("cell") ||
+               lower.Contains("terrain") ||
+               lower.Contains("ground") ||
+               lower.Contains("grid") ||
+               lower.Contains("patch") ||
+               lower.Contains("field") ||
+               lower.Contains("zone");
+    }
+
+    private static float ComputeReferenceOverflowRatio(Bounds candidate, Bounds reference)
+    {
+        float overflow = 0f;
+        overflow = Mathf.Max(overflow, reference.min.x - candidate.min.x);
+        overflow = Mathf.Max(overflow, candidate.max.x - reference.max.x);
+        overflow = Mathf.Max(overflow, reference.min.z - candidate.min.z);
+        overflow = Mathf.Max(overflow, candidate.max.z - reference.max.z);
+        float referenceDiag = BoundsDiagonalXZ(reference);
+        return referenceDiag > ActiveSpreadEpsilon ? Mathf.Max(0f, overflow) / referenceDiag : 0f;
+    }
+
+    private static float BoundsDiagonalXZ(Bounds bounds)
+    {
+        Vector3 size = bounds.size;
+        return Mathf.Sqrt(size.x * size.x + size.z * size.z);
+    }
+
+    private static string FormatFloat(float value)
+    {
+        if (float.IsPositiveInfinity(value))
+        {
+            return "inf";
+        }
+
+        if (float.IsNegativeInfinity(value))
+        {
+            return "-inf";
+        }
+
+        if (float.IsNaN(value))
+        {
+            return "nan";
+        }
+
+        return value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private sealed class ActiveSpreadProbe
+    {
+        public readonly string SpeciesKey;
+        public int Count;
+        public Bounds Bounds;
+        public bool HasBounds;
+        public float MinObservedScale = float.PositiveInfinity;
+        public float MaxObservedScale = 0f;
+        public int ScaledContainerObjectCount;
+
+        public ActiveSpreadProbe(string speciesKey)
+        {
+            SpeciesKey = string.IsNullOrWhiteSpace(speciesKey) ? "unknown" : speciesKey;
+        }
+
+        public float DiagonalXZ
+        {
+            get { return HasBounds ? BoundsDiagonalXZ(Bounds) : 0f; }
+        }
+
+        public void Add(Vector3 point, Vector3 localScale)
+        {
+            if (!HasBounds)
+            {
+                Bounds = new Bounds(point, Vector3.zero);
+                HasBounds = true;
+            }
+            else
+            {
+                Bounds.Encapsulate(point);
+            }
+
+            Count++;
+            float scale = Mathf.Max(Mathf.Abs(localScale.x), Mathf.Abs(localScale.y), Mathf.Abs(localScale.z));
+            MinObservedScale = Mathf.Min(MinObservedScale, scale);
+            MaxObservedScale = Mathf.Max(MaxObservedScale, scale);
+        }
     }
 
     private static void EnsureStableScalePivot(GamaPreviewObject previewObj)
