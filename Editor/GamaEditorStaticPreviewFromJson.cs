@@ -11,6 +11,9 @@ using UnityEngine;
 internal static class GamaEditorStaticPreviewFromJson
 {
     private const bool VerbosePreviewBuildDebug = false;
+    private const float PreviewSpreadWarnRatio = 1.35f;
+    private const float PreviewReferenceOverflowRatio = 0.12f;
+    private const float PreviewSpreadEpsilon = 0.0001f;
     private static readonly Dictionary<string, int> InvalidGeometryFallbackCounts =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> OverridePickLogKeys =
@@ -188,6 +191,8 @@ internal static class GamaEditorStaticPreviewFromJson
         int builtGeometries = 0;
         int skippedGeometries = 0;
         Dictionary<string, Transform> speciesParents = new Dictionary<string, Transform>(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, PreviewSpreadProbe> spreadProbes =
+            new Dictionary<string, PreviewSpreadProbe>(StringComparer.OrdinalIgnoreCase);
 
         int nameCount = hasAgents ? world.names.Count : 0;
         for (int i = 0; i < nameCount; i++)
@@ -311,6 +316,7 @@ internal static class GamaEditorStaticPreviewFromJson
                     Vector3 pos = converter.fromGAMACRS(pt[0], pt[1], pt[2]);
                     pos.y += prop.yOffsetF;
                     pos += visualState.PositionOffset;
+                    GetSpreadProbe(spreadProbes, speciesKey).AddExpected(pos);
                     Quaternion rotation = ResolvePrefabRotation(prop, visualState, pt, obj, precision);
                     obj.transform.SetPositionAndRotation(pos, rotation);
 
@@ -393,6 +399,7 @@ internal static class GamaEditorStaticPreviewFromJson
                     obj.transform.SetParent(speciesParent, false);
 
                     ApplyPolygonVisualState(obj, prop, visualState, polygonBasePosition);
+                    GetSpreadProbe(spreadProbes, speciesKey).AddExpected(polygonBasePosition + visualState.PositionOffset);
                     GamaPreviewObject marker = AddPreviewObjectIdentity(obj, speciesKey, name, BuildIntListHash(rawGeom));
                     if (marker != null)
                     {
@@ -529,6 +536,11 @@ internal static class GamaEditorStaticPreviewFromJson
             " builtGeometries=" + builtGeometries +
             " skippedGeometries=" + skippedGeometries);
 
+        if (builtAgents > 0 || builtGeometries > 0)
+        {
+            RunPreviewSpreadDiagnostics(parent, spreadProbes);
+        }
+
         if (builtAgents == 0 && builtGeometries == 0)
         {
             error = "Aucun objet preview construit. skippedAgents=" + skippedAgents + ", skippedGeometries=" + skippedGeometries;
@@ -536,6 +548,258 @@ internal static class GamaEditorStaticPreviewFromJson
         }
 
         return true;
+    }
+
+    private static PreviewSpreadProbe GetSpreadProbe(
+        Dictionary<string, PreviewSpreadProbe> probes,
+        string speciesKey)
+    {
+        string key = string.IsNullOrWhiteSpace(speciesKey) ? "unknown" : speciesKey.Trim();
+        if (!probes.TryGetValue(key, out PreviewSpreadProbe probe) || probe == null)
+        {
+            probe = new PreviewSpreadProbe(key);
+            probes[key] = probe;
+        }
+
+        return probe;
+    }
+
+    private static void RunPreviewSpreadDiagnostics(
+        Transform previewRoot,
+        Dictionary<string, PreviewSpreadProbe> probes)
+    {
+        if (previewRoot == null || probes == null || probes.Count == 0)
+        {
+            return;
+        }
+
+        GamaPreviewObject[] previewObjects = previewRoot.GetComponentsInChildren<GamaPreviewObject>(true);
+        for (int i = 0; i < previewObjects.Length; i++)
+        {
+            GamaPreviewObject previewObject = previewObjects[i];
+            if (previewObject == null)
+            {
+                continue;
+            }
+
+            PreviewSpreadProbe probe = GetSpreadProbe(probes, previewObject.speciesName);
+            probe.AddActual(previewObject.transform.position, previewObject.transform.localScale);
+            if (HasScaledContainerBetween(previewObject.transform, previewRoot))
+            {
+                probe.ScaledContainerObjectCount++;
+            }
+        }
+
+        PreviewSpreadProbe reference = ResolveReferenceSpreadProbe(probes);
+        string referenceName = reference != null ? reference.SpeciesKey : "none";
+        foreach (KeyValuePair<string, PreviewSpreadProbe> pair in probes)
+        {
+            PreviewSpreadProbe probe = pair.Value;
+            if (probe == null || probe.ActualCount <= 0)
+            {
+                continue;
+            }
+
+            float expectedDiag = probe.ExpectedDiagonalXZ;
+            float actualDiag = probe.ActualDiagonalXZ;
+            float spreadRatio = expectedDiag > PreviewSpreadEpsilon
+                ? actualDiag / expectedDiag
+                : (actualDiag > PreviewSpreadEpsilon ? float.PositiveInfinity : 1f);
+            float referenceOverflow = reference != null && reference != probe && reference.HasActual
+                ? ComputeReferenceOverflowRatio(probe.ActualBounds, reference.ActualBounds)
+                : 0f;
+
+            string line = "[GAMA][PREVIEW][SPREAD] species=" + probe.SpeciesKey +
+                          " expectedCount=" + probe.ExpectedCount +
+                          " actualCount=" + probe.ActualCount +
+                          " expectedXZ=" + FormatFloat(expectedDiag) +
+                          " actualXZ=" + FormatFloat(actualDiag) +
+                          " ratio=" + FormatFloat(spreadRatio) +
+                          " reference=" + referenceName +
+                          " referenceOverflow=" + FormatFloat(referenceOverflow) +
+                          " scaleRange=" + FormatFloat(probe.MinObservedScale) + ".." + FormatFloat(probe.MaxObservedScale) +
+                          " scaledContainerObjects=" + probe.ScaledContainerObjectCount;
+            Debug.Log(line);
+
+            bool countMismatch = probe.ExpectedCount > 0 && probe.ActualCount != probe.ExpectedCount;
+            bool inflatedAgainstSource = expectedDiag > PreviewSpreadEpsilon &&
+                spreadRatio > PreviewSpreadWarnRatio &&
+                actualDiag - expectedDiag > 0.5f;
+            bool outsideReference = reference != null &&
+                reference != probe &&
+                referenceOverflow > PreviewReferenceOverflowRatio &&
+                probe.ActualCount > 1;
+            bool parentScaled = probe.ScaledContainerObjectCount > 0;
+
+            if (countMismatch || inflatedAgainstSource || outsideReference || parentScaled)
+            {
+                Debug.LogWarning("[GAMA][PREVIEW][SPREAD][WARN] species=" + probe.SpeciesKey +
+                                 " countMismatch=" + countMismatch +
+                                 " inflatedAgainstSource=" + inflatedAgainstSource +
+                                 " outsideReference=" + outsideReference +
+                                 " parentScaled=" + parentScaled +
+                                 " details={" + line + "}");
+            }
+        }
+    }
+
+    private static PreviewSpreadProbe ResolveReferenceSpreadProbe(Dictionary<string, PreviewSpreadProbe> probes)
+    {
+        PreviewSpreadProbe bestNamed = null;
+        PreviewSpreadProbe bestCount = null;
+        foreach (KeyValuePair<string, PreviewSpreadProbe> pair in probes)
+        {
+            PreviewSpreadProbe probe = pair.Value;
+            if (probe == null || !probe.HasActual || probe.ActualCount <= 0)
+            {
+                continue;
+            }
+
+            if (IsReferenceSpeciesName(probe.SpeciesKey) &&
+                (bestNamed == null || probe.ActualCount > bestNamed.ActualCount))
+            {
+                bestNamed = probe;
+            }
+
+            if (bestCount == null || probe.ActualCount > bestCount.ActualCount)
+            {
+                bestCount = probe;
+            }
+        }
+
+        return bestNamed ?? bestCount;
+    }
+
+    private static bool IsReferenceSpeciesName(string speciesKey)
+    {
+        if (string.IsNullOrWhiteSpace(speciesKey))
+        {
+            return false;
+        }
+
+        string lower = speciesKey.ToLowerInvariant();
+        return lower.Contains("vegetation") ||
+               lower.Contains("cell") ||
+               lower.Contains("terrain") ||
+               lower.Contains("ground") ||
+               lower.Contains("grid") ||
+               lower.Contains("patch") ||
+               lower.Contains("field") ||
+               lower.Contains("zone");
+    }
+
+    private static bool HasScaledContainerBetween(Transform leaf, Transform previewRoot)
+    {
+        Transform current = leaf != null ? leaf.parent : null;
+        while (current != null)
+        {
+            if ((current.localScale - Vector3.one).sqrMagnitude > 0.000001f)
+            {
+                return true;
+            }
+
+            if (current == previewRoot)
+            {
+                return false;
+            }
+
+            current = current.parent;
+        }
+
+        return false;
+    }
+
+    private static float ComputeReferenceOverflowRatio(Bounds candidate, Bounds reference)
+    {
+        float overflow = 0f;
+        overflow = Mathf.Max(overflow, reference.min.x - candidate.min.x);
+        overflow = Mathf.Max(overflow, candidate.max.x - reference.max.x);
+        overflow = Mathf.Max(overflow, reference.min.z - candidate.min.z);
+        overflow = Mathf.Max(overflow, candidate.max.z - reference.max.z);
+        float referenceDiag = BoundsDiagonalXZ(reference);
+        return referenceDiag > PreviewSpreadEpsilon ? Mathf.Max(0f, overflow) / referenceDiag : 0f;
+    }
+
+    private static float BoundsDiagonalXZ(Bounds bounds)
+    {
+        Vector3 size = bounds.size;
+        return Mathf.Sqrt(size.x * size.x + size.z * size.z);
+    }
+
+    private static string FormatFloat(float value)
+    {
+        if (float.IsPositiveInfinity(value))
+        {
+            return "inf";
+        }
+
+        if (float.IsNegativeInfinity(value))
+        {
+            return "-inf";
+        }
+
+        if (float.IsNaN(value))
+        {
+            return "nan";
+        }
+
+        return value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private sealed class PreviewSpreadProbe
+    {
+        public readonly string SpeciesKey;
+        public int ExpectedCount;
+        public int ActualCount;
+        public Bounds ExpectedBounds;
+        public Bounds ActualBounds;
+        public bool HasExpected;
+        public bool HasActual;
+        public float MinObservedScale = float.PositiveInfinity;
+        public float MaxObservedScale = 0f;
+        public int ScaledContainerObjectCount;
+
+        public PreviewSpreadProbe(string speciesKey)
+        {
+            SpeciesKey = string.IsNullOrWhiteSpace(speciesKey) ? "unknown" : speciesKey;
+        }
+
+        public float ExpectedDiagonalXZ
+        {
+            get { return HasExpected ? BoundsDiagonalXZ(ExpectedBounds) : 0f; }
+        }
+
+        public float ActualDiagonalXZ
+        {
+            get { return HasActual ? BoundsDiagonalXZ(ActualBounds) : 0f; }
+        }
+
+        public void AddExpected(Vector3 point)
+        {
+            AddPoint(ref ExpectedBounds, ref HasExpected, point);
+            ExpectedCount++;
+        }
+
+        public void AddActual(Vector3 point, Vector3 localScale)
+        {
+            AddPoint(ref ActualBounds, ref HasActual, point);
+            ActualCount++;
+            float scale = Mathf.Max(Mathf.Abs(localScale.x), Mathf.Abs(localScale.y), Mathf.Abs(localScale.z));
+            MinObservedScale = Mathf.Min(MinObservedScale, scale);
+            MaxObservedScale = Mathf.Max(MaxObservedScale, scale);
+        }
+
+        private static void AddPoint(ref Bounds bounds, ref bool hasBounds, Vector3 point)
+        {
+            if (!hasBounds)
+            {
+                bounds = new Bounds(point, Vector3.zero);
+                hasBounds = true;
+                return;
+            }
+
+            bounds.Encapsulate(point);
+        }
     }
 
     private static void TryReadManagerCrs(
