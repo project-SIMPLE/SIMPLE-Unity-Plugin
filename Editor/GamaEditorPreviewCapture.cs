@@ -13,6 +13,20 @@ internal static class GamaEditorPreviewCapture
     public const string DefaultDynamicSpeciesRegex =
         @"car|vehicle|voiture|traffic|vehicule|pedestrian|pieton|piéton|walker|person|people|up_people|human|homme|citizen|population|passenger|worker|prey|predator|predateur|prédateur";
 
+    public static bool IsBuiltInDynamicSpeciesName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        string lower = value.ToLowerInvariant();
+        return lower.Contains("prey") ||
+               lower.Contains("predator") ||
+               lower.Contains("predateur") ||
+               lower.Contains("prédateur");
+    }
+
     public static Regex CompileDynamicSpeciesRegex(string pattern)
     {
         if (string.IsNullOrWhiteSpace(pattern))
@@ -165,6 +179,19 @@ internal static class GamaEditorPreviewCapture
 
     public static bool IsDynamicProperty(PropertiesGAMA prop, string propertyId, Regex dynamicRegex)
     {
+        if (IsBuiltInDynamicSpeciesName(propertyId))
+        {
+            return true;
+        }
+
+        if (prop != null &&
+            (IsBuiltInDynamicSpeciesName(prop.id) ||
+             IsBuiltInDynamicSpeciesName(prop.tag) ||
+             IsBuiltInDynamicSpeciesName(prop.prefab)))
+        {
+            return true;
+        }
+
         if (dynamicRegex == null)
         {
             return false;

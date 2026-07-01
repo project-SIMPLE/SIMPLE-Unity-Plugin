@@ -309,6 +309,12 @@ internal sealed class GamaEditorPreviewWorldAccumulator
         string propertyId,
         Regex dynamicRegex)
     {
+        if (GamaEditorPreviewCapture.IsBuiltInDynamicSpeciesName(speciesKey) ||
+            GamaEditorPreviewCapture.IsDynamicProperty(prop, propertyId, null))
+        {
+            return true;
+        }
+
         if (dynamicRegex == null)
         {
             return false;
