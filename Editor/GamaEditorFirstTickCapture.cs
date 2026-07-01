@@ -3527,6 +3527,10 @@ internal static class GamaEditorFirstTickCapture
             state.PreviewDynamicAgentsFound = true;
             append("[GAMA][PREVIEW] cache agents dynamiques (regex) : " + merge.DynamicCacheAgentCount);
         }
+        if (merge.ReplacedDynamicAgentCount > 0)
+        {
+            append("[GAMA][PREVIEW] positions dynamiques remplacées : " + merge.ReplacedDynamicAgentCount);
+        }
 
         if (merge.CacheGrew || !state.LastPreviewCacheGrowthUtc.HasValue)
         {

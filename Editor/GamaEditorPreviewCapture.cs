@@ -11,7 +11,7 @@ using UnityEngine;
 internal static class GamaEditorPreviewCapture
 {
     public const string DefaultDynamicSpeciesRegex =
-        @"car|vehicle|voiture|traffic|vehicule|pedestrian|pieton|piéton|walker|person|people|up_people|human|homme|citizen|population|passenger|worker";
+        @"car|vehicle|voiture|traffic|vehicule|pedestrian|pieton|piéton|walker|person|people|up_people|human|homme|citizen|population|passenger|worker|prey|predator|predateur|prédateur";
 
     public static Regex CompileDynamicSpeciesRegex(string pattern)
     {

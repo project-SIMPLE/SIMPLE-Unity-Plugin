@@ -34,6 +34,7 @@ internal sealed class GamaEditorPreviewWorldAccumulator
         public int UpdatedAgentCount;
         public int NewSpeciesCount;
         public int DynamicCacheAgentCount;
+        public int ReplacedDynamicAgentCount;
         public bool ExplicitReset;
         public Dictionary<string, int> ChunkSpeciesCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, int> CacheSpeciesCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -89,6 +90,7 @@ internal sealed class GamaEditorPreviewWorldAccumulator
         int agentCount = ResolveAgentCount(names, propertyIds, pointsLoc, pointsGeom);
         result.ChunkAgentCount = agentCount;
         result.ChunkGeometryCount = pointsGeom != null ? pointsGeom.Count : 0;
+        HashSet<string> dynamicSpeciesReplacedThisChunk = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (int i = 0; i < agentCount; i++)
         {
@@ -105,6 +107,11 @@ internal sealed class GamaEditorPreviewWorldAccumulator
 
             string speciesKey = GamaEditorPreviewCapture.ResolveSpeciesKey(propertyId, propertyMap);
             bool usesPrefab = ResolveUsesPrefab(prop, pointsLoc, pointsGeom, ref locCursor, ref geomCursor);
+            if (IsDynamicSpecies(speciesKey, prop, propertyId, dynamicRegex) &&
+                dynamicSpeciesReplacedThisChunk.Add(speciesKey))
+            {
+                result.ReplacedDynamicAgentCount += RemoveCachedEntriesForSpecies(speciesKey);
+            }
 
             JToken pointLoc = null;
             JToken pointGeom = null;
@@ -161,6 +168,32 @@ internal sealed class GamaEditorPreviewWorldAccumulator
         result.CacheAgentCount = Count;
         result.DynamicCacheAgentCount = CountDynamicCacheAgents(propertyMap, dynamicRegex);
         return result;
+    }
+
+    private int RemoveCachedEntriesForSpecies(string speciesKey)
+    {
+        if (string.IsNullOrWhiteSpace(speciesKey) || entryOrder.Count == 0)
+        {
+            return 0;
+        }
+
+        int removed = 0;
+        for (int i = entryOrder.Count - 1; i >= 0; i--)
+        {
+            string key = entryOrder[i];
+            if (!entriesByKey.TryGetValue(key, out AgentEntry entry) ||
+                entry == null ||
+                !string.Equals(entry.SpeciesKey, speciesKey, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            entriesByKey.Remove(key);
+            entryOrder.RemoveAt(i);
+            removed++;
+        }
+
+        return removed;
     }
 
     public string ToWorldJson()
@@ -268,6 +301,25 @@ internal sealed class GamaEditorPreviewWorldAccumulator
         }
 
         return count;
+    }
+
+    private static bool IsDynamicSpecies(
+        string speciesKey,
+        PropertiesGAMA prop,
+        string propertyId,
+        Regex dynamicRegex)
+    {
+        if (dynamicRegex == null)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(speciesKey) && dynamicRegex.IsMatch(speciesKey))
+        {
+            return true;
+        }
+
+        return GamaEditorPreviewCapture.IsDynamicProperty(prop, propertyId, dynamicRegex);
     }
 
     private void StoreMetadata(JObject contents)

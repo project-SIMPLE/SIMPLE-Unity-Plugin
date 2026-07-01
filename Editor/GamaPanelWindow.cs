@@ -185,7 +185,11 @@ public sealed class GamaPanelWindow : EditorWindow
             captureDynamicSpeciesRegex);
         const string legacyDynamicSpeciesRegex =
             @"car|vehicle|voiture|traffic|vehicule|pedestrian|pieton|piéton|walker|person";
-        if (string.Equals(captureDynamicSpeciesRegex?.Trim(), legacyDynamicSpeciesRegex, StringComparison.Ordinal))
+        const string previousDefaultDynamicSpeciesRegex =
+            @"car|vehicle|voiture|traffic|vehicule|pedestrian|pieton|piéton|walker|person|people|up_people|human|homme|citizen|population|passenger|worker";
+        string savedDynamicSpeciesRegex = captureDynamicSpeciesRegex?.Trim();
+        if (string.Equals(savedDynamicSpeciesRegex, legacyDynamicSpeciesRegex, StringComparison.Ordinal) ||
+            string.Equals(savedDynamicSpeciesRegex, previousDefaultDynamicSpeciesRegex, StringComparison.Ordinal))
         {
             captureDynamicSpeciesRegex = GamaEditorPreviewCapture.DefaultDynamicSpeciesRegex;
         }
