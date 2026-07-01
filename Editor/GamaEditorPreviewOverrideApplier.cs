@@ -438,7 +438,15 @@ public static class GamaEditorPreviewOverrideApplier
                 probes[species] = probe;
             }
 
-            probe.Add(previewObject.transform.position, previewObject.transform.localScale);
+            Bounds renderedBounds;
+            if (TryGetDiagnosticRenderedBounds(previewObject, out renderedBounds))
+            {
+                probe.AddBounds(renderedBounds, previewObject.transform.localScale);
+            }
+            else
+            {
+                probe.AddPoint(previewObject.transform.position, previewObject.transform.localScale);
+            }
             if (HasScaledContainerBetween(previewObject.transform, root))
             {
                 probe.ScaledContainerObjectCount++;
@@ -483,6 +491,38 @@ public static class GamaEditorPreviewOverrideApplier
                                  " details={" + line + "}");
             }
         }
+    }
+
+    private static bool TryGetDiagnosticRenderedBounds(GamaPreviewObject previewObject, out Bounds bounds)
+    {
+        bounds = default;
+        if (previewObject == null)
+        {
+            return false;
+        }
+
+        Renderer[] renderers = previewObject.GetComponentsInChildren<Renderer>(true);
+        bool hasBounds = false;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null || !renderer.enabled || renderer.bounds.size.sqrMagnitude <= 0.000001f)
+            {
+                continue;
+            }
+
+            if (!hasBounds)
+            {
+                bounds = renderer.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        return hasBounds;
     }
 
     private static bool HasScaledContainerBetween(Transform leaf, Transform root)
@@ -608,7 +648,7 @@ public static class GamaEditorPreviewOverrideApplier
             get { return HasBounds ? BoundsDiagonalXZ(Bounds) : 0f; }
         }
 
-        public void Add(Vector3 point, Vector3 localScale)
+        public void AddPoint(Vector3 point, Vector3 localScale)
         {
             if (!HasBounds)
             {
@@ -621,6 +661,27 @@ public static class GamaEditorPreviewOverrideApplier
             }
 
             Count++;
+            ObserveScale(localScale);
+        }
+
+        public void AddBounds(Bounds bounds, Vector3 localScale)
+        {
+            if (!HasBounds)
+            {
+                Bounds = bounds;
+                HasBounds = true;
+            }
+            else
+            {
+                Bounds.Encapsulate(bounds);
+            }
+
+            Count++;
+            ObserveScale(localScale);
+        }
+
+        private void ObserveScale(Vector3 localScale)
+        {
             float scale = Mathf.Max(Mathf.Abs(localScale.x), Mathf.Abs(localScale.y), Mathf.Abs(localScale.z));
             MinObservedScale = Mathf.Min(MinObservedScale, scale);
             MaxObservedScale = Mathf.Max(MaxObservedScale, scale);

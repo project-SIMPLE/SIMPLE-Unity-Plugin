@@ -373,12 +373,8 @@ internal static class GamaEditorStaticPreviewFromJson
                         continue;
                     }
 
-                    Vector3 polygonWorldAnchor = polygonInputValid
-                        ? ResolveRawGeometryAnchorLocal(rawGeom, converter, yOffsetGeom)
-                        : Vector3.zero;
-                    Vector3 polygonBasePosition = polygonInputValid
-                        ? polygonWorldAnchor
-                        : new Vector3(0f, yOffsetGeom, 0f);
+                    Vector3 polygonWorldAnchor = ResolveRawGeometryAnchorLocal(rawGeom, converter, yOffsetGeom);
+                    Vector3 polygonBasePosition = polygonWorldAnchor;
                     GameObject obj = polygonInputValid
                         ? polyGen.GeneratePolygons(true, name, ptArr, prop, precision)
                         : CreateInvalidGeometryFallbackObject(name, speciesKey, rawGeom, converter, yOffsetGeom, visualState);
@@ -583,7 +579,15 @@ internal static class GamaEditorStaticPreviewFromJson
             }
 
             PreviewSpreadProbe probe = GetSpreadProbe(probes, previewObject.speciesName);
-            probe.AddActual(previewObject.transform.position, previewObject.transform.localScale);
+            Bounds renderedBounds;
+            if (TryGetDiagnosticRenderedBounds(previewObject, out renderedBounds))
+            {
+                probe.AddActualBounds(renderedBounds, previewObject.transform.localScale);
+            }
+            else
+            {
+                probe.AddActual(previewObject.transform.position, previewObject.transform.localScale);
+            }
             if (HasScaledContainerBetween(previewObject.transform, previewRoot))
             {
                 probe.ScaledContainerObjectCount++;
@@ -709,6 +713,38 @@ internal static class GamaEditorStaticPreviewFromJson
         return false;
     }
 
+    private static bool TryGetDiagnosticRenderedBounds(GamaPreviewObject previewObject, out Bounds bounds)
+    {
+        bounds = default;
+        if (previewObject == null)
+        {
+            return false;
+        }
+
+        Renderer[] renderers = previewObject.GetComponentsInChildren<Renderer>(true);
+        bool hasBounds = false;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null || !renderer.enabled || renderer.bounds.size.sqrMagnitude <= 0.000001f)
+            {
+                continue;
+            }
+
+            if (!hasBounds)
+            {
+                bounds = renderer.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        return hasBounds;
+    }
+
     private static float ComputeReferenceOverflowRatio(Bounds candidate, Bounds reference)
     {
         float overflow = 0f;
@@ -784,6 +820,18 @@ internal static class GamaEditorStaticPreviewFromJson
         {
             AddPoint(ref ActualBounds, ref HasActual, point);
             ActualCount++;
+            ObserveScale(localScale);
+        }
+
+        public void AddActualBounds(Bounds bounds, Vector3 localScale)
+        {
+            AddBounds(ref ActualBounds, ref HasActual, bounds);
+            ActualCount++;
+            ObserveScale(localScale);
+        }
+
+        private void ObserveScale(Vector3 localScale)
+        {
             float scale = Mathf.Max(Mathf.Abs(localScale.x), Mathf.Abs(localScale.y), Mathf.Abs(localScale.z));
             MinObservedScale = Mathf.Min(MinObservedScale, scale);
             MaxObservedScale = Mathf.Max(MaxObservedScale, scale);
@@ -799,6 +847,18 @@ internal static class GamaEditorStaticPreviewFromJson
             }
 
             bounds.Encapsulate(point);
+        }
+
+        private static void AddBounds(ref Bounds current, ref bool hasBounds, Bounds bounds)
+        {
+            if (!hasBounds)
+            {
+                current = bounds;
+                hasBounds = true;
+                return;
+            }
+
+            current.Encapsulate(bounds);
         }
     }
 
@@ -1008,7 +1068,7 @@ internal static class GamaEditorStaticPreviewFromJson
         GameObject fallback = GameObject.CreatePrimitive(ResolveFallbackPrimitive(speciesKey));
         fallback.name = "Visual";
         fallback.transform.SetParent(root.transform, false);
-        fallback.transform.localPosition = ResolveRawGeometryAnchorLocal(rawGeom, converter, 0f);
+        fallback.transform.localPosition = Vector3.zero;
         fallback.transform.localRotation = Quaternion.identity;
         fallback.transform.localScale = Vector3.one * 0.5f;
 
