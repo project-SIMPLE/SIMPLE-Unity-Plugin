@@ -320,6 +320,7 @@ public static class GamaEditorPreviewOverrideApplier
         bool meshMissing = IsMeshMissing(previewObj);
         if (meshMissing)
         {
+            previewObj.ApplySpeciesOverride(entry);
             Transform fallbackVisual = existingVisual;
             bool existingIsPrefab = fallbackVisual != null &&
                                     PrefabUtility.GetCorrespondingObjectFromSource(fallbackVisual.gameObject) != null;
@@ -333,7 +334,7 @@ public static class GamaEditorPreviewOverrideApplier
                 fallbackVisual = CreateFallbackPrimitive(parent, previewObj.speciesName).transform;
             }
 
-            ApplyVisualTransform(previewObj, fallbackVisual, entry);
+            NormalizeFallbackVisualTransform(fallbackVisual);
             int updated = SetOriginalGeometryRenderersEnabled(parent, fallbackVisual, false);
             updated += SetVisualRenderersState(fallbackVisual, visible, entry);
             return updated;
@@ -748,6 +749,19 @@ public static class GamaEditorPreviewOverrideApplier
         visual.position = worldAnchor + entry.GetEffectivePositionOffset();
         visual.rotation = previewObj.transform.rotation * Quaternion.Euler(entry.GetEffectiveRotationOffsetEuler());
         visual.localScale = Vector3.one * Mathf.Max(0.0001f, entry.GetEffectiveScaleMultiplier());
+        EditorUtility.SetDirty(visual);
+    }
+
+    private static void NormalizeFallbackVisualTransform(Transform visual)
+    {
+        if (visual == null)
+        {
+            return;
+        }
+
+        visual.localPosition = Vector3.zero;
+        visual.localRotation = Quaternion.identity;
+        visual.localScale = Vector3.one * 0.5f;
         EditorUtility.SetDirty(visual);
     }
 
