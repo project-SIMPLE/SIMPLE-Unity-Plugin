@@ -1010,7 +1010,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                     }
                 }
 
-                Vector3 polygonBasePosition = polygonInputValid && hasComputedWorldAnchor
+                Vector3 polygonBasePosition = hasComputedWorldAnchor
                     ? computedWorldAnchor
                     : new Vector3(0f, yOffset, 0f);
 
@@ -3195,7 +3195,24 @@ public abstract partial class SimulationManager : MonoBehaviour
             else
             {
                 Vector3? visualAnchor = record.HasVisualAnchor ? record.VisualAnchor : (Vector3?)null;
+                bool hasInvalidFallback = root.transform.Find("InvalidGeometryFallback") != null;
+                if (hasInvalidFallback && visualAnchor.HasValue)
+                {
+                    basePosition = visualAnchor.Value;
+                }
+
                 ApplyAgentVisualState(root, prop, visualState, false, basePosition, visualAnchor, baseRotation);
+                if (hasInvalidFallback)
+                {
+                    HandleInvalidDynamicGeometryFallback(
+                        root,
+                        record.SpeciesName,
+                        visualState,
+                        visualAnchor.HasValue ? visualAnchor.Value : basePosition,
+                        record.IsDynamic || hasInvalidFallback,
+                        true,
+                        baseRotation);
+                }
             }
 
             ApplyImmediateStreamingState(root, prop, GetPrefabStreamingCamera(), frustumReady: false);
@@ -3400,18 +3417,20 @@ public abstract partial class SimulationManager : MonoBehaviour
                 UnityEngine.Object.Destroy(collider);
             }
 
-            fallbackObj.transform.SetParent(obj.transform, true);
+            fallbackObj.transform.SetParent(obj.transform, false);
             fallback = fallbackObj.transform;
         }
 
         SetOriginalGeometryRenderersEnabled(obj.transform, fallback, false);
         bool hasComputedAnchor = computedWorldAnchor.sqrMagnitude > 0.000001f;
-        fallback.position = hasComputedAnchor
-            ? computedWorldAnchor + visualState.PositionOffset
-            : GetRuntimeAgentWorldAnchor(obj);
+        if (hasComputedAnchor)
+        {
+            obj.transform.position = computedWorldAnchor + visualState.PositionOffset;
+        }
+
+        fallback.localPosition = Vector3.zero;
         fallback.rotation = baseRotation * Quaternion.Euler(visualState.RotationOffsetEuler);
-        float parentScale = Mathf.Max(0.0001f, visualState.ScaleMultiplier);
-        fallback.localScale = Vector3.one * (Mathf.Max(0.2f, visualState.ScaleMultiplier) / parentScale);
+        fallback.localScale = Vector3.one * 0.5f;
         ChangeColor(fallback.gameObject, visualState.HasColor ? visualState.Color : new Color32(255, 80, 80, 255));
 
         Renderer[] renderers = fallback.GetComponentsInChildren<Renderer>(true);
