@@ -60,6 +60,8 @@ public static class GamaEditorPreviewOverrideApplier
             return;
         }
 
+        NormalizePreviewContainerScales(root.transform);
+
         GamaPreviewObject[] previewObjects = root.GetComponentsInChildren<GamaPreviewObject>(true);
         Dictionary<string, List<GamaPreviewObject>> objectsBySpecies =
             new Dictionary<string, List<GamaPreviewObject>>(System.StringComparer.OrdinalIgnoreCase);
@@ -176,6 +178,8 @@ public static class GamaEditorPreviewOverrideApplier
         {
             return;
         }
+
+        NormalizePreviewContainerScales(root.transform);
 
         if (entry == null)
         {
@@ -337,6 +341,64 @@ public static class GamaEditorPreviewOverrideApplier
 
         previewObj.ApplySpeciesOverride(entry);
         return SetOriginalGeometryRenderersEnabled(parent, null, visible);
+    }
+
+    private static void NormalizePreviewContainerScales(Transform root)
+    {
+        if (root == null)
+        {
+            return;
+        }
+
+        Transform[] transforms = root.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            Transform t = transforms[i];
+            if (t == null)
+            {
+                continue;
+            }
+
+            if (t.GetComponent<GamaPreviewObject>() != null)
+            {
+                continue;
+            }
+
+            bool isPreviewRoot = t == root;
+            bool isSpeciesParent = t.GetComponent<GamaSpeciesWizard>() != null;
+            bool isGamaContainer = string.Equals(t.name, "GAMA", System.StringComparison.Ordinal);
+            if (!isPreviewRoot && !isSpeciesParent && !isGamaContainer)
+            {
+                continue;
+            }
+
+            if ((t.localScale - Vector3.one).sqrMagnitude <= 0.000001f)
+            {
+                continue;
+            }
+
+            t.localScale = Vector3.one;
+            EditorUtility.SetDirty(t);
+            Debug.Log("[GAMA][PREVIEW][SCALE] Reset preview container scale path=" + GetTransformPath(t));
+        }
+    }
+
+    private static string GetTransformPath(Transform t)
+    {
+        if (t == null)
+        {
+            return string.Empty;
+        }
+
+        string path = t.name;
+        Transform current = t.parent;
+        while (current != null)
+        {
+            path = current.name + "/" + path;
+            current = current.parent;
+        }
+
+        return path;
     }
 
     private static void EnsureStableScalePivot(GamaPreviewObject previewObj)

@@ -655,6 +655,7 @@ internal static class GamaEditorStaticPreviewFromJson
         if (speciesOverrides.TryGetOverride(modelPath, experimentName, speciesKey, out GamaSpeciesRenderOverrideEntry entry, true) && entry != null)
         {
             LogPreviewOverridePickOnce(speciesKey, modelPath, experimentName, entry);
+            marker.NormalizePivotToVisualAnchorForStableScale();
             marker.ApplySpeciesOverride(entry);
         }
     }

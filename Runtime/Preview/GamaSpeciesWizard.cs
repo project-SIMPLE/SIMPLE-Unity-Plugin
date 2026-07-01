@@ -57,6 +57,8 @@ public class GamaSpeciesWizard : MonoBehaviour
             return 0;
         }
 
+        NormalizeSpeciesContainerScale();
+
         int rendererCount = 0;
         for (int i = 0; i < transform.childCount; i++)
         {
@@ -70,6 +72,22 @@ public class GamaSpeciesWizard : MonoBehaviour
         }
 
         return rendererCount;
+    }
+
+    public void NormalizeSpeciesContainerScale()
+    {
+        if ((transform.localScale - Vector3.one).sqrMagnitude <= 0.000001f)
+        {
+            return;
+        }
+
+        transform.localScale = Vector3.one;
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            EditorUtility.SetDirty(transform);
+        }
+#endif
     }
 
 #if UNITY_EDITOR
@@ -226,6 +244,15 @@ public class GamaSpeciesWizard : MonoBehaviour
         if (instance == null || entry == null)
         {
             return 0;
+        }
+
+        GamaPreviewObject previewObject = instance.GetComponent<GamaPreviewObject>();
+        if (previewObject != null)
+        {
+            previewObject.NormalizePivotToVisualAnchorForStableScale();
+            previewObject.ApplySpeciesOverride(entry);
+            Renderer[] previewRenderers = instance.GetComponentsInChildren<Renderer>(true);
+            return previewRenderers != null ? previewRenderers.Length : 0;
         }
 
         GamaPreviewBaseline baseline = instance.GetComponent<GamaPreviewBaseline>();
