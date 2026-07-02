@@ -141,14 +141,14 @@ public class GamaSpeciesWizard : MonoBehaviour
     {
         if (overridesAsset == null || string.IsNullOrWhiteSpace(speciesName))
         {
-            Debug.LogWarning("[GAMA] Aucun asset d'overrides ou speciesName vide pour " + name + ".");
+            GamaLog.Warning("[GAMA] Aucun asset d'overrides ou speciesName vide pour " + name + ".");
             return;
         }
 
         SaveCurrentSettingsToAsset();
         EditorUtility.SetDirty(overridesAsset);
         AssetDatabase.SaveAssets();
-        Debug.Log("[GAMA][WIZARD] species=" + speciesName + " scale=" + scaleMultiplier + " color=" + colorOverride + " saved override");
+        GamaLog.Dev("[GAMA][WIZARD] species=" + speciesName + " scale=" + scaleMultiplier + " color=" + colorOverride + " saved override");
     }
 #endif
 
@@ -159,7 +159,7 @@ public class GamaSpeciesWizard : MonoBehaviour
 #if UNITY_EDITOR
         if (!string.IsNullOrWhiteSpace(speciesName))
         {
-            Debug.Log("[GAMA][WIZARD] Applied editor color override species=" + speciesName + " color=" + colorOverride + " count=" + rendererCount);
+            GamaLog.Dev("[GAMA][WIZARD] Applied editor color override species=" + speciesName + " color=" + colorOverride + " count=" + rendererCount);
         }
 #endif
     }
@@ -236,7 +236,7 @@ public class GamaSpeciesWizard : MonoBehaviour
 #if UNITY_EDITOR
         EditorUtility.SetDirty(overridesAsset);
 #endif
-        Debug.Log("[GAMA][WIZARD] species=" + speciesName + " scale=" + scaleMultiplier + " color=" + colorOverride + " saved override");
+        GamaLog.Dev("[GAMA][WIZARD] species=" + speciesName + " scale=" + scaleMultiplier + " color=" + colorOverride + " saved override");
     }
 
     public static int ApplyEntryToInstance(Transform instance, GamaSpeciesRenderOverrideEntry entry)

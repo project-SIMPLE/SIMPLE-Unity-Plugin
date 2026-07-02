@@ -26,7 +26,7 @@ public static class GamaSpeciesRenderOverridesEditorStore
         GamaSpeciesRenderOverridesAsset created = ScriptableObject.CreateInstance<GamaSpeciesRenderOverridesAsset>();
         AssetDatabase.CreateAsset(created, DefaultAssetPath);
         AssetDatabase.SaveAssets();
-        Debug.Log("[GAMA][WIZARD] Created default overrides asset: " + DefaultAssetPath);
+        GamaLog.Dev("[GAMA][WIZARD] Created default overrides asset: " + DefaultAssetPath);
         return created;
 #else
         return null;

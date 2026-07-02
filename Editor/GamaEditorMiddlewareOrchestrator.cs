@@ -251,7 +251,7 @@ internal static class GamaEditorMiddlewareOrchestrator
                 }
                 else
                 {
-                    UnityEngine.Debug.Log(line);
+                    GamaLog.Dev(line);
                 }
             }
             catch
@@ -421,7 +421,7 @@ internal static class GamaEditorMiddlewareOrchestrator
                 }
                 else
                 {
-                    UnityEngine.Debug.Log(line);
+                    GamaLog.Dev(line);
                 }
             }
             catch
@@ -661,7 +661,7 @@ internal static class GamaEditorMiddlewareOrchestrator
                 }
                 else
                 {
-                    UnityEngine.Debug.Log(line);
+                    GamaLog.Dev(line);
                 }
             }
             catch
@@ -1538,7 +1538,7 @@ internal static class GamaEditorMiddlewareOrchestrator
                 // ignore
             }
 
-            UnityEngine.Debug.Log(line);
+            GamaLog.Dev(line);
         }
 
         if (!await IsTcpPortOpenAsync(hostNorm, port, 3000, ct).ConfigureAwait(false))
@@ -1634,7 +1634,7 @@ internal static class GamaEditorMiddlewareOrchestrator
                 // ignore
             }
 
-            UnityEngine.Debug.Log(line);
+            GamaLog.Dev(line);
         }
 
         if (!await IsTcpPortOpenAsync(hostNorm, port, 3000, ct).ConfigureAwait(false))
@@ -1735,7 +1735,7 @@ internal static class GamaEditorMiddlewareOrchestrator
                 // ignore
             }
 
-            UnityEngine.Debug.Log(line);
+            GamaLog.Dev(line);
         }
 
         if (!await IsTcpPortOpenAsync(hostNorm, port, 3000, ct).ConfigureAwait(false))

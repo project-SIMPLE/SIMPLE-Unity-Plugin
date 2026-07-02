@@ -40,7 +40,7 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
     void Awake()
     {
         InitializeRuntimePlayId();
-        Debug.Log("[GAMA][CONNECTION][ID] Runtime player id=" + StaticInformation.getId());
+        GamaLog.Dev("[GAMA][CONNECTION][ID] Runtime player id=" + StaticInformation.getId());
         Instance = this;
         UpdateConnectionState(ConnectionState.DISCONNECTED);
     }
@@ -64,10 +64,10 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
             case ConnectionState.PENDING:
                 break;
             case ConnectionState.CONNECTED:
-                Debug.Log("[GAMA] WebSocket connected");
+                GamaLog.Dev("[GAMA] Connected to simple.webplatform.");
                 break;
             case ConnectionState.AUTHENTICATED:
-                Debug.Log("[GAMA] Player authenticated");
+                GamaLog.Dev("[GAMA] Unity player authenticated.");
                 break;
             case ConnectionState.DISCONNECTED:
                 break;
@@ -84,7 +84,7 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
     protected override void HandleConnectionOpen()
     {
         string id = StaticInformation.getId();
-        Debug.Log("[GAMA][CONNECTION][OPEN] id=" + id);
+        GamaLog.Dev("[GAMA][CONNECTION][OPEN] id=" + id);
         var jsonId = new Dictionary<string, string> {
             {"type", "connection"},
             { "id", id },
@@ -172,7 +172,7 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
         }
         catch (System.Exception ex)
         {
-            Debug.LogWarning("[GAMA] Error parsing message: " + ex.Message);
+            GamaLog.Warning("[GAMA] Error parsing message: " + ex.Message);
         }
     }
 
@@ -192,7 +192,7 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
 
         if (IsUnityPlaySessionId(currentId))
         {
-            Debug.LogWarning(
+            GamaLog.DevWarning(
                 "[GAMA][CONNECTION][REBIND] Middleware reports player id=" + cleanServerPlayerId +
                 " while Unity requested id=" + currentId +
                 ". Keeping the current Unity Play id and treating the middleware id as stale.");
@@ -201,7 +201,7 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
 
         if (StaticInformation.AdoptSessionId(cleanServerPlayerId))
         {
-            Debug.LogWarning(
+            GamaLog.DevWarning(
                 "[GAMA][CONNECTION][REBIND] Middleware reports player id=" + cleanServerPlayerId +
                 " while Unity requested id=" + currentId +
                 ". Adopting middleware id for this Play session.");
@@ -242,7 +242,7 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
         }
 
         lastStalePlayerStateWarning = warningKey;
-        Debug.LogWarning(
+        GamaLog.DevWarning(
             "[GAMA][CONNECTION][REBIND] Middleware reports player id=" + cleanServerPlayerId +
             " while Unity requested id=" + currentId +
             ". Adopting the middleware id for this Play reconnect.");
@@ -289,7 +289,7 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
             var socket = GetSocket();
             if (socket == null)
             {
-                Debug.LogWarning("[GAMA][CONNECTION][START] socket not initialized yet; waiting for connector startup");
+                GamaLog.DevWarning("[GAMA][CONNECTION][START] socket not initialized yet; waiting for connector startup");
                 return;
             }
 
@@ -335,7 +335,7 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
         /*, new Action<bool>((success) => {
             if (!success) {
                 numErrors++;
-                Debug.LogError("ConnectionManager: Failed to send executable expression");
+                GamaLog.Error("ConnectionManager: Failed to send executable expression");
                 if (numErrors > numErrorsBeforeDeconnection)
                 {
                     GetSocket().Close();
@@ -368,7 +368,7 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
             if (!success)
             {
                 numErrors++;
-                Debug.LogError("ConnectionManager: Failed to send executable ask");
+                GamaLog.Error("ConnectionManager: Failed to send executable ask");
                 if (numErrors > numErrorsBeforeDeconnection)
                 {
                     GetSocket().Close();

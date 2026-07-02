@@ -105,7 +105,7 @@ public static class GamaEditorPreviewOverrideApplier
             string source = exactContext ? "context" : "contextless-fallback";
             if (!exactContext)
             {
-                Debug.LogWarning("[GAMA][OVERRIDE][WARN] contextless fallback used species=" + speciesName);
+                GamaLog.DevWarning("[GAMA][OVERRIDE][WARN] contextless fallback used species=" + speciesName);
             }
 
             LogEditorOverridePickOnce(speciesName, modelPath, experimentName, entry, source);
@@ -129,7 +129,7 @@ public static class GamaEditorPreviewOverrideApplier
 
             if (updatedRenderers > 0)
             {
-                Debug.Log("[GAMA][PREVIEW] Applied prefab visuals species=" + speciesName +
+                GamaLog.Dev("[GAMA][PREVIEW] Applied prefab visuals species=" + speciesName +
                           " objects=" + list.Count +
                           " renderers=" + updatedRenderers);
                 totalUpdated += list.Count;
@@ -203,7 +203,7 @@ public static class GamaEditorPreviewOverrideApplier
 
             if (!exactContext)
             {
-                Debug.LogWarning("[GAMA][OVERRIDE][WARN] contextless fallback used species=" + speciesName);
+                GamaLog.DevWarning("[GAMA][OVERRIDE][WARN] contextless fallback used species=" + speciesName);
             }
 
             LogEditorOverridePickOnce(
@@ -242,7 +242,7 @@ public static class GamaEditorPreviewOverrideApplier
         {
             if (!string.IsNullOrWhiteSpace(logAction))
             {
-                Debug.Log("[GAMA][PREVIEW] " + logAction + " species=" + speciesName +
+                GamaLog.Dev("[GAMA][PREVIEW] " + logAction + " species=" + speciesName +
                           " objects=" + updatedObjects +
                           " renderers=" + updatedRenderers);
             }
@@ -272,7 +272,7 @@ public static class GamaEditorPreviewOverrideApplier
         string prefab = entry != null && !string.IsNullOrWhiteSpace(entry.prefabResourcePath)
             ? entry.prefabResourcePath
             : (entry != null && entry.prefabOverride != null ? entry.prefabOverride.name : "none");
-        Debug.Log("[GAMA][EDITOR][OVERRIDE_PICK] species=" + speciesName +
+        GamaLog.Dev("[GAMA][EDITOR][OVERRIDE_PICK] species=" + speciesName +
                   " model=" + (modelPath ?? string.Empty) +
                   " experiment=" + (experimentName ?? string.Empty) +
                   " prefab=" + prefab +
@@ -385,7 +385,7 @@ public static class GamaEditorPreviewOverrideApplier
 
             t.localScale = Vector3.one;
             EditorUtility.SetDirty(t);
-            Debug.Log("[GAMA][PREVIEW][SCALE] Reset preview container scale path=" + GetTransformPath(t));
+            GamaLog.Dev("[GAMA][PREVIEW][SCALE] Reset preview container scale path=" + GetTransformPath(t));
         }
     }
 
@@ -482,11 +482,11 @@ public static class GamaEditorPreviewOverrideApplier
                           " referenceOverflow=" + FormatFloat(referenceOverflow) +
                           " scaleRange=" + FormatFloat(probe.MinObservedScale) + ".." + FormatFloat(probe.MaxObservedScale) +
                           " scaledContainerObjects=" + probe.ScaledContainerObjectCount;
-            Debug.Log(line);
+            GamaLog.Dev(line);
 
             if (outsideReference || parentScaled)
             {
-                Debug.LogWarning("[GAMA][PREVIEW][SPREAD][ACTIVE][WARN] species=" + probe.SpeciesKey +
+                GamaLog.DevWarning("[GAMA][PREVIEW][SPREAD][ACTIVE][WARN] species=" + probe.SpeciesKey +
                                  " outsideReference=" + outsideReference +
                                  " parentScaled=" + parentScaled +
                                  " details={" + line + "}");
@@ -700,7 +700,7 @@ public static class GamaEditorPreviewOverrideApplier
         {
             EditorUtility.SetDirty(previewObj);
             EditorUtility.SetDirty(previewObj.gameObject);
-            Debug.Log("[GAMA][PREVIEW][SCALE] Recentered preview pivot for species=" +
+            GamaLog.Dev("[GAMA][PREVIEW][SCALE] Recentered preview pivot for species=" +
                       (string.IsNullOrWhiteSpace(previewObj.speciesName) ? "unknown" : previewObj.speciesName));
         }
     }
@@ -797,7 +797,7 @@ public static class GamaEditorPreviewOverrideApplier
         string species = string.IsNullOrWhiteSpace(previewObj.speciesName) ? "unknown" : previewObj.speciesName;
         if (MissingAnchorWarnings.Add(species))
         {
-            Debug.LogWarning("[GAMA][PREVIEW] No valid visual anchor found for species=" + species +
+            GamaLog.DevWarning("[GAMA][PREVIEW] No valid visual anchor found for species=" + species +
                              ". Prefab visuals for that species may be stacked until the preview builder stores coordinates.");
         }
 

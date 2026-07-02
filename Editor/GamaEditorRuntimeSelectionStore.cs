@@ -22,11 +22,11 @@ internal static class GamaEditorRuntimeSelectionStore
             string full = Path.GetFullPath(modelPath.Trim());
             EditorPrefs.SetString(ModelPathKey, full);
             EditorPrefs.SetString(ExperimentKey, experimentName.Trim());
-            Debug.Log("[GAMA][SYNC] Saved runtime selection model=" + full + " exp=" + experimentName.Trim());
+            GamaLog.Dev("[GAMA][SYNC] Saved runtime selection model=" + full + " exp=" + experimentName.Trim());
         }
         catch (Exception ex)
         {
-            Debug.LogWarning("[GAMA][SYNC] Impossible d'enregistrer la sélection : " + ex.Message);
+            GamaLog.Warning("[GAMA][SYNC] Impossible d'enregistrer la sélection : " + ex.Message);
         }
     }
 

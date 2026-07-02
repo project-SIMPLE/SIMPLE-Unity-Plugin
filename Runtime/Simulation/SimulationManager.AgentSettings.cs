@@ -193,7 +193,7 @@ public abstract partial class SimulationManager
         speciesRenderOverrides = asset;
         speciesRenderOverridesModelPath = modelPath;
         speciesRenderOverridesExperimentName = experimentName;
-        Debug.Log("[GAMA][RUNTIME][CONTEXT] model=" + speciesRenderOverridesModelPath +
+        GamaLog.Dev("[GAMA][RUNTIME][CONTEXT] model=" + speciesRenderOverridesModelPath +
                   " experiment=" + speciesRenderOverridesExperimentName);
         return true;
     }
@@ -323,7 +323,7 @@ public abstract partial class SimulationManager
             return;
         }
 
-        Debug.LogWarning("[GAMA][RUNTIME][DYNAMIC_COLOR] attributes missing propertyID=" + propertyId +
+        GamaLog.DevWarning("[GAMA][RUNTIME][DYNAMIC_COLOR] attributes missing propertyID=" + propertyId +
                          " attribute=" + attribute +
                          " fallback=static_color");
     }
@@ -364,7 +364,7 @@ public abstract partial class SimulationManager
                 if (logWhenAgentEntriesCapReached && !maxEntriesWarningLogged)
                 {
                     maxEntriesWarningLogged = true;
-                    Debug.LogWarning(
+                    GamaLog.Warning(
                         "[GAMA] SimulationManager agent settings reached maxAgentEntries=" +
                         maxAgentEntries +
                         ". New runtime agents will not be tracked automatically.");
@@ -581,7 +581,7 @@ public class GamaAgentRuleSettings
         catch (ArgumentException)
         {
             regexInvalid = true;
-            Debug.LogWarning("[GAMA] Invalid agentNameRegex on rule '" + label + "': " + pattern);
+            GamaLog.Warning("[GAMA] Invalid agentNameRegex on rule '" + label + "': " + pattern);
             return false;
         }
     }

@@ -58,7 +58,7 @@ public static class GamaSceneUtility
         {
             if (MissingTagsLogged.Add(normalizedTag))
             {
-                Debug.LogWarning("[GAMA] Tag '" + normalizedTag + "' is not defined and could not be created automatically.");
+                GamaLog.Warning("[GAMA] Tag '" + normalizedTag + "' is not defined and could not be created automatically.");
             }
 
             return false;
@@ -101,7 +101,7 @@ public static class GamaSceneUtility
         }
         catch (Exception ex)
         {
-            Debug.LogWarning("[GAMA] Could not add component " + componentType.FullName + " to " + gameObject.name + ": " + ex.Message);
+            GamaLog.Warning("[GAMA] Could not add component " + componentType.FullName + " to " + gameObject.name + ": " + ex.Message);
             return null;
         }
     }
@@ -200,7 +200,7 @@ public static class GamaSceneUtility
         {
             if (MissingTagsLogged.Add(tag))
             {
-                Debug.LogWarning("[GAMA] Could not create Unity tag '" + tag + "': " + exception.Message);
+                GamaLog.Warning("[GAMA] Could not create Unity tag '" + tag + "': " + exception.Message);
             }
 
             return false;

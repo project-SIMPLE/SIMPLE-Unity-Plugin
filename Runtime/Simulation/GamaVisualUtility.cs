@@ -835,7 +835,7 @@ public static class GamaVisualUtility
 
         if (MissingPrefabWarnings.Add(prefabPath))
         {
-            Debug.LogWarning("[GAMA] Prefab '" + prefabPath + "' not found for '" + objectName +
+            GamaLog.Warning("[GAMA] Prefab '" + prefabPath + "' not found for '" + objectName +
                              "'. Generated procedural fallback '" + fallbackName + "' with GAMA visual properties.");
         }
     }

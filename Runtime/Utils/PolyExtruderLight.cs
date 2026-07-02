@@ -35,7 +35,7 @@ public class PolyExtruderLight : MonoBehaviour
 
         if (!TryBuildCombinedMesh(originalPolygonVertices, extrusionHeightY, prismName, out Mesh mesh))
         {
-            Debug.LogWarning("[PolyExtruderLight] createPrism failed. Invalid polygon for " + prismName);
+            GamaLog.DevWarning("[PolyExtruderLight] createPrism failed. Invalid polygon for " + prismName);
             return;
         }
 
@@ -59,7 +59,7 @@ public class PolyExtruderLight : MonoBehaviour
         originalPolygonVertices = SanitizePoints(points);
         if (!TryBuildCombinedMesh(originalPolygonVertices, extrusionHeightY, prismName, out Mesh mesh))
         {
-            Debug.LogWarning("[PolyExtruderLight] updatePrism failed. Invalid polygon for " + prismName);
+            GamaLog.DevWarning("[PolyExtruderLight] updatePrism failed. Invalid polygon for " + prismName);
             return;
         }
 

@@ -44,7 +44,7 @@ internal static class GamaEditorFirstTickCapture
     {
         string line = "[GAMA][CAPTURE][#" + sessionId + "][" + channel + "] " + message;
         append(line);
-        Debug.Log(line);
+        GamaLog.Dev(line);
     }
 
     private static void CapLog8080(Action<string> append, string direction, string message)
@@ -3249,13 +3249,13 @@ internal static class GamaEditorFirstTickCapture
         const int chunkSize = 12000;
         if (string.IsNullOrEmpty(text))
         {
-            Debug.Log("[GAMA][RAW][" + source + "] <empty>");
+            GamaLog.Dev("[GAMA][RAW][" + source + "] <empty>");
             return;
         }
 
         if (text.Length <= chunkSize)
         {
-            Debug.Log("[GAMA][RAW][" + source + "] " + text);
+            GamaLog.Dev("[GAMA][RAW][" + source + "] " + text);
             return;
         }
 
@@ -3264,7 +3264,7 @@ internal static class GamaEditorFirstTickCapture
         {
             int start = i * chunkSize;
             int length = Math.Min(chunkSize, text.Length - start);
-            Debug.Log("[GAMA][RAW][" + source + "] chunk " + (i + 1) + "/" + total + ": " + text.Substring(start, length));
+            GamaLog.Dev("[GAMA][RAW][" + source + "] chunk " + (i + 1) + "/" + total + ": " + text.Substring(start, length));
         }
     }
 
@@ -3629,7 +3629,7 @@ internal static class GamaEditorFirstTickCapture
         }
         catch (Exception ex)
         {
-            Debug.LogWarning("[GAMA] Impossible d'écrire " + fileName + " : " + ex.Message);
+            GamaLog.Warning("[GAMA] Impossible d'écrire " + fileName + " : " + ex.Message);
             return null;
         }
     }

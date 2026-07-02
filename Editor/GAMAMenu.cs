@@ -57,7 +57,7 @@ public class GAMAMenu : ScriptableObject
         EnsureRequiredTags();
         EnsureVrReadyProjectSettings();
         AssetDatabase.SaveAssets();
-        Debug.Log("[GAMA] VR project settings configured.");
+        GamaLog.Dev("[GAMA] VR project settings configured.");
     }
 
     private static void SetupSceneCore(bool configureEditorSimulator, bool configureVrProjectSettings)
@@ -88,7 +88,7 @@ public class GAMAMenu : ScriptableObject
         string mode = configureVrProjectSettings
             ? (configureEditorSimulator ? "VR simulator" : "headset-ready")
             : "desktop/no-XR";
-        Debug.Log("[GAMA] Scene setup complete (" + mode + "). Removed " + removedRootObjects + " previous root object(s).");
+        GamaLog.Info("[GAMA] Scene setup complete (" + mode + ").");
     }
 
     private static void EnsureVrReadyProjectSettings()
@@ -104,7 +104,7 @@ public class GAMAMenu : ScriptableObject
 
         if (!configuredAnyTarget)
         {
-            Debug.LogWarning("[GAMA] OpenXR project setup was skipped because the OpenXR/XR Management editor APIs are not available yet. Unity should install package dependencies first, then run GAMA > Setup Scene again.");
+            GamaLog.Warning("[GAMA] OpenXR project setup was skipped because the OpenXR/XR Management editor APIs are not available yet. Unity should install package dependencies first, then run GAMA > Setup Scene again.");
         }
     }
 
@@ -167,11 +167,11 @@ public class GAMAMenu : ScriptableObject
             }
 
             activeInputHandling.SetValue(null, targetValue, null);
-            Debug.Log("[GAMA] Enabled Unity Input System support for VR input.");
+            GamaLog.Dev("[GAMA] Enabled Unity Input System support for VR input.");
         }
         catch (Exception exception)
         {
-            Debug.LogWarning("[GAMA] Could not update the active input handling setting: " + exception.GetBaseException().Message);
+            GamaLog.Warning("[GAMA] Could not update the active input handling setting: " + exception.GetBaseException().Message);
         }
     }
 
@@ -241,18 +241,18 @@ public class GAMAMenu : ScriptableObject
 
             if (loaderAssigned)
             {
-                Debug.Log("[GAMA] OpenXR enabled for " + buildTargetGroup + " and set to initialize on startup.");
+                GamaLog.Dev("[GAMA] OpenXR enabled for " + buildTargetGroup + " and set to initialize on startup.");
             }
             else
             {
-                Debug.LogWarning("[GAMA] OpenXR project settings were created for " + buildTargetGroup + ", but assigning the OpenXR loader failed. Check Project Settings > XR Plug-in Management > OpenXR.");
+                GamaLog.Warning("[GAMA] OpenXR project settings were created for " + buildTargetGroup + ", but assigning the OpenXR loader failed. Check Project Settings > XR Plug-in Management > OpenXR.");
             }
 
             return loaderAssigned || openXrSettingsConfigured;
         }
         catch (Exception exception)
         {
-            Debug.LogWarning("[GAMA] OpenXR setup failed for " + buildTargetGroup + ": " + exception.GetBaseException().Message);
+            GamaLog.Warning("[GAMA] OpenXR setup failed for " + buildTargetGroup + ": " + exception.GetBaseException().Message);
             return false;
         }
     }
@@ -332,7 +332,7 @@ public class GAMAMenu : ScriptableObject
 
         if (changed)
         {
-            Debug.Log("[GAMA] Enabled default OpenXR interaction profiles for " + buildTargetGroup + ".");
+            GamaLog.Dev("[GAMA] Enabled default OpenXR interaction profiles for " + buildTargetGroup + ".");
         }
 
         return true;
@@ -444,14 +444,14 @@ public class GAMAMenu : ScriptableObject
 
         if (string.IsNullOrEmpty(prefabPath))
         {
-            Debug.LogWarning("[GAMA] XR Device Simulator sample was not found in the project. Import XR Interaction Toolkit > Samples > XR Device Simulator, then run GAMA > Setup Scene (VR Simulator) again.");
+            GamaLog.Warning("[GAMA] XR Device Simulator sample was not found in the project. Import XR Interaction Toolkit > Samples > XR Device Simulator, then run GAMA > Setup Scene (VR Simulator) again.");
             return;
         }
 
         GameObject simulatorPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
         if (simulatorPrefab == null)
         {
-            Debug.LogWarning("[GAMA] XR Device Simulator prefab could not be loaded from " + prefabPath + ".");
+            GamaLog.Warning("[GAMA] XR Device Simulator prefab could not be loaded from " + prefabPath + ".");
             return;
         }
 
@@ -460,7 +460,7 @@ public class GAMAMenu : ScriptableObject
         {
             simulatorInstance.name = simulatorPrefab.name;
             EnsureEventSystemExists();
-            Debug.Log("[GAMA] Added XR Device Simulator from imported XR Interaction Toolkit samples.");
+            GamaLog.Dev("[GAMA] Added XR Device Simulator from imported XR Interaction Toolkit samples.");
         }
     }
 
@@ -605,7 +605,7 @@ public class GAMAMenu : ScriptableObject
 
         if (removed > 0)
         {
-            Debug.Log("[GAMA] Removed " + removed + " obsolete missing script component(s) from the scene.");
+            GamaLog.Dev("[GAMA] Removed " + removed + " obsolete missing script component(s) from the scene.");
         }
     }
 
@@ -616,7 +616,7 @@ public class GAMAMenu : ScriptableObject
         UnityEngine.Object[] assets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset");
         if (assets == null || assets.Length == 0)
         {
-            Debug.LogWarning("[GAMA] Could not open TagManager.asset; tags were not created.");
+            GamaLog.Warning("[GAMA] Could not open TagManager.asset; tags were not created.");
             return;
         }
 
@@ -624,7 +624,7 @@ public class GAMAMenu : ScriptableObject
         SerializedProperty tags = tagManager.FindProperty("tags");
         if (tags == null)
         {
-            Debug.LogWarning("[GAMA] Could not find the tags list in TagManager.asset.");
+            GamaLog.Warning("[GAMA] Could not find the tags list in TagManager.asset.");
             return;
         }
 

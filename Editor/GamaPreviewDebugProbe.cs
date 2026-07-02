@@ -9,17 +9,17 @@ public static class GamaPreviewDebugProbe
     {
         var root = FindPreviewRoot();
 
-        Debug.Log("[GAMA][PROBE] Preview root = " + (root ? GetPath(root.transform) : "NULL"));
+        GamaLog.Dev("[GAMA][PROBE] Preview root = " + (root ? GetPath(root.transform) : "NULL"));
 
         if (!root)
             return;
 
         var gama = root.transform.Find("GAMA");
-        Debug.Log("[GAMA][PROBE] GAMA child = " + (gama ? GetPath(gama) : "NULL"));
+        GamaLog.Dev("[GAMA][PROBE] GAMA child = " + (gama ? GetPath(gama) : "NULL"));
 
         if (gama != null)
         {
-            Debug.Log("[GAMA][PROBE] Children under GAMA:");
+            GamaLog.Dev("[GAMA][PROBE] Children under GAMA:");
 
             foreach (Transform child in gama)
             {
@@ -28,7 +28,7 @@ public static class GamaPreviewDebugProbe
         }
 
         var pedestrian = root.transform.Find("GAMA/pedestrian");
-        Debug.Log("[GAMA][PROBE] Direct path GAMA/pedestrian = " + (pedestrian ? GetPath(pedestrian) : "NULL"));
+        GamaLog.Dev("[GAMA][PROBE] Direct path GAMA/pedestrian = " + (pedestrian ? GetPath(pedestrian) : "NULL"));
 
         if (pedestrian != null)
             PrintSpecies(pedestrian);
@@ -43,7 +43,7 @@ public static class GamaPreviewDebugProbe
 
         if (!root)
         {
-            Debug.LogWarning("[GAMA][PROBE] Cannot force: preview root not found");
+            GamaLog.DevWarning("[GAMA][PROBE] Cannot force: preview root not found");
             return;
         }
 
@@ -51,7 +51,7 @@ public static class GamaPreviewDebugProbe
 
         if (!pedestrian)
         {
-            Debug.LogWarning("[GAMA][PROBE] Cannot force: GAMA/pedestrian not found");
+            GamaLog.DevWarning("[GAMA][PROBE] Cannot force: GAMA/pedestrian not found");
             return;
         }
 
@@ -72,14 +72,14 @@ public static class GamaPreviewDebugProbe
         EditorUtility.SetDirty(pedestrian);
         SceneView.RepaintAll();
 
-        Debug.Log("[GAMA][PROBE] Forced pedestrian red x10. Renderers found = " + renderers.Length);
+        GamaLog.Dev("[GAMA][PROBE] Forced pedestrian red x10. Renderers found = " + renderers.Length);
     }
 
     private static void PrintSpecies(Transform species)
     {
         var renderers = species.GetComponentsInChildren<Renderer>(true);
 
-        Debug.Log(
+        GamaLog.Dev(
             "[GAMA][PROBE] species=" + species.name +
             " path=" + GetPath(species) +
             " active=" + species.gameObject.activeInHierarchy +
@@ -92,7 +92,7 @@ public static class GamaPreviewDebugProbe
 
         for (int i = 0; i < max; i++)
         {
-            Debug.Log(
+            GamaLog.Dev(
                 "[GAMA][PROBE] renderer[" + i + "]=" +
                 GetPath(renderers[i].transform) +
                 " material=" + (renderers[i].sharedMaterial ? renderers[i].sharedMaterial.name : "NULL")

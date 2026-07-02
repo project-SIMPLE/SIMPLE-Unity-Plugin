@@ -37,7 +37,7 @@ namespace ProjectSimple.GamaUnity.Runtime
 
             if (player != null)
             {
-                Debug.Log("[GAMA] Auto-assigned player object: " + player.name);
+                GamaLog.Dev("[GAMA] Auto-assigned player object: " + player.name);
                 field.SetValue(simManager, player);
             }
         }
@@ -63,7 +63,7 @@ namespace ProjectSimple.GamaUnity.Runtime
 
             if (ground != null)
             {
-                Debug.Log("[GAMA] Auto-assigned ground object: " + ground.name);
+                GamaLog.Dev("[GAMA] Auto-assigned ground object: " + ground.name);
                 field.SetValue(simManager, ground);
             }
         }

@@ -350,7 +350,7 @@ public class SimulationManagerSolo : SimulationManager
 
         if (debugOptions.logHotspotInitialization)
         {
-            Debug.Log("[GAMA][SOLO] Initialized " + initializedCount + " hotspot(s) from GAMA parameters.");
+            GamaLog.Dev("[GAMA][SOLO] Initialized " + initializedCount + " hotspot(s) from GAMA parameters.");
         }
     }
 
@@ -464,7 +464,7 @@ public class SimulationManagerSolo : SimulationManager
 
         if (debugOptions.logGamaAsks)
         {
-            Debug.Log("[GAMA][SOLO] Sent executable ask '" + askName + "' with " + gamaAsks.idArgumentKey + "=" + objectId);
+            GamaLog.Dev("[GAMA][SOLO] Sent executable ask '" + askName + "' with " + gamaAsks.idArgumentKey + "=" + objectId);
         }
     }
 
@@ -481,7 +481,7 @@ public class SimulationManagerSolo : SimulationManager
         }
         catch (Exception exception)
         {
-            Debug.LogWarning("[GAMA][SOLO] Failed to apply color to " + obj.name + ": " + exception.GetBaseException().Message);
+            GamaLog.DevWarning("[GAMA][SOLO] Failed to apply color to " + obj.name + ": " + exception.GetBaseException().Message);
         }
     }
 
@@ -492,6 +492,6 @@ public class SimulationManagerSolo : SimulationManager
             return;
         }
 
-        Debug.Log("[GAMA][SOLO] " + message);
+        GamaLog.Dev("[GAMA][SOLO] " + message);
     }
 }

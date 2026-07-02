@@ -59,12 +59,12 @@ public abstract class WebSocketConnector : MonoBehaviour
         }
 
         string url = "ws://" + host + ":" + port + "/";
-        Debug.Log("[GAMA][CONNECTION][START] url=" + url);
+        GamaLog.Dev("[GAMA][CONNECTION][START] url=" + url);
         socket = new WebSocket(url);
 
         socket.OnOpen += () =>
         {
-            Debug.Log("[GAMA][CONNECTION][OPEN]");
+            GamaLog.Dev("[GAMA][CONNECTION][OPEN]");
             HandleConnectionOpen();
         };
 
@@ -79,13 +79,13 @@ public abstract class WebSocketConnector : MonoBehaviour
         // Add OnError event listener
         socket.OnError += (string errMsg) =>
         {
-            Debug.LogError("[GAMA][CONNECTION][ERROR] " + errMsg);
+            GamaLog.Error("[GAMA][CONNECTION][ERROR] " + errMsg);
         };
 
         // Add OnClose event listener
         socket.OnClose += (WebSocketCloseCode code) =>
         {
-            Debug.Log("[GAMA][CONNECTION][CLOSE] code=" + code);
+            GamaLog.Dev("[GAMA][CONNECTION][CLOSE] code=" + code);
             HandleConnectionClosed();
         };
 
@@ -151,7 +151,7 @@ public abstract class WebSocketConnector : MonoBehaviour
             float now = Time.realtimeSinceStartup;
             if (now >= nextSocketClosedWarningTime)
             {
-                Debug.LogWarning("[GAMA][CONNECTION][WARN] socket not open; skipping send state=" + GetSocketStateForLog());
+                GamaLog.DevWarning("[GAMA][CONNECTION][WARN] socket not open; skipping send state=" + GetSocketStateForLog());
                 nextSocketClosedWarningTime = now + SocketClosedWarningIntervalSeconds;
             }
             return;
@@ -182,7 +182,7 @@ public abstract class WebSocketConnector : MonoBehaviour
             return;
         }
 
-        Debug.Log(
+        GamaLog.Dev(
             "[GAMA][CONNECTION][MESSAGE] type=" + ResolveMessageTypeForLog(message) +
             " length=" + (message != null ? message.Length : 0));
     }
@@ -238,7 +238,7 @@ public abstract class WebSocketConnector : MonoBehaviour
         }
         catch (Exception exception)
         {
-            Debug.LogWarning("WebSocketConnector: error while closing socket: " + exception.Message);
+            GamaLog.DevWarning("WebSocketConnector: error while closing socket: " + exception.Message);
         }
     }
 

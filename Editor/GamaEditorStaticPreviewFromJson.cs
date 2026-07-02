@@ -36,12 +36,12 @@ internal static class GamaEditorStaticPreviewFromJson
         geometryCount = 0;
         error = string.Empty;
 
-        Debug.Log("[GAMA][PREVIEW][BUILD] simulationManager=" + (simulationManager == null ? "null" : "ok"));
-        Debug.Log("[GAMA][PREVIEW][BUILD] precisionJson length=" + (precisionJson == null ? -1 : precisionJson.Length));
-        Debug.Log("[GAMA][PREVIEW][BUILD] propertiesJson length=" + (propertiesJson == null ? -1 : propertiesJson.Length));
-        Debug.Log("[GAMA][PREVIEW][BUILD] worldJson length=" + (worldJson == null ? -1 : worldJson.Length));
-        Debug.Log("[GAMA][PREVIEW][BUILD] parent=" + (parent == null ? "null" : GetHierarchyPath(parent)));
-        Debug.Log("[GAMA][PREVIEW][BUILD] speciesOverrides=" + (speciesOverrides == null ? "null" : "ok"));
+        GamaLog.Dev("[GAMA][PREVIEW][BUILD] simulationManager=" + (simulationManager == null ? "null" : "ok"));
+        GamaLog.Dev("[GAMA][PREVIEW][BUILD] precisionJson length=" + (precisionJson == null ? -1 : precisionJson.Length));
+        GamaLog.Dev("[GAMA][PREVIEW][BUILD] propertiesJson length=" + (propertiesJson == null ? -1 : propertiesJson.Length));
+        GamaLog.Dev("[GAMA][PREVIEW][BUILD] worldJson length=" + (worldJson == null ? -1 : worldJson.Length));
+        GamaLog.Dev("[GAMA][PREVIEW][BUILD] parent=" + (parent == null ? "null" : GetHierarchyPath(parent)));
+        GamaLog.Dev("[GAMA][PREVIEW][BUILD] speciesOverrides=" + (speciesOverrides == null ? "null" : "ok"));
 
         try
         {
@@ -61,7 +61,7 @@ internal static class GamaEditorStaticPreviewFromJson
         catch (Exception ex)
         {
             error = "Exception pendant la construction de la preview statique : " + ex.Message;
-            Debug.LogError("[GAMA][PREVIEW][BUILD] Exception: " + ex);
+            GamaLog.Error("[GAMA][PREVIEW][BUILD] Exception: " + ex);
             return false;
         }
     }
@@ -125,7 +125,7 @@ internal static class GamaEditorStaticPreviewFromJson
         WorldJSONInfo world = WorldJSONInfo.CreateFromJSON(worldJson);
         bool hasAgents = world != null && world.names != null && world.names.Count > 0;
         bool hasGeometries = world != null && world.pointsGeom != null && world.pointsGeom.Count > 0;
-        Debug.Log("[GAMA][PREVIEW][BUILD] world agents=" + (world != null && world.names != null ? world.names.Count : 0) +
+        GamaLog.Dev("[GAMA][PREVIEW][BUILD] world agents=" + (world != null && world.names != null ? world.names.Count : 0) +
                   " geometries=" + (world != null && world.pointsGeom != null ? world.pointsGeom.Count : 0));
         if (world == null || (!hasAgents && !hasGeometries))
         {
@@ -135,7 +135,7 @@ internal static class GamaEditorStaticPreviewFromJson
 
         if (!hasAgents)
         {
-            Debug.LogWarning("[GAMA] Aperçu statique : aucun agent à ce tick — seules les géométries seront affichées.");
+            GamaLog.DevWarning("[GAMA] Aperçu statique : aucun agent à ce tick — seules les géométries seront affichées.");
         }
 
         Dictionary<string, PropertiesGAMA> propertyMap = new Dictionary<string, PropertiesGAMA>();
@@ -161,7 +161,7 @@ internal static class GamaEditorStaticPreviewFromJson
         }
         else
         {
-            Debug.LogWarning("[GAMA][PREVIEW][BUILD] Aucun SimulationManager trouvé : CRS par défaut et overrides runtime ignorés.");
+            GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Aucun SimulationManager trouvé : CRS par défaut et overrides runtime ignorés.");
         }
 
         CoordinateConverter converter = new CoordinateConverter(
@@ -208,7 +208,7 @@ internal static class GamaEditorStaticPreviewFromJson
                 if (world.propertyID == null || i >= world.propertyID.Count)
                 {
                     skippedAgents++;
-                    Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " name=" + name + " reason=propertyID missing");
+                    GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " name=" + name + " reason=propertyID missing");
                     continue;
                 }
 
@@ -217,7 +217,7 @@ internal static class GamaEditorStaticPreviewFromJson
                 if (string.IsNullOrEmpty(propId) || !propertyMap.TryGetValue(propId, out prop) || prop == null)
                 {
                     skippedAgents++;
-                    Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " name=" + name + " reason=prop null propId=" + (propId ?? "<null>"));
+                    GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " name=" + name + " reason=prop null propId=" + (propId ?? "<null>"));
                     continue;
                 }
 
@@ -228,7 +228,7 @@ internal static class GamaEditorStaticPreviewFromJson
                 }
                 catch (Exception attrEx)
                 {
-                    Debug.LogWarning("[GAMA][PREVIEW][BUILD] Attributes invalid for agent i=" + i + " reason=" + attrEx.Message);
+                    GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Attributes invalid for agent i=" + i + " reason=" + attrEx.Message);
                 }
 
                 bool hasVisualState = false;
@@ -242,7 +242,7 @@ internal static class GamaEditorStaticPreviewFromJson
                 }
                 catch (Exception vsEx)
                 {
-                    Debug.LogWarning("[GAMA][PREVIEW][BUILD] ResolveVisualState failed for agent i=" + i + " reason=" + vsEx.Message);
+                    GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] ResolveVisualState failed for agent i=" + i + " reason=" + vsEx.Message);
                 }
                 if (!hasVisualState)
                 {
@@ -252,19 +252,19 @@ internal static class GamaEditorStaticPreviewFromJson
                 if (!hasVisualState)
                 {
                     skippedAgents++;
-                    Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " name=" + name + " reason=visualState failed");
+                    GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " name=" + name + " reason=visualState failed");
                     continue;
                 }
 
                 string speciesKey = null;
                 try { speciesKey = GamaEditorPreviewCapture.ResolveSpeciesKey(propId, propertyMap); }
-                catch (Exception skEx) { Debug.LogWarning("[GAMA][PREVIEW][BUILD] ResolveSpeciesKey failed i=" + i + " reason=" + skEx.Message); }
+                catch (Exception skEx) { GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] ResolveSpeciesKey failed i=" + i + " reason=" + skEx.Message); }
                 if (string.IsNullOrWhiteSpace(speciesKey)) speciesKey = name;
                 if (string.IsNullOrWhiteSpace(speciesKey)) speciesKey = "unknown";
 
                 if (VerbosePreviewBuildDebug && i < 5)
                 {
-                    Debug.Log(
+                    GamaLog.Dev(
                         "[GAMA][PREVIEW][BUILD][AGENTDBG] i=" + i +
                         " name=" + (name ?? "<null>") +
                         " propId=" + (propId ?? "<null>") +
@@ -279,7 +279,7 @@ internal static class GamaEditorStaticPreviewFromJson
                 if (speciesParent == null)
                 {
                     skippedAgents++;
-                    Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " name=" + name + " reason=speciesParent null");
+                    GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " name=" + name + " reason=speciesParent null");
                     continue;
                 }
 
@@ -288,7 +288,7 @@ internal static class GamaEditorStaticPreviewFromJson
                     if (world.pointsLoc == null || cptPrefab >= world.pointsLoc.Count)
                     {
                         skippedAgents++;
-                        Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " name=" + name + " reason=pointsLoc insufficient");
+                        GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " name=" + name + " reason=pointsLoc insufficient");
                         continue;
                     }
 
@@ -296,7 +296,7 @@ internal static class GamaEditorStaticPreviewFromJson
                     if (pt == null || pt.Count < 3)
                     {
                         skippedAgents++;
-                        Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " name=" + name + " reason=invalid coordinates");
+                        GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " name=" + name + " reason=invalid coordinates");
                         cptPrefab++;
                         continue;
                     }
@@ -305,7 +305,7 @@ internal static class GamaEditorStaticPreviewFromJson
                     if (obj == null)
                     {
                         skippedAgents++;
-                        Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " name=" + name + " reason=InstantiateVisual returned null");
+                        GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " name=" + name + " reason=InstantiateVisual returned null");
                         cptPrefab++;
                         continue;
                     }
@@ -336,7 +336,7 @@ internal static class GamaEditorStaticPreviewFromJson
                     if (world.pointsGeom == null || cptGeom >= world.pointsGeom.Count)
                     {
                         skippedGeometries++;
-                        Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip geometry i=" + i + " name=" + name + " reason=pointsGeom insufficient");
+                        GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip geometry i=" + i + " name=" + name + " reason=pointsGeom insufficient");
                         continue;
                     }
 
@@ -344,7 +344,7 @@ internal static class GamaEditorStaticPreviewFromJson
                     if (rawGeom == null || rawGeom.Count < 2)
                     {
                         skippedGeometries++;
-                        Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip geometry i=" + i + " name=" + name + " reason=invalid geometry data");
+                        GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip geometry i=" + i + " name=" + name + " reason=invalid geometry data");
                         cptGeom++;
                         continue;
                     }
@@ -353,7 +353,7 @@ internal static class GamaEditorStaticPreviewFromJson
                     if (ptArr == null || ptArr.Length == 0)
                     {
                         skippedGeometries++;
-                        Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip geometry i=" + i + " name=" + name + " reason=empty points");
+                        GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip geometry i=" + i + " name=" + name + " reason=empty points");
                         cptGeom++;
                         continue;
                     }
@@ -368,7 +368,7 @@ internal static class GamaEditorStaticPreviewFromJson
                     if (polygonInputValid && polyGen == null)
                     {
                         skippedGeometries++;
-                        Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip geometry i=" + i + " name=" + name + " reason=polyGen null");
+                        GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip geometry i=" + i + " name=" + name + " reason=polyGen null");
                         cptGeom++;
                         continue;
                     }
@@ -381,7 +381,7 @@ internal static class GamaEditorStaticPreviewFromJson
                     if (obj == null)
                     {
                         skippedGeometries++;
-                        Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip geometry i=" + i + " name=" + name + " reason=GeneratePolygons returned null");
+                        GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip geometry i=" + i + " name=" + name + " reason=GeneratePolygons returned null");
                         cptGeom++;
                         continue;
                     }
@@ -425,7 +425,7 @@ internal static class GamaEditorStaticPreviewFromJson
             catch (Exception ex)
             {
                 skippedAgents++;
-                Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " reason=" + ex);
+                GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip agent i=" + i + " reason=" + ex);
                 continue;
             }
         }
@@ -455,7 +455,7 @@ internal static class GamaEditorStaticPreviewFromJson
                     if (ptArr == null || ptArr.Length == 0)
                     {
                         skippedGeometries++;
-                        Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip standalone geometry g=" + g + " reason=empty points");
+                        GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip standalone geometry g=" + g + " reason=empty points");
                         continue;
                     }
 
@@ -468,7 +468,7 @@ internal static class GamaEditorStaticPreviewFromJson
                     if (polyGen == null)
                     {
                         skippedGeometries++;
-                        Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip standalone geometry g=" + g + " reason=polyGen null");
+                        GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip standalone geometry g=" + g + " reason=polyGen null");
                         continue;
                     }
 
@@ -478,7 +478,7 @@ internal static class GamaEditorStaticPreviewFromJson
                     if (obj == null)
                     {
                         skippedGeometries++;
-                        Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip standalone geometry g=" + g + " reason=GeneratePolygons returned null");
+                        GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip standalone geometry g=" + g + " reason=GeneratePolygons returned null");
                         continue;
                     }
 
@@ -493,7 +493,7 @@ internal static class GamaEditorStaticPreviewFromJson
                 catch (Exception ex)
                 {
                     skippedGeometries++;
-                    Debug.LogWarning("[GAMA][PREVIEW][BUILD] Skip standalone geometry g=" + g + " reason=" + ex);
+                    GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Skip standalone geometry g=" + g + " reason=" + ex);
                     continue;
                 }
             }
@@ -519,14 +519,14 @@ internal static class GamaEditorStaticPreviewFromJson
             }
             catch (Exception ex)
             {
-                Debug.LogWarning("[GAMA][PREVIEW][BUILD] PlayerSpawn marker failed: " + ex.Message);
+                GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] PlayerSpawn marker failed: " + ex.Message);
             }
         }
 
         prefabCount = builtAgents;
         geometryCount = builtGeometries;
 
-        Debug.Log(
+        GamaLog.Dev(
             "[GAMA][PREVIEW][BUILD] result builtAgents=" + builtAgents +
             " skippedAgents=" + skippedAgents +
             " builtGeometries=" + builtGeometries +
@@ -623,7 +623,7 @@ internal static class GamaEditorStaticPreviewFromJson
                           " referenceOverflow=" + FormatFloat(referenceOverflow) +
                           " scaleRange=" + FormatFloat(probe.MinObservedScale) + ".." + FormatFloat(probe.MaxObservedScale) +
                           " scaledContainerObjects=" + probe.ScaledContainerObjectCount;
-            Debug.Log(line);
+            GamaLog.Dev(line);
 
             bool countMismatch = probe.ExpectedCount > 0 && probe.ActualCount != probe.ExpectedCount;
             bool inflatedAgainstSource = expectedDiag > PreviewSpreadEpsilon &&
@@ -637,7 +637,7 @@ internal static class GamaEditorStaticPreviewFromJson
 
             if (countMismatch || inflatedAgainstSource || outsideReference || parentScaled)
             {
-                Debug.LogWarning("[GAMA][PREVIEW][SPREAD][WARN] species=" + probe.SpeciesKey +
+                GamaLog.DevWarning("[GAMA][PREVIEW][SPREAD][WARN] species=" + probe.SpeciesKey +
                                  " countMismatch=" + countMismatch +
                                  " inflatedAgainstSource=" + inflatedAgainstSource +
                                  " outsideReference=" + outsideReference +
@@ -881,7 +881,7 @@ internal static class GamaEditorStaticPreviewFromJson
         }
         catch (Exception ex)
         {
-            Debug.LogWarning("[GAMA][PREVIEW][BUILD] Lecture CRS SimulationManager impossible, valeurs par défaut utilisées : " + ex.Message);
+            GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Lecture CRS SimulationManager impossible, valeurs par défaut utilisées : " + ex.Message);
         }
     }
 
@@ -922,7 +922,7 @@ internal static class GamaEditorStaticPreviewFromJson
     {
         if (previewRoot == null)
         {
-            Debug.LogWarning("[GAMA][PREVIEW][BUILD] GetOrCreateSpeciesParent: previewRoot is null");
+            GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] GetOrCreateSpeciesParent: previewRoot is null");
             return null;
         }
 
@@ -937,7 +937,7 @@ internal static class GamaEditorStaticPreviewFromJson
             GameObject rootChild = GamaSceneUtility.GetOrCreateChild(previewRoot.gameObject, "GAMA");
             if (rootChild == null)
             {
-                Debug.LogWarning("[GAMA][PREVIEW][BUILD] GetOrCreateSpeciesParent: GetOrCreateChild returned null for GAMA root");
+                GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] GetOrCreateSpeciesParent: GetOrCreateChild returned null for GAMA root");
                 return null;
             }
 
@@ -959,7 +959,7 @@ internal static class GamaEditorStaticPreviewFromJson
         }
         catch (Exception ex)
         {
-            Debug.LogWarning("[GAMA][PREVIEW][BUILD] GetOrCreateSpeciesParent failed for key=" + key + " reason=" + ex.Message);
+            GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] GetOrCreateSpeciesParent failed for key=" + key + " reason=" + ex.Message);
             return null;
         }
     }
@@ -998,7 +998,7 @@ internal static class GamaEditorStaticPreviewFromJson
             return;
         }
 
-        Debug.Log("[GAMA][PREVIEW][OVERRIDE_PICK] species=" + speciesKey +
+        GamaLog.Dev("[GAMA][PREVIEW][OVERRIDE_PICK] species=" + speciesKey +
                   " model=" + (modelPath ?? string.Empty) +
                   " experiment=" + (experimentName ?? string.Empty) +
                   " scale=" + (entry != null ? entry.GetEffectiveScaleMultiplier() : 1f));
@@ -1114,7 +1114,7 @@ internal static class GamaEditorStaticPreviewFromJson
 
         if (count == 1 || count == 10 || count % 100 == 0)
         {
-            Debug.LogWarning(
+            GamaLog.DevWarning(
                 "[GAMA][PREVIEW][GEOMETRY] species=" + species +
                 " invalidPolygonFallback=" + count);
         }
