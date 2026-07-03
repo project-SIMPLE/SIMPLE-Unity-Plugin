@@ -9,7 +9,7 @@ the `food` attribute of each `vegetation_cell`: instead of showing every grass
 cell with the same green, Unity can use a more or less intense green depending
 on the `food` value, like in the GAMA display.
 
-## Attribute Requirements
+## 5.1 Attribute Requirements
 
 The GAMA model must send the attribute in `add_geometries_to_send(...)`.
 
@@ -33,7 +33,7 @@ map<string, list<float>> prey_atts <- ["energy":: prey_energy];
 do add_geometries_to_send(prey, up_prey, prey_atts);
 ```
 
-## Continuous Example: Vegetation Food
+## 5.2 Continuous Example: Vegetation Food
 
 Use this mode when an attribute is numeric and should produce a gradual visual
 change.
@@ -85,7 +85,7 @@ stronger than high values.
 
 ![Food dynamic color with invert enabled](../images/tutorial/05-dynamic-color-preview-food-result.png)
 
-## Discrete Colors For States
+## 5.3 Discrete Colors For States
 
 For attributes that represent a small set of states, use **Discrete** mode
 instead. This is useful for experiments with states such as:
@@ -102,7 +102,7 @@ state = recovered    -> green
 state = dead         -> black
 ```
 
-## Runtime Behavior
+## 5.4 Runtime Behavior
 
 Dynamic colors are applied per agent when Unity receives GAMA attributes.
 
@@ -113,7 +113,7 @@ They do not replace the static preview workflow:
 - if the attribute is missing or cannot be parsed, Unity keeps the static/GAMA
   color instead of crashing.
 
-## Result
+## 5.4 Result
 
 At the end of this chapter, Unity should be able to show both static species
 settings and per-agent attribute variations, such as vegetation cells becoming
