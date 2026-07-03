@@ -6,7 +6,7 @@ tutorial, use the 6th **Prey Predator** model located in the following hierarchy
 ![Prey Predator 6 model location](../images/tutorial/02-prey-predator-7-location.png)
 
 > [!WARNING]
-> Don't forget to convert it in "vr_xp" withe the Unity Plugin, otherwise it will not work!!!
+> Don't forget to convert it in "**vr_xp**" with the Unity Plugin before starting, otherwise it will not work!!!
 >
 > This step is explained [in this tutorial](https://doc.project-simple.eu/tutorials/Tutorial-Step-1)
 
