@@ -6,7 +6,7 @@ tutorial, use the 6th **Prey Predator** model located in the following hierarchy
 ![Prey Predator 6 model location](../images/tutorial/02-prey-predator-7-location.png)
 
 > [!WARNING]
-> Don't forget to convert it in "**vr_xp**" with the Unity Plugin before starting, otherwise it will not work!!!
+> Don't forget to convert it in **vr_xp** with the Unity Plugin before starting, otherwise it will not work!!!
 >
 > This step is explained [in this tutorial](https://doc.project-simple.eu/tutorials/Tutorial-Step-1)
 
@@ -22,7 +22,7 @@ creates Unity objects from the GAMA agents.
 
 1. Make sure the scene was prepared with **GAMA > GAMA Panel > Setup Scene**.
 2. Start `simple.webplatform` with  `npm start`
-3. Open and run the "**vr_xp**" version of **Prey Predator 6** in GAMA.
+3. Open and run the **vr_xp** version of **Prey Predator 6** in GAMA.
 
 ![Windows Overview](../images/tutorial/02-windows-overview-gama-unity.png)
 4. Press **Play** in Unity.
