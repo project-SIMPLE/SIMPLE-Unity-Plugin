@@ -17,7 +17,7 @@ creates Unity objects from the GAMA agents.
 
 1. Make sure the scene was prepared with **GAMA > GAMA Panel > Setup Scene**.
 2. Start `simple.webplatform` with  `npm start`
-3. Open and run the **Prey Predator 7** experiment in GAMA.
+3. Open and run the **Prey Predator 6** experiment in GAMA.
 
 ![Windows Overview](../images/tutorial/02-windows-overview-gama-unity.png)
 4. Press **Play** in Unity.
