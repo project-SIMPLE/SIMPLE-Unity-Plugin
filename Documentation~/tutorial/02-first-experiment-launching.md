@@ -3,7 +3,12 @@
 It is time to run the first GAMA experiment in Unity with this package. In this
 tutorial, use the 6th **Prey Predator** model located in the following hierarchy from GAMA.
 
-![Prey Predator 7 model location](../images/tutorial/02-prey-predator-7-location.png)
+![Prey Predator 6 model location](../images/tutorial/02-prey-predator-7-location.png)
+
+> [!WARNING]
+> Don't forget to convert it in "vr_xp" withe the Unity Plugin, otherwise it will not work!!!
+>
+> This step is explained [in this tutorial](https://doc.project-simple.eu/tutorials/Tutorial-Step-1)
 
 This experiment is used throughout the rest of the tutorial because it covers the
 main features provided by the package: static background species, dynamic agents,
