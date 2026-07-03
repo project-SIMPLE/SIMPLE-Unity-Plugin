@@ -9,6 +9,9 @@ tutorial, use the **6th prey Predator** model located in the following hierarchy
 > Don't forget to convert it in **vr_xp** with the Unity Plugin before starting, otherwise it will not work!!!
 >
 > This step is explained [in this tutorial](https://doc.project-simple.eu/tutorials/Tutorial-Step-1)
+>
+> When choosing the parameters, you can keep the **default values** for each agent.  
+> Just make sure that the number of players is set to either `0` or `1`.
 
 This experiment is used throughout the rest of the tutorial because it covers the
 main features provided by the package: static background species, dynamic agents,
