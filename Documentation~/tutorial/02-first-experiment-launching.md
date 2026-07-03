@@ -43,7 +43,7 @@ while the experiment is running.
 ## 2.2 Expected Result
 
 During Play Mode, Unity should connect to `simple.webplatform` and create live
-Unity objects from the agents received from the **Prey Predator 7** model.
+Unity objects from the agents received from the **Prey Predator 6** model.
 
 The imported agents are grouped by species in the Unity hierarchy.
 
