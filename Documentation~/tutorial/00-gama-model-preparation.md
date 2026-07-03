@@ -5,14 +5,16 @@ render the experiment.
 
 ## 0.1 GAMA Requirements
 
-Open your target VR-model in GAMA in the configuration of the screenshot below (ready to run). For explanations on how to install the Simple Unity Plugin, follow [this link](https://doc.project-simple.eu/gama/installation). 
+This tutorial requires a GAMA experiment converted into a Unity-compatible **vr_xp** experiment. This conversion is done with the **SIMPLE plugin**.
+
+Before continuing, make sure the **SIMPLE plugin** is installed in GAMA. Installation instructions are available [here](https://doc.project-simple.eu/gama/installation).
+
 > [!WARNING]
-> Don't forget to convert the experiment in "vr_xp", otherwise it will not work!!!
->
-> This step is explained [in this tutorial](https://doc.project-simple.eu/tutorials/Tutorial-Step-1)
+> Without the SIMPLE Unity plugin, you will not be able to convert the experiment to **vr_xp**, and Unity will not receive the simulation data correctly.
+
 
 ![Open a GAMA experiment](../images/tutorial/02-open-gama-experiment.png)
-_Exemple of an opened experiment in "Library models\Tutorials\Predator Prey\models"_
+_Example of the experiment that will be used throughout this tutorial_
 
 ## 0.2 Middleware Requirements
 
