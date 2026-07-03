@@ -35,18 +35,38 @@ do add_geometries_to_send(prey, up_prey, prey_atts);
 
 ## 5.2 Continuous Example: Vegetation Food
 
-Use this mode when an attribute is numeric and should produce a gradual visual
-change.
-
-In this example, the `vegetation_cell` species receives a numeric `food`
-attribute. The goal is:
-
-```text
-low food  -> lighter/darker green
-high food -> stronger green
+### 5.2.1 Attributes Sent By GAMA
+Unity can only use dynamic color attributes that are sent by GAMA through the websocket.
+In this experiment, the `send_geometries` reflex sends the agents and geometries to Unity. By default, `vegetation_cell` is sent without its `food` attribute:
+```gaml
+do add_geometries_to_send(vegetation_cell, up_vegetation_cell);
 ```
+To make `food` available in Unity, collect the `food` values and pass them as the third argument of `add_geometries_to_send`:
+```gaml
+list<float> grass_food <- vegetation_cell collect each.food;
+map<string, list<float>> grass_atts <- ["food":: grass_food];
+do add_geometries_to_send(vegetation_cell, up_vegetation_cell, grass_atts);
+```
+The complete reflex should look like this:
+```gaml
+reflex send_geometries {
+	list<float> grass_food <- vegetation_cell collect each.food;
+	map<string, list<float>> grass_atts <- ["food":: grass_food];
+	do add_geometries_to_send(prey, up_prey);
+	do add_geometries_to_send(predator, up_predator);
+	do add_geometries_to_send(vegetation_cell, up_vegetation_cell, grass_atts);
+	do add_geometries_to_send(generic_species, up_generic_species);
+}
+```
+> [!NOTE]
+> The key `food` is the attribute name that will be used later in Unity. This attribute must already exist on the GAMA `vegetation_cell` agents.
 
-Steps:
+
+### 5.2.2 Using The Attribute In Unity
+
+After generating the preview, Unity can use the `food` attribute sent by GAMA through the websocket.
+
+In this tutorial, to display the numeric attribute `food`, you should follow the next steps in the Edit mode of a preview :
 
 1. Select the `Game Manager`.
 2. In the Inspector, find `vegetation_cell`.
@@ -61,6 +81,16 @@ Steps:
 The numbered close-up below shows the important controls:
 
 ![Dynamic food color settings legend](../images/tutorial/05-dynamic-color-food-settings-legend.png)
+
+In this example, the `vegetation_cell` species receives a numeric `food` attribute. The goal is:
+
+```text
+low food  -> lighter/darker green
+high food -> stronger green
+```
+
+> [!NOTE]
+> Unity can only use attributes that were explicitly sent by GAMA. If `food` is not included in `add_geometries_to_send`, it will not be available in the Unity dynamic color settings.
 
 1. Open the **Dynamic Color** foldout.
 2. Enable the override.
