@@ -1,6 +1,6 @@
 # 2. Run the GAMA Experiment in Play Mode
 
-It is time to run the first GAMA experiment in Unity with this package. In this
+It is time to run the first GAMA experiment in Unity with this package. For this
 tutorial, use the **6th prey Predator** model located in the following hierarchy from GAMA.
 
 ![Prey Predator 6 model location](../images/tutorial/02-prey-predator-7-location.png)
