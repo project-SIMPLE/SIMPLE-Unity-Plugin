@@ -21,7 +21,43 @@ This chapter validates the baseline live workflow: Unity enters Play Mode,
 connects to `simple.webplatform`, receives the running GAMA simulation, and
 creates Unity objects from the GAMA agents.
 
-## 2.1 Steps
+> [!WARNING]
+> The original GAMA experiment cannot be used directly in Unity. It must first be converted into a `vr_xp` experiment with the SIMPLE Unity plugin.
+
+## 2.1 Convert the GAMA Experiment to `vr_xp`
+
+Before running the model in Unity, convert the GAMA experiment with the SIMPLE Unity plugin. During this conversion, each species that should appear in Unity must be explicitly exported.
+
+On the first **Definition of the VR experiment** screen, keep the default values and click **Next**.
+
+![VR experiment general parameters](../images/tutorial/02-vr-generation-general-parameters.png)
+
+On the **Export species** screen, do not immediately click **Next**. Select a species on the left, then click the **+** button under **Aspect in Unity**.
+
+![Export species add one by one](../images/tutorial/02-vr-generation-export-species-add.png)
+
+Keep the default property name and click **OK**.
+
+![Keep default Unity property name](../images/tutorial/02-vr-generation-property-name.png)
+
+Repeat this for each species that must be visible in Unity, for example:
+
+- `prey`
+- `predator`
+- `vegetation_cell`
+
+At the end, these species should be marked as exported.
+
+![Final exported species selection](../images/tutorial/02-vr-generation-export-species-final.png)
+
+The `generic_species` entry is abstract and is not required for the visual result. Exporting it is harmless, but it can also be ignored.
+
+> [!IMPORTANT]
+> If the species are not added on the **Export species** screen, the experiment may still start in GAMA and the Unity player may be created, but no simulation agents will appear in Unity.
+
+After this, click **Next**, keep the default values, set the number of players between `0` and `1`, then click **Finish**.
+
+## 2.2 Steps
 
 > [!WARNING]
 > These steps must be followed **exactly in the order shown below**.  
@@ -47,7 +83,7 @@ while the experiment is running.
 
 ![Runtime live overview](../images/tutorial/02-runtime-live-overview.png)
 
-## 2.2 Expected Result
+## 2.3 Expected Result
 
 During Play Mode, Unity should connect to `simple.webplatform` and create live
 Unity objects from the agents received from the **Prey Predator 6** model.
@@ -59,7 +95,7 @@ The imported agents are grouped by species in the Unity hierarchy.
 At this stage, the important result is that the connection works and that GAMA
 agents are imported into Unity while the experiment is running.
 
-## 2.3 Into the Next Step
+## 2.4 Into the Next Step
 
 This is already useful: we now have a functional connection between GAMA,
 `simple.webplatform`, and Unity. The preys, predators and vegetation cells agents are imported and
