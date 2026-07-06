@@ -5,14 +5,6 @@ tutorial, use the **6th prey Predator** model located in the following hierarchy
 
 ![Prey Predator 6 model location](../images/tutorial/02-prey-predator-7-location.png)
 
-> [!WARNING]
-> Don't forget to convert it in **vr_xp** with the Unity Plugin before starting, otherwise it will not work!!!
->
-> This step is explained [in this tutorial](https://doc.project-simple.eu/tutorials/Tutorial-Step-1)
->
-> When choosing the parameters, you can keep the **default values** for each agent.  
-> Just make sure that the number of players is set to either `0` or `1`.
-
 This experiment is used throughout the rest of the tutorial because it covers the
 main features provided by the package: static background species, dynamic agents,
 species-specific rendering, live updates, and interaction with Unity objects.
@@ -56,6 +48,8 @@ The `generic_species` entry is abstract and is not required for the visual resul
 > If the species are not added on the **Export species** screen, the experiment may still start in GAMA and the Unity player may be created, but no simulation agents will appear in Unity.
 
 After this, click **Next**, keep the default values, set the number of players between `0` and `1`, then click **Finish**.
+
+For more details, this step is explained [in this tutorial](https://doc.project-simple.eu/tutorials/Tutorial-Step-1)
 
 ## 2.2 Steps
 
