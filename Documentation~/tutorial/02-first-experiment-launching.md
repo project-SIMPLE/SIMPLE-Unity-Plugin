@@ -23,6 +23,10 @@ creates Unity objects from the GAMA agents.
 
 ## 2.1 Steps
 
+> [!WARNING]
+> These steps must be followed **exactly in the order shown below**.  
+> If you change the order, the Unity connection may fail!!!
+
 1. Make sure the scene was prepared with **GAMA > GAMA Panel > Setup Scene**.
 2. Start `simple.webplatform` with  `npm start`
 3. Open and run the **vr_xp** version of **Prey Predator 6** in GAMA.
