@@ -48,7 +48,7 @@ Fix:
 ## Species Were Not Exported During `vr_xp` Conversion
 
 During the `vr_xp` conversion, each species that should appear in Unity must be
-explicitly exported in the **Export species** step.
+explicitly exported in the **Export species** step withe the Unity Plugin in GAMA.
 
 Do not simply click **Next** through the conversion wizard. Select each species
 on the left and click **+** under **Aspect in Unity**.
