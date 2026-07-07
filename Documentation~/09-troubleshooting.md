@@ -137,7 +137,7 @@ Fix:
 1. Stop the GAMA experiment.
 2. Stop `simple.webplatform`.
 3. Restart `simple.webplatform`.
-4. Restart the `vr_xp` experiment in GAMA.
+4. Re-open the experiment in GAMA.
 5. Enter Play Mode again in Unity.
 
 If the issue persists, inspect the generated GAML model:
