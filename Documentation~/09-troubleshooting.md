@@ -167,15 +167,14 @@ and make sure the Unity linker and exported species are present.
 
 Check:
 
-- `simple.webplatform` is running;
-- GAMA is running;
-- the target experiment is selected or already open in GAMA;
+- `simple.webplatform` is launched first and running;
+- the experiment is then opened in GAMA (make sur to make it linkable by converting it with the Unity Plugin);
 - the GAMA experiment was converted to `vr_xp`;
 - the Unity player socket uses port `8080`;
 - the monitor socket on `8001` is reachable;
 - the GAMA model sends geometries through the Unity linker.
 
-If the preview still fails, open the Unity Console and search for:
+If the preview still fails, using the develop branch of the package, open the Unity Console and search for:
 
 ```text
 [GAMA][CAPTURE]
