@@ -82,6 +82,15 @@ The numbered close-up below shows the important controls:
 
 ![Dynamic food color settings legend](../images/tutorial/05-dynamic-color-food-settings-legend.png)
 
+1. Open the **Dynamic Color** foldout.
+2. Enable the override.
+3. Choose **Continuous** mode.
+4. Enter the attribute name, here `food`.
+5. Pick the base color.
+6. Set the numeric range.
+7. Tune the light and dark variation. In the example below, both sliders are set
+   to `0.5`.
+
 In this example, the `vegetation_cell` species receives a numeric `food` attribute. The goal is:
 
 ```text
@@ -91,15 +100,6 @@ high food -> stronger green
 
 > [!NOTE]
 > Unity can only use attributes that were explicitly sent by GAMA. If `food` is not included in `add_geometries_to_send`, it will not be available in the Unity dynamic color settings.
-
-1. Open the **Dynamic Color** foldout.
-2. Enable the override.
-3. Choose **Continuous** mode.
-4. Enter the attribute name, here `food`.
-5. Pick the base color.
-6. Set the numeric range.
-7. Tune the light and dark variation. In the example below, both sliders are set
-   to `0.5`.
 
 With **Base Color** set to green, **Min Value** set to `0`, **Max Value** set to
 `1`, **Invert** disabled, and both light/dark sliders set to `0.5`, Unity maps
