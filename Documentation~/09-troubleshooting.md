@@ -103,31 +103,6 @@ If only port `8000` is open, the web interface is running but Unity cannot
 generate the preview. Restart `simple.webplatform` and check the terminal for
 backend errors.
 
-## `simple.webplatform` Fails To Start Because Of Invalid JSON
-
-If `npm start` fails with an error similar to:
-
-```text
-SyntaxError: Bad escaped character in JSON
-```
-
-one of the JSON settings files contains an invalid path. On Windows, a single
-backslash in JSON can be interpreted as an escape character.
-
-Use one of these forms instead:
-
-```json
-"C:/Users/name/path/to/file"
-```
-
-or:
-
-```json
-"C:\\Users\\name\\path\\to\\file"
-```
-
-After fixing the JSON file, restart `simple.webplatform`.
-
 ## Unity Connects But No Agents Appear In Play Mode
 
 If GAMA starts, Unity connects, but no simulation objects appear, check the
