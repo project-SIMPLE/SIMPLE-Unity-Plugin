@@ -58,12 +58,11 @@ selected or already open in GAMA. For the tutorial workflow, start the
 If the experiment is not selected or not ready, Unity may connect to the
 middleware but fail to capture useful geometry data.
 
-Fix:
+Steps **in this exact order**:
 
 1. Start `simple.webplatform` with `npm start`.
 2. Open the `vr_xp` experiment in GAMA.
-3. Start or select the experiment.
-4. In Unity, click **Generate Preview from GAMA**.
+3. Then, and only then, click **Generate Preview from GAMA** in Unity.
 
 ## Generate Preview Says That `localhost:8001` Is Not Responding
 
