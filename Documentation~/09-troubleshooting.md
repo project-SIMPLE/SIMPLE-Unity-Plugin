@@ -38,13 +38,6 @@ plugin for GAMA.
 If this step is skipped, Unity may connect to `simple.webplatform`, but it will
 not receive the expected Unity geometry data.
 
-Fix:
-
-1. Install the SIMPLE Unity plugin in GAMA.
-2. Convert the target experiment to `vr_xp`.
-3. Open and run the generated `vr_xp` experiment.
-4. Use this `vr_xp` experiment for preview generation and Play Mode.
-
 ## Species Were Not Exported During `vr_xp` Conversion
 
 During the `vr_xp` conversion, each species that should appear in Unity must be
@@ -52,23 +45,6 @@ explicitly exported in the **Export species** step withe the Unity Plugin in GAM
 
 Do not simply click **Next** through the conversion wizard. Select each species
 on the left and click **+** under **Aspect in Unity**.
-
-Export at least the visible species, for example:
-
-- `prey`
-- `predator`
-- `vegetation_cell`
-
-The generated GAML model should contain one `unity_property` per exported
-species and a `send_geometries` reflex similar to:
-
-```gaml
-reflex send_geometries {
-	do add_geometries_to_send(prey, up_prey);
-	do add_geometries_to_send(predator, up_predator);
-	do add_geometries_to_send(vegetation_cell, up_vegetation_cell);
-}
-```
 
 If Unity logs a JSON output with `names=0`, `pointsLoc=0`, or `pointsGeom=0`,
 GAMA is probably sending an empty geometry payload.
@@ -84,9 +60,9 @@ middleware but fail to capture useful geometry data.
 
 Fix:
 
-1. Open the `vr_xp` experiment in GAMA.
-2. Start or select the experiment.
-3. Make sure `simple.webplatform` is running.
+1. Start `simple.webplatform` with `npm start`.
+2. Open the `vr_xp` experiment in GAMA.
+3. Start or select the experiment.
 4. In Unity, click **Generate Preview from GAMA**.
 
 ## Generate Preview Says That `localhost:8001` Is Not Responding
