@@ -10,12 +10,10 @@ Use it as a first diagnostic checklist before changing code.
 Before investigating a specific symptom, check the following points:
 
 - GAMA is open and the target experiment is selected.
-- The experiment used by Unity is the generated `vr_xp` experiment, not the
+- The experiment used by Unity is the generated `vr_xp` experiment withe the Unity Plugin, not the
   original GAMA experiment.
 - `simple.webplatform` is running with `npm start`.
-- Unity was prepared with **GAMA > GAMA Panel > Setup Scene**.
 - The Unity package is up to date.
-- The scene was saved after running the setup.
 
 ## Port Reference
 
