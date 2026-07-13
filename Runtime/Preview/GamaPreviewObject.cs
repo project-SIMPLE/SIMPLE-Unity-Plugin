@@ -2,6 +2,20 @@ using UnityEngine;
 using System.Collections.Generic;
 using UnityEngine.Rendering;
 
+public enum GamaPreviewRepresentationKind
+{
+    Unknown = 0,
+    Geometry = 1,
+    Prefab = 2
+}
+
+public enum GamaPreviewProvenance
+{
+    Unknown = 0,
+    CapturedJson = 1,
+    Grid = 2,
+    Sample = 3
+}
 
 [DisallowMultipleComponent]
 public class GamaPreviewObject : MonoBehaviour
@@ -14,6 +28,12 @@ public class GamaPreviewObject : MonoBehaviour
     public string agentId = string.Empty;
     public string geometryHash = string.Empty;
     public int sourceTick = -1;
+    public GamaPreviewProvenance provenance = GamaPreviewProvenance.Unknown;
+    public GamaPreviewRepresentationKind representationKind = GamaPreviewRepresentationKind.Unknown;
+    public string stableAgentKey = string.Empty;
+    public string sourcePropertyId = string.Empty;
+    public string sourcePrefabSignature = string.Empty;
+    public GameObject sourcePrefabAsset;
 
     [SerializeField, HideInInspector] private bool hasBaseState = false;
     [SerializeField, HideInInspector] private Vector3 baseLocalPosition;
@@ -55,6 +75,31 @@ public class GamaPreviewObject : MonoBehaviour
 
     [SerializeField, HideInInspector]
     private List<RendererBaseState> baseRenderers = new List<RendererBaseState>();
+
+    public bool IsEligibleForRuntimeReuse
+    {
+        get
+        {
+            if (!canBeReusedAtRuntime ||
+                provenance != GamaPreviewProvenance.CapturedJson ||
+                representationKind == GamaPreviewRepresentationKind.Unknown ||
+                string.IsNullOrWhiteSpace(stableAgentKey))
+            {
+                return false;
+            }
+
+            if (representationKind == GamaPreviewRepresentationKind.Prefab)
+            {
+                // A Unity asset reference is the exact proof of which prefab was
+                // instantiated. A path/property hint alone is not sufficient:
+                // runtime bindings and per-agent attributes may resolve another
+                // prefab for the same GAMA property.
+                return sourcePrefabAsset != null && transform.Find("VisualOverride") == null;
+            }
+
+            return !string.IsNullOrWhiteSpace(sourcePrefabSignature);
+        }
+    }
 
     public void CaptureBaseTransformIfNeeded()
     {

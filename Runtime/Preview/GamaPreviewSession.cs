@@ -31,6 +31,16 @@ public class GamaPreviewSession : MonoBehaviour
     public string previewCacheReference = string.Empty;
     public string selectionMode = string.Empty;
     public bool activeGamaSelection;
+    public string stableExperimentKey = string.Empty;
+    public string monitorExperimentId = string.Empty;
+
+    [Header("Play reuse authorization")]
+    [HideInInspector]
+    public bool reuseAuthorizedForPlay;
+    [HideInInspector]
+    public string authorizedStableExperimentKey = string.Empty;
+    [HideInInspector]
+    public string authorizedMonitorExperimentId = string.Empty;
 
     [Header("Capture metadata")]
     public string captureTimestampUtc = string.Empty;
@@ -45,4 +55,45 @@ public class GamaPreviewSession : MonoBehaviour
     public List<string> speciesList = new List<string>();
     public List<GamaPreviewSpeciesCount> speciesCounts = new List<GamaPreviewSpeciesCount>();
     public GamaSpeciesRenderOverrides speciesOverrides;
+
+    public bool TryGetStableExperimentKey(out string key)
+    {
+        if (!GamaPreviewReuseIdentity.TryBuildStableExperimentKey(
+                modelPath,
+                experimentName,
+                activeGamaSelection,
+                monitorExperimentId,
+                out key))
+        {
+            key = string.Empty;
+            return false;
+        }
+
+        return string.IsNullOrEmpty(stableExperimentKey) ||
+               string.Equals(stableExperimentKey, key, StringComparison.Ordinal);
+    }
+
+    public bool RefreshStableExperimentKey()
+    {
+        if (!GamaPreviewReuseIdentity.TryBuildStableExperimentKey(
+                modelPath,
+                experimentName,
+                activeGamaSelection,
+                monitorExperimentId,
+                out string key))
+        {
+            stableExperimentKey = string.Empty;
+            return false;
+        }
+
+        stableExperimentKey = key;
+        return true;
+    }
+
+    public void ClearRuntimeReuseAuthorization()
+    {
+        reuseAuthorizedForPlay = false;
+        authorizedStableExperimentKey = string.Empty;
+        authorizedMonitorExperimentId = string.Empty;
+    }
 }

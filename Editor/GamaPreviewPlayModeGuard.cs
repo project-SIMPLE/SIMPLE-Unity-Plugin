@@ -29,6 +29,7 @@ public static class GamaPreviewPlayModeGuard
     {
         if (state == PlayModeStateChange.ExitingEditMode)
         {
+            ClearPreviewReuseAuthorization();
             GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
             EnsureStableUnityPlayId();
 
@@ -54,11 +55,13 @@ public static class GamaPreviewPlayModeGuard
                 }
             }
 
-            TryPrepareGamaForPlay();
+            PlayPreparationResult preparation = TryPrepareGamaForPlay();
+            AuthorizePreviewReuse(preparation);
         }
         else if (state == PlayModeStateChange.ExitingPlayMode)
         {
             string runtimePlayerId = StaticInformation.getId();
+            PrepareSimulationManagersForEditorPlayExit();
             RestorePersistedAppearanceBeforeLeavingPlay();
 
             TryPauseGamaFromUnity("Unity Play stopped", 2);
@@ -67,6 +70,7 @@ public static class GamaPreviewPlayModeGuard
         }
         else if (state == PlayModeStateChange.EnteredEditMode)
         {
+            ClearPreviewReuseAuthorization();
             GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
 
             if (SessionState.GetBool(SessionStateKey, false))
@@ -375,12 +379,38 @@ public static class GamaPreviewPlayModeGuard
         return fallback;
     }
 
-    private static void TryPrepareGamaForPlay()
+    private readonly struct PlayPreparationResult
+    {
+        public readonly bool Success;
+        public readonly bool HasStrictTarget;
+        public readonly bool UsedMonitorFallback;
+        public readonly string ModelPath;
+        public readonly string ExperimentName;
+        public readonly string ExperimentId;
+
+        public PlayPreparationResult(
+            bool success,
+            bool hasStrictTarget,
+            bool usedMonitorFallback,
+            string modelPath,
+            string experimentName,
+            string experimentId)
+        {
+            Success = success;
+            HasStrictTarget = hasStrictTarget;
+            UsedMonitorFallback = usedMonitorFallback;
+            ModelPath = modelPath ?? string.Empty;
+            ExperimentName = experimentName ?? string.Empty;
+            ExperimentId = experimentId ?? string.Empty;
+        }
+    }
+
+    private static PlayPreparationResult TryPrepareGamaForPlay()
     {
         if (!EditorPrefs.GetBool(AutoLaunchGamaOnPlayPrefKey, true))
         {
             Debug.Log("[GAMA][PLAY] Auto-launch disabled; Play will only connect to the existing middleware state.");
-            return;
+            return default;
         }
 
         string host = EditorPrefs.GetString(GamaCaptureHostPrefKey, PlayerPrefs.GetString("IP", "localhost"));
@@ -419,6 +449,7 @@ public static class GamaPreviewPlayModeGuard
             using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(130)))
             {
                 CleanupEditorPreviewPlayersBeforePlay(host, playerPort, monitorPort, cts.Token);
+                bool usedMonitorFallback = !hasTarget;
 
                 GamaEditorMiddlewareOrchestrator.ManagedExperimentResult result = hasTarget
                     ? GamaEditorMiddlewareOrchestrator.StartMiddlewareManagedExperimentAsync(
@@ -440,6 +471,7 @@ public static class GamaPreviewPlayModeGuard
 
                 if (hasTarget && result != null && !result.Success && ShouldAttachToCurrentMonitorFallback(result.Error))
                 {
+                    usedMonitorFallback = true;
                     Debug.LogWarning("[GAMA][PLAY] Strict middleware catalog launch failed; attaching to current monitor experiment instead. " +
                                      "The Unity selection remains model=" + (modelPath ?? string.Empty) +
                                      " experiment=" + (experimentName ?? string.Empty) +
@@ -465,7 +497,13 @@ public static class GamaPreviewPlayModeGuard
                     Debug.Log("[GAMA][PLAY] GAMA ready before Play: state=" +
                               (result.FinalExperimentState ?? string.Empty) +
                               (string.IsNullOrEmpty(result.ExperimentId) ? string.Empty : " exp_id=" + result.ExperimentId));
-                    return;
+                    return new PlayPreparationResult(
+                        true,
+                        hasTarget,
+                        usedMonitorFallback,
+                        modelPath,
+                        experimentName,
+                        result.ExperimentId);
                 }
 
                 string error = result != null && !string.IsNullOrWhiteSpace(result.Error)
@@ -484,6 +522,111 @@ public static class GamaPreviewPlayModeGuard
         catch (Exception ex)
         {
             Debug.LogWarning("[GAMA][PLAY] GAMA auto-launch exception before Play: " + ex.Message);
+        }
+
+        return default;
+    }
+
+    private static void AuthorizePreviewReuse(PlayPreparationResult preparation)
+    {
+        if (!preparation.Success)
+        {
+            return;
+        }
+
+        if (EditorSettings.enterPlayModeOptionsEnabled &&
+            (EditorSettings.enterPlayModeOptions & EnterPlayModeOptions.DisableSceneReload) != 0)
+        {
+            Debug.LogWarning(
+                "[GAMA][PREVIEW][REUSE] Preview GameObject reuse is disabled because Scene Reload is disabled. " +
+                "This protects the Edit Mode objects from runtime mutations.");
+            return;
+        }
+
+        GamaPreviewSession session = FindCurrentPreviewSession();
+        if (session == null || session.stale || string.IsNullOrWhiteSpace(session.stableExperimentKey))
+        {
+            return;
+        }
+
+        string expectedKey = string.Empty;
+        bool activeSelection = session.activeGamaSelection ||
+                               string.Equals(
+                                   session.modelPath,
+                                   "GAMA_ACTIVE_SELECTION",
+                                   StringComparison.OrdinalIgnoreCase);
+
+        if (preparation.HasStrictTarget && !preparation.UsedMonitorFallback)
+        {
+            if (!GamaPreviewReuseIdentity.TryBuildStableExperimentKey(
+                    preparation.ModelPath,
+                    preparation.ExperimentName,
+                    false,
+                    preparation.ExperimentId,
+                    out expectedKey))
+            {
+                return;
+            }
+        }
+        else
+        {
+            if (!activeSelection ||
+                string.IsNullOrWhiteSpace(session.monitorExperimentId) ||
+                string.IsNullOrWhiteSpace(preparation.ExperimentId) ||
+                !string.Equals(
+                    session.monitorExperimentId.Trim(),
+                    preparation.ExperimentId.Trim(),
+                    StringComparison.Ordinal))
+            {
+                Debug.LogWarning(
+                    "[GAMA][PREVIEW][REUSE] Active-monitor preview reuse was refused because the experiment id could not be matched exactly.");
+                return;
+            }
+
+            expectedKey = session.stableExperimentKey;
+        }
+
+        if (!string.Equals(session.stableExperimentKey, expectedKey, StringComparison.Ordinal))
+        {
+            Debug.LogWarning(
+                "[GAMA][PREVIEW][REUSE] Preview reuse was refused because the launched experiment does not exactly match the loaded preview.");
+            return;
+        }
+
+        session.reuseAuthorizedForPlay = true;
+        session.authorizedStableExperimentKey = expectedKey;
+        session.authorizedMonitorExperimentId = preparation.ExperimentId;
+        Debug.Log("[GAMA][PREVIEW][REUSE] Existing preview GameObjects are eligible for this Play session.");
+    }
+
+    private static void ClearPreviewReuseAuthorization()
+    {
+        GamaPreviewSession[] sessions = UnityEngine.Object.FindObjectsByType<GamaPreviewSession>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+        for (int i = 0; i < sessions.Length; i++)
+        {
+            GamaPreviewSession session = sessions[i];
+            if (session == null)
+            {
+                continue;
+            }
+
+            session.ClearRuntimeReuseAuthorization();
+        }
+    }
+
+    private static void PrepareSimulationManagersForEditorPlayExit()
+    {
+        SimulationManager[] managers = UnityEngine.Object.FindObjectsByType<SimulationManager>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+        for (int i = 0; i < managers.Length; i++)
+        {
+            if (managers[i] != null)
+            {
+                managers[i].PrepareForEditorPlayExit();
+            }
         }
     }
 

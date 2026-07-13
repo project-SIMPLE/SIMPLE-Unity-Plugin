@@ -197,6 +197,7 @@ internal static class GamaEditorFirstTickCapture
         public int BestWorldTickIndex;
         public string BestWorldJsonPath;
         public bool DynamicAgentsFound;
+        public string ExperimentId = string.Empty;
         public string PreviewWarning;
         public string LogTrail;
     }
@@ -433,6 +434,11 @@ internal static class GamaEditorFirstTickCapture
                     result.Error = orch.Error ?? "Middleware orchestration failed (monitor).";
                     result.LogTrail = logBuilder + orch.LogTrail;
                     return result;
+                }
+                if (!string.IsNullOrWhiteSpace(orch.ExperimentId) &&
+                    !string.Equals(orch.ExperimentId.Trim(), "0", StringComparison.Ordinal))
+                {
+                    result.ExperimentId = orch.ExperimentId.Trim();
                 }
             }
             else if (managedFromUnity && !directGamaServer)
@@ -844,6 +850,11 @@ internal static class GamaEditorFirstTickCapture
                 result.BestWorldTickIndex = state.WorldBestFrameIndex;
                 result.BestWorldJsonPath = state.WorldBestJsonPath;
                 result.DynamicAgentsFound = state.PreviewDynamicAgentsFound;
+                if (!string.IsNullOrWhiteSpace(state.DirectExperimentId) &&
+                    !string.Equals(state.DirectExperimentId.Trim(), "0", StringComparison.Ordinal))
+                {
+                    result.ExperimentId = state.DirectExperimentId.Trim();
+                }
 
                 if (state.GeometryExportErrorDetected && string.IsNullOrWhiteSpace(result.PreviewWarning))
                 {
