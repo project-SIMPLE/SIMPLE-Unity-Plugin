@@ -5,20 +5,22 @@ using System.Collections.Generic;
 public static class GamaRuntimePreviewOverrideApplier
 {
     private const string StaticPreviewRootName = "[GAMA] Static Experiment Preview";
-    private const int RuntimeSessionScoreBonus = 1000000;
     private static Dictionary<string, GamaSpeciesRenderOverrideEntry> overridesBySpecies;
-    private static Dictionary<string, GamaSpeciesRenderOverrideEntry> runtimeSessionOverrides;
     private static bool initialized;
     private static bool runtimeContextAvailable;
     private static int logCount;
     private const int MaxLogs = 5;
     private const int MaxStartupOverrideLogs = 20;
 
+    static GamaRuntimePreviewOverrideApplier()
+    {
+        GamaSpeciesAppearanceStateStore.Changed += OnAppearanceStateChanged;
+    }
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetState()
     {
         overridesBySpecies = null;
-        runtimeSessionOverrides = null;
         initialized = false;
         runtimeContextAvailable = false;
         logCount = 0;
@@ -30,47 +32,20 @@ public static class GamaRuntimePreviewOverrideApplier
         string experimentName,
         string speciesName)
     {
-        string normalizedSpecies = string.IsNullOrWhiteSpace(speciesName) ? "unknown" : speciesName.Trim();
-        string key = BuildRuntimeSessionOverrideKey(modelPath, experimentName, normalizedSpecies);
-        if (runtimeSessionOverrides == null)
-        {
-            runtimeSessionOverrides = new Dictionary<string, GamaSpeciesRenderOverrideEntry>(StringComparer.OrdinalIgnoreCase);
-        }
-
-        if (runtimeSessionOverrides.TryGetValue(key, out GamaSpeciesRenderOverrideEntry entry))
-        {
-            return entry;
-        }
-
-        GamaSpeciesRenderOverrideEntry sourceEntry = null;
-        if (sourceAsset != null &&
-            !sourceAsset.TryGetOverride(modelPath, experimentName, normalizedSpecies, out sourceEntry, true))
-        {
-            sourceAsset.TryGetOverride(modelPath, experimentName, normalizedSpecies, out sourceEntry);
-        }
-
-        entry = CloneOverrideEntry(sourceEntry) ?? new GamaSpeciesRenderOverrideEntry();
-        entry.modelPath = modelPath ?? string.Empty;
-        entry.experimentName = experimentName ?? string.Empty;
-        entry.speciesName = normalizedSpecies;
-        entry.speciesKey = normalizedSpecies;
-        if (entry.discreteColorRules == null)
-        {
-            entry.discreteColorRules = new List<GamaDiscreteColorRule>();
-        }
-
-        runtimeSessionOverrides[key] = entry;
+        GamaSpeciesAppearanceContext context = new GamaSpeciesAppearanceContext(
+            sourceAsset,
+            modelPath,
+            experimentName);
+        GamaSpeciesAppearanceStateStore.SetActiveContext(context);
+        GamaSpeciesRenderOverrideEntry entry =
+            GamaSpeciesAppearanceStateStore.GetOrCreateEditableEntry(context, speciesName, true);
         initialized = false;
         return entry;
     }
 
     public static void ClearRuntimeSessionOverrides()
     {
-        if (runtimeSessionOverrides != null)
-        {
-            runtimeSessionOverrides.Clear();
-        }
-
+        GamaSpeciesAppearanceStateStore.ClearRuntimeOverlay();
         overridesBySpecies = null;
         initialized = false;
         runtimeContextAvailable = false;
@@ -181,7 +156,7 @@ public static class GamaRuntimePreviewOverrideApplier
             experimentName = session.experimentName ?? string.Empty;
         }
 
-        if (asset == null && (runtimeSessionOverrides == null || runtimeSessionOverrides.Count == 0))
+        if (asset == null)
         {
             Debug.Log("[GAMA][RUNTIME][OVERRIDE] No overrides asset found on the SimulationManager or preview session.");
             return;
@@ -196,39 +171,79 @@ public static class GamaRuntimePreviewOverrideApplier
             Debug.LogWarning("[GAMA][RUNTIME][OVERRIDE_WARN] missing context; using species-only runtime overrides from the active SimulationManager.");
         }
 
-        string wantedModel = GamaSpeciesRenderOverrides.NormalizeKey(modelPath);
+        string wantedModel = GamaSpeciesRenderOverrides.NormalizeModelPath(modelPath);
         string wantedExperiment = GamaSpeciesRenderOverrides.NormalizeKey(experimentName);
+        GamaSpeciesAppearanceContext context = new GamaSpeciesAppearanceContext(
+            asset,
+            modelPath,
+            experimentName);
+        GamaSpeciesAppearanceStateStore.SetActiveContext(context);
 
-        if (asset != null && asset.entries != null)
+        bool applyPersistedPreviewSettings = true;
+#if UNITY_EDITOR
+        applyPersistedPreviewSettings = UnityEditor.EditorPrefs.GetBool(
+            "ProjectSimple.GamaUnity.Panel.ApplyPreviewSettingsToPlay",
+            true);
+#endif
+        if (applyPersistedPreviewSettings && asset != null && asset.entries != null)
         {
             foreach (var e in asset.entries)
             {
-                TryAddRuntimeOverrideEntry(
-                    e,
-                    wantedModel,
-                    wantedExperiment,
-                    bestScoresBySpecies,
-                    false,
-                    0);
+                TryAddExactRuntimeOverrideEntry(e, wantedModel, wantedExperiment, bestScoresBySpecies, 0);
             }
         }
 
-        if (runtimeSessionOverrides != null)
+        IReadOnlyList<GamaSpeciesRenderOverrideEntry> overlayEntries =
+            GamaSpeciesAppearanceStateStore.GetRuntimeOverlayEntries(context);
+        for (int i = 0; i < overlayEntries.Count; i++)
         {
-            foreach (GamaSpeciesRenderOverrideEntry e in runtimeSessionOverrides.Values)
-            {
-                TryAddRuntimeOverrideEntry(
-                    e,
-                    wantedModel,
-                    wantedExperiment,
-                    bestScoresBySpecies,
-                    true,
-                    RuntimeSessionScoreBonus);
-            }
+            TryAddExactRuntimeOverrideEntry(
+                overlayEntries[i],
+                wantedModel,
+                wantedExperiment,
+                bestScoresBySpecies,
+                1000000);
         }
 
         Debug.Log("[GAMA][RUNTIME][OVERRIDE] Loaded preview overrides: " + string.Join(",", overridesBySpecies.Keys));
         LogLoadedOverrides(bestScoresBySpecies, modelPath, experimentName);
+        initialized = true;
+    }
+
+    private static void TryAddExactRuntimeOverrideEntry(
+        GamaSpeciesRenderOverrideEntry entry,
+        string wantedModel,
+        string wantedExperiment,
+        Dictionary<string, int> bestScoresBySpecies,
+        int scoreBonus)
+    {
+        if (entry == null)
+        {
+            return;
+        }
+
+        string species = entry.GetSpeciesName();
+        if (string.IsNullOrWhiteSpace(species) ||
+            !IsExactRuntimeContextEntry(
+                entry,
+                wantedModel,
+                wantedExperiment,
+                GamaSpeciesRenderOverrides.NormalizeKey(species)))
+        {
+            return;
+        }
+
+        int score = entry.GetOverrideMeaningScore() + scoreBonus;
+        bestScoresBySpecies[species] = score;
+        overridesBySpecies[species] = entry;
+    }
+
+    private static void OnAppearanceStateChanged(GamaSpeciesAppearanceChange change)
+    {
+        overridesBySpecies = null;
+        initialized = false;
+        runtimeContextAvailable = false;
+        logCount = 0;
     }
 
     private static int GetRuntimeSelectionScore(
@@ -313,7 +328,7 @@ public static class GamaRuntimePreviewOverrideApplier
 
     private static string BuildRuntimeSessionOverrideKey(string modelPath, string experimentName, string speciesName)
     {
-        return GamaSpeciesRenderOverrides.NormalizeKey(modelPath) + "|" +
+        return GamaSpeciesRenderOverrides.NormalizeModelPath(modelPath) + "|" +
                GamaSpeciesRenderOverrides.NormalizeKey(experimentName) + "|" +
                GamaSpeciesRenderOverrides.NormalizeKey(speciesName);
     }
@@ -401,7 +416,7 @@ public static class GamaRuntimePreviewOverrideApplier
         }
 
         return string.Equals(
-                   GamaSpeciesRenderOverrides.NormalizeKey(entry.modelPath),
+                   GamaSpeciesRenderOverrides.NormalizeModelPath(entry.modelPath),
                    wantedModel,
                    StringComparison.Ordinal) &&
                string.Equals(
@@ -425,7 +440,7 @@ public static class GamaRuntimePreviewOverrideApplier
         }
 
         return string.Equals(
-                   GamaSpeciesRenderOverrides.NormalizeKey(entry.modelPath),
+                   GamaSpeciesRenderOverrides.NormalizeModelPath(entry.modelPath),
                    "gama_active_selection",
                    StringComparison.Ordinal) &&
                string.Equals(

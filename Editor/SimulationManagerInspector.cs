@@ -285,6 +285,11 @@ public class SimulationManagerInspector : Editor
         AssignOverrideContextToTargetManager(asset, modelPath, experimentName);
 
         bool editRuntimeOnly = EditorApplication.isPlaying;
+        GamaSpeciesAppearanceContext appearanceContext = new GamaSpeciesAppearanceContext(
+            asset,
+            modelPath,
+            experimentName);
+        GamaSpeciesAppearanceEditorCoordinator.SetActiveContext(appearanceContext);
         bool assetChanged = false;
         bool runtimeChanged = false;
         List<string> changedSpecies = new List<string>();
@@ -300,15 +305,9 @@ public class SimulationManagerInspector : Editor
             SerializedProperty tag = entry.FindPropertyRelative("tag");
             SerializedProperty importedVisible = entry.FindPropertyRelative("importedVisible");
             SerializedProperty importedColor = entry.FindPropertyRelative("importedColor");
-            SerializedProperty importedBaseScale = entry.FindPropertyRelative("importedBaseScale");
-            SerializedProperty importedYOffset = entry.FindPropertyRelative("importedYOffset");
-            SerializedProperty importedRotationOffsetY = entry.FindPropertyRelative("importedRotationOffsetY");
             SerializedProperty hasOriginalImportDefaults = entry.FindPropertyRelative("hasOriginalImportDefaults");
             SerializedProperty originalImportedVisible = entry.FindPropertyRelative("originalImportedVisible");
             SerializedProperty originalImportedColor = entry.FindPropertyRelative("originalImportedColor");
-            SerializedProperty originalImportedBaseScale = entry.FindPropertyRelative("originalImportedBaseScale");
-            SerializedProperty originalImportedYOffset = entry.FindPropertyRelative("originalImportedYOffset");
-            SerializedProperty originalImportedRotationOffsetY = entry.FindPropertyRelative("originalImportedRotationOffsetY");
 
             string speciesName = propertyId != null ? propertyId.stringValue : "(unknown)";
             string tagStr = tag != null && !string.IsNullOrEmpty(tag.stringValue) ? " [" + tag.stringValue + "]" : "";
@@ -327,18 +326,9 @@ public class SimulationManagerInspector : Editor
                 importedVisible != null &&
                 originalImportedVisible != null &&
                 originalImportedVisible.boolValue != importedVisible.boolValue;
-            float defaultScaleMultiplier = ResolveOriginalScaleMultiplier(
-                useOriginalDefaults,
-                importedBaseScale,
-                originalImportedBaseScale);
-            Vector3 defaultPositionOffset = ResolveOriginalPositionOffset(
-                useOriginalDefaults,
-                importedYOffset,
-                originalImportedYOffset);
-            Vector3 defaultRotationOffsetEuler = ResolveOriginalRotationOffsetEuler(
-                useOriginalDefaults,
-                importedRotationOffsetY,
-                originalImportedRotationOffsetY);
+            const float defaultScaleMultiplier = 1f;
+            Vector3 defaultPositionOffset = Vector3.zero;
+            Vector3 defaultRotationOffsetEuler = Vector3.zero;
 
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
@@ -349,13 +339,36 @@ public class SimulationManagerInspector : Editor
             EditorGUILayout.LabelField("Agent Attributes", EditorStyles.miniBoldLabel);
             EditorGUI.indentLevel++;
             
-            GamaSpeciesRenderOverrideEntry overrideEntry = editRuntimeOnly
-                ? GamaRuntimePreviewOverrideApplier.GetOrCreateRuntimeSessionOverride(
-                    asset,
-                    modelPath,
-                    experimentName,
-                    speciesName)
-                : asset.GetOrCreateEntry(modelPath, experimentName, speciesName);
+            GamaSpeciesRenderOverrideEntry persistedEntry = null;
+            bool hasPersistedEntry = !editRuntimeOnly &&
+                GamaSpeciesAppearanceStateStore.TryGetEntry(
+                    appearanceContext,
+                    speciesName,
+                    false,
+                    out persistedEntry);
+            GamaSpeciesRenderOverrideEntry overrideEntry;
+            if (editRuntimeOnly)
+            {
+                overrideEntry = GamaSpeciesAppearanceStateStore.GetOrCreateEditableEntry(
+                    appearanceContext,
+                    speciesName,
+                    true);
+            }
+            else if (hasPersistedEntry)
+            {
+                Undo.RecordObject(asset, "Edit GAMA species appearance");
+                overrideEntry = persistedEntry;
+            }
+            else
+            {
+                overrideEntry = new GamaSpeciesRenderOverrideEntry
+                {
+                    modelPath = modelPath,
+                    experimentName = experimentName,
+                    speciesName = speciesName,
+                    speciesKey = speciesName
+                };
+            }
 
             EditorGUI.BeginChangeCheck();
 
@@ -436,6 +449,21 @@ public class SimulationManagerInspector : Editor
 
             if (rowChanged)
             {
+                if (!editRuntimeOnly && !hasPersistedEntry)
+                {
+                    Undo.RecordObject(asset, "Edit GAMA species appearance");
+                    GamaSpeciesRenderOverrideEntry storedEntry =
+                        GamaSpeciesAppearanceStateStore.GetOrCreateEditableEntry(
+                            appearanceContext,
+                            speciesName,
+                            false);
+                    GamaSpeciesAppearanceStateStore.CopyEntryValues(storedEntry, overrideEntry);
+                    overrideEntry = storedEntry;
+                }
+                GamaSpeciesAppearanceStateStore.NotifyEntryChanged(
+                    appearanceContext,
+                    speciesName,
+                    editRuntimeOnly);
                 if (editRuntimeOnly)
                 {
                     runtimeChanged = true;
@@ -478,13 +506,8 @@ public class SimulationManagerInspector : Editor
             return;
         }
 
-        if (manager.SetSpeciesRenderOverridesContext(asset, modelPath, experimentName))
-        {
-            if (!EditorApplication.isPlaying)
-            {
-                EditorUtility.SetDirty(manager);
-            }
-        }
+        GamaSpeciesAppearanceEditorCoordinator.SetActiveContext(
+            new GamaSpeciesAppearanceContext(asset, modelPath, experimentName));
     }
 
     private static void TrackChangedSpecies(List<string> changedSpecies, string speciesName, string tag)
@@ -885,55 +908,6 @@ public class SimulationManagerInspector : Editor
         return !string.IsNullOrWhiteSpace(resourcesPath);
     }
 
-    private static float ResolveOriginalScaleMultiplier(
-        bool useOriginalDefaults,
-        SerializedProperty importedBaseScale,
-        SerializedProperty originalImportedBaseScale)
-    {
-        if (!useOriginalDefaults || importedBaseScale == null || originalImportedBaseScale == null)
-        {
-            return 1f;
-        }
-
-        float currentScale = importedBaseScale.floatValue;
-        float originalScale = originalImportedBaseScale.floatValue;
-        if (Mathf.Abs(currentScale) < 0.0001f)
-        {
-            return 1f;
-        }
-
-        float multiplier = originalScale / currentScale;
-        return Mathf.Abs(multiplier - 1f) > 0.0001f ? Mathf.Max(0.0001f, multiplier) : 1f;
-    }
-
-    private static Vector3 ResolveOriginalPositionOffset(
-        bool useOriginalDefaults,
-        SerializedProperty importedYOffset,
-        SerializedProperty originalImportedYOffset)
-    {
-        if (!useOriginalDefaults || importedYOffset == null || originalImportedYOffset == null)
-        {
-            return Vector3.zero;
-        }
-
-        float deltaY = originalImportedYOffset.floatValue - importedYOffset.floatValue;
-        return Mathf.Abs(deltaY) > 0.0001f ? new Vector3(0f, deltaY, 0f) : Vector3.zero;
-    }
-
-    private static Vector3 ResolveOriginalRotationOffsetEuler(
-        bool useOriginalDefaults,
-        SerializedProperty importedRotationOffsetY,
-        SerializedProperty originalImportedRotationOffsetY)
-    {
-        if (!useOriginalDefaults || importedRotationOffsetY == null || originalImportedRotationOffsetY == null)
-        {
-            return Vector3.zero;
-        }
-
-        float deltaY = originalImportedRotationOffsetY.floatValue - importedRotationOffsetY.floatValue;
-        return Mathf.Abs(deltaY) > 0.0001f ? new Vector3(0f, deltaY, 0f) : Vector3.zero;
-    }
-
     private static void ResetSpeciesOverrideEntry(
         GamaSpeciesRenderOverrideEntry entry,
         Color defaultColor,
@@ -996,39 +970,19 @@ public class SimulationManagerInspector : Editor
         out string modelPath,
         out string experimentName)
     {
-        asset = null;
-        modelPath = string.Empty;
-        experimentName = string.Empty;
-
-        SimulationManager manager = UnityEngine.Object.FindFirstObjectByType<SimulationManager>(FindObjectsInactive.Include);
-        if (manager != null &&
-            manager.TryGetSpeciesRenderOverridesContext(out asset, out modelPath, out experimentName) &&
-            asset != null &&
-            (!EditorApplication.isPlaying || !string.IsNullOrWhiteSpace(modelPath) || !string.IsNullOrWhiteSpace(experimentName)))
+        if (GamaSpeciesAppearanceEditorCoordinator.TryResolveActiveContext(
+                out GamaSpeciesAppearanceContext context))
         {
+            asset = context.Asset;
+            modelPath = context.ModelPath;
+            experimentName = context.ExperimentName;
             return true;
         }
 
-        GamaPreviewSession session = FindCurrentPreviewSession();
-        if (session != null)
-        {
-            asset = session.speciesOverrides != null
-                ? session.speciesOverrides
-                : GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
-
-            if (asset != null && session.speciesOverrides == null)
-            {
-                session.speciesOverrides = asset;
-                EditorUtility.SetDirty(session);
-            }
-
-            modelPath = session.modelPath ?? string.Empty;
-            experimentName = session.experimentName ?? string.Empty;
-            return asset != null;
-        }
-
-        asset = GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
-        return asset != null;
+        asset = null;
+        modelPath = string.Empty;
+        experimentName = string.Empty;
+        return false;
     }
 
     private static GamaPreviewSession FindCurrentPreviewSession()

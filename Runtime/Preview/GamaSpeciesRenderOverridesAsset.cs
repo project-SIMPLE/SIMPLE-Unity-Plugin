@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using UnityEngine;
 
 /// <summary>
@@ -37,7 +38,7 @@ public class GamaSpeciesRenderOverrides : ScriptableObject
             return false;
         }
 
-        string wantedModel = NormalizeKey(modelPath);
+        string wantedModel = NormalizeModelPath(modelPath);
         string wantedExperiment = NormalizeKey(experimentName);
         string wantedSpecies = NormalizeKey(speciesName);
         for (int i = 0; i < entries.Count; i++)
@@ -48,7 +49,7 @@ public class GamaSpeciesRenderOverrides : ScriptableObject
                 continue;
             }
 
-            if (string.Equals(NormalizeKey(candidate.modelPath), wantedModel, StringComparison.Ordinal) &&
+            if (string.Equals(NormalizeModelPath(candidate.modelPath), wantedModel, StringComparison.Ordinal) &&
                 string.Equals(NormalizeKey(candidate.experimentName), wantedExperiment, StringComparison.Ordinal) &&
                 string.Equals(NormalizeKey(candidate.GetSpeciesName()), wantedSpecies, StringComparison.Ordinal))
             {
@@ -74,7 +75,7 @@ public class GamaSpeciesRenderOverrides : ScriptableObject
             return false;
         }
 
-        string wantedModel = NormalizeKey(modelPath);
+        string wantedModel = NormalizeModelPath(modelPath);
         string wantedExperiment = NormalizeKey(experimentName);
         string wantedSpecies = NormalizeKey(speciesName);
 
@@ -122,7 +123,7 @@ public class GamaSpeciesRenderOverrides : ScriptableObject
         string experimentName,
         string speciesName)
     {
-        string wantedModel = NormalizeKey(modelPath);
+        string wantedModel = NormalizeModelPath(modelPath);
         string wantedExperiment = NormalizeKey(experimentName);
         string wantedSpecies = NormalizeKey(speciesName);
 
@@ -136,7 +137,7 @@ public class GamaSpeciesRenderOverrides : ScriptableObject
                     continue;
                 }
 
-                if (string.Equals(NormalizeKey(candidate.modelPath), wantedModel, StringComparison.Ordinal) &&
+                if (string.Equals(NormalizeModelPath(candidate.modelPath), wantedModel, StringComparison.Ordinal) &&
                     string.Equals(NormalizeKey(candidate.experimentName), wantedExperiment, StringComparison.Ordinal) &&
                     string.Equals(NormalizeKey(candidate.GetSpeciesName()), wantedSpecies, StringComparison.Ordinal))
                 {
@@ -161,7 +162,7 @@ public class GamaSpeciesRenderOverrides : ScriptableObject
             return;
         }
 
-        string newModel = NormalizeKey(newEntry.modelPath);
+        string newModel = NormalizeModelPath(newEntry.modelPath);
         string newExperiment = NormalizeKey(newEntry.experimentName);
         string newSpecies = NormalizeKey(newEntry.GetSpeciesName());
 
@@ -173,7 +174,7 @@ public class GamaSpeciesRenderOverrides : ScriptableObject
                 continue;
             }
 
-            if (string.Equals(NormalizeKey(existing.modelPath), newModel, StringComparison.Ordinal) &&
+            if (string.Equals(NormalizeModelPath(existing.modelPath), newModel, StringComparison.Ordinal) &&
                 string.Equals(NormalizeKey(existing.experimentName), newExperiment, StringComparison.Ordinal) &&
                 string.Equals(NormalizeKey(existing.GetSpeciesName()), newSpecies, StringComparison.Ordinal))
             {
@@ -187,7 +188,74 @@ public class GamaSpeciesRenderOverrides : ScriptableObject
 
     public static string NormalizeKey(string value)
     {
-        return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        string normalized = value.Trim().Replace('\\', '/').ToLowerInvariant();
+        if (normalized.IndexOf('/') < 0)
+        {
+            return normalized;
+        }
+
+        bool isUnc = normalized.StartsWith("//", StringComparison.Ordinal);
+        bool isRooted = !isUnc && normalized.StartsWith("/", StringComparison.Ordinal);
+        string[] segments = normalized.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+        List<string> canonicalSegments = new List<string>(segments.Length);
+        for (int i = 0; i < segments.Length; i++)
+        {
+            string segment = segments[i];
+            if (segment == ".")
+            {
+                continue;
+            }
+
+            if (segment == "..")
+            {
+                int lastIndex = canonicalSegments.Count - 1;
+                if (lastIndex >= 0 &&
+                    canonicalSegments[lastIndex] != ".." &&
+                    !canonicalSegments[lastIndex].EndsWith(":", StringComparison.Ordinal))
+                {
+                    canonicalSegments.RemoveAt(lastIndex);
+                }
+                else if (!isRooted && !isUnc)
+                {
+                    canonicalSegments.Add(segment);
+                }
+                continue;
+            }
+
+            canonicalSegments.Add(segment);
+        }
+
+        string prefix = isUnc ? "//" : (isRooted ? "/" : string.Empty);
+        return prefix + string.Join("/", canonicalSegments);
+    }
+
+    public static string NormalizeModelPath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        string trimmed = value.Trim();
+        if (trimmed.IndexOf("://", StringComparison.Ordinal) >= 0 ||
+            string.Equals(trimmed, "GAMA_ACTIVE_SELECTION", StringComparison.OrdinalIgnoreCase))
+        {
+            return NormalizeKey(trimmed);
+        }
+
+        try
+        {
+            return NormalizeKey(Path.GetFullPath(trimmed));
+        }
+        catch
+        {
+            return NormalizeKey(trimmed);
+        }
     }
 }
 
@@ -283,7 +351,7 @@ public class GamaSpeciesRenderOverrideEntry
             return -1;
         }
 
-        string currentModel = GamaSpeciesRenderOverrides.NormalizeKey(modelPath);
+        string currentModel = GamaSpeciesRenderOverrides.NormalizeModelPath(modelPath);
         string currentExperiment = GamaSpeciesRenderOverrides.NormalizeKey(experimentName);
 
         bool modelMatches = string.IsNullOrEmpty(currentModel) || string.Equals(currentModel, wantedModel, StringComparison.Ordinal);
@@ -393,14 +461,11 @@ public class GamaSpeciesRenderOverrideEntry
         overrideRotationOffset ||
         overrideVisibility ||
         overridePreviewVisibility ||
-        overrideRuntimeVisibility ||
-        positionOffset.sqrMagnitude > 0.0001f ||
-        rotationOffsetEuler.sqrMagnitude > 0.0001f ||
-        Math.Abs(scaleMultiplier - 1f) > 0.0001f;
+        overrideRuntimeVisibility;
 
     public bool UsesScaleOverride()
     {
-        return overrideScaleMultiplier || Math.Abs(scaleMultiplier - 1f) > 0.0001f;
+        return overrideScaleMultiplier;
     }
 
     public bool UsesDynamicColorOverride()
@@ -588,12 +653,12 @@ public class GamaSpeciesRenderOverrideEntry
 
     public bool UsesPositionOffsetOverride()
     {
-        return overridePositionOffset || positionOffset.sqrMagnitude > 0.0001f;
+        return overridePositionOffset;
     }
 
     public bool UsesRotationOffsetOverride()
     {
-        return overrideRotationOffset || rotationOffsetEuler.sqrMagnitude > 0.0001f;
+        return overrideRotationOffset;
     }
 
     public float GetEffectiveScaleMultiplier()

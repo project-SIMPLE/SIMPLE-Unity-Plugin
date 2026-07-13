@@ -44,25 +44,23 @@ public static class GamaEditorPreviewOverrideApplier
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode) return;
 
-        GameObject root = GameObject.Find(PreviewRootName);
+        GameObject root = FindPreviewRootIncludingInactive();
         if (root == null)
         {
             return;
         }
 
-        GamaPreviewSession session = root.GetComponent<GamaPreviewSession>();
-        GamaSpeciesRenderOverrides asset = session != null ? session.speciesOverrides : null;
-        if (asset == null)
-        {
-            asset = GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
-        }
-
-        if (asset == null || asset.entries == null)
+        if (!GamaSpeciesAppearanceEditorCoordinator.TryResolveActiveContext(
+                out GamaSpeciesAppearanceContext context))
         {
             return;
         }
+        GamaSpeciesRenderOverrides asset = context.Asset;
 
-        NormalizePreviewContainerScales(root.transform);
+        if (asset == null)
+        {
+            return;
+        }
 
         GamaPreviewObject[] previewObjects = root.GetComponentsInChildren<GamaPreviewObject>(true);
         Dictionary<string, List<GamaPreviewObject>> objectsBySpecies =
@@ -83,8 +81,8 @@ public static class GamaEditorPreviewOverrideApplier
             list.Add(obj);
         }
 
-        string modelPath = session != null ? session.modelPath ?? string.Empty : string.Empty;
-        string experimentName = session != null ? session.experimentName ?? string.Empty : string.Empty;
+        string modelPath = context.ModelPath;
+        string experimentName = context.ExperimentName;
 
         int totalUpdated = 0;
         foreach (KeyValuePair<string, List<GamaPreviewObject>> pair in objectsBySpecies)
@@ -95,20 +93,15 @@ public static class GamaEditorPreviewOverrideApplier
                 continue;
             }
 
-            bool exactContext = session != null;
-            if (!asset.TryGetOverride(modelPath, experimentName, speciesName, out GamaSpeciesRenderOverrideEntry entry, exactContext) ||
-                entry == null)
+            GamaSpeciesAppearanceStateStore.TryGetEntry(
+                context,
+                speciesName,
+                false,
+                out GamaSpeciesRenderOverrideEntry entry);
+            if (entry != null)
             {
-                continue;
+                LogEditorOverridePickOnce(speciesName, modelPath, experimentName, entry, "context");
             }
-
-            string source = exactContext ? "context" : "contextless-fallback";
-            if (!exactContext)
-            {
-                Debug.LogWarning("[GAMA][OVERRIDE][WARN] contextless fallback used species=" + speciesName);
-            }
-
-            LogEditorOverridePickOnce(speciesName, modelPath, experimentName, entry, source);
 
             List<GamaPreviewObject> list = pair.Value;
             if (list == null || list.Count == 0)
@@ -135,8 +128,6 @@ public static class GamaEditorPreviewOverrideApplier
                 totalUpdated += list.Count;
             }
         }
-
-        RunActivePreviewSpreadDiagnostics(root.transform, "all-overrides");
 
         if (totalUpdated > 0)
         {
@@ -177,41 +168,33 @@ public static class GamaEditorPreviewOverrideApplier
             return;
         }
 
-        GameObject root = GameObject.Find(PreviewRootName);
+        GameObject root = FindPreviewRootIncludingInactive();
         if (root == null)
         {
             return;
         }
 
-        NormalizePreviewContainerScales(root.transform);
-
         if (entry == null)
         {
-            GamaPreviewSession session = root.GetComponent<GamaPreviewSession>();
-            GamaSpeciesRenderOverrides asset = session != null && session.speciesOverrides != null
-                ? session.speciesOverrides
-                : GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
-            string modelPath = session != null ? session.modelPath ?? string.Empty : string.Empty;
-            string experimentName = session != null ? session.experimentName ?? string.Empty : string.Empty;
-            bool exactContext = session != null;
-            if (asset == null ||
-                !asset.TryGetOverride(modelPath, experimentName, speciesName, out entry, exactContext) ||
-                entry == null)
+            if (!GamaSpeciesAppearanceEditorCoordinator.TryResolveActiveContext(
+                    out GamaSpeciesAppearanceContext context))
             {
                 return;
             }
-
-            if (!exactContext)
-            {
-                Debug.LogWarning("[GAMA][OVERRIDE][WARN] contextless fallback used species=" + speciesName);
-            }
-
-            LogEditorOverridePickOnce(
+            GamaSpeciesAppearanceStateStore.TryGetEntry(
+                context,
                 speciesName,
-                modelPath,
-                experimentName,
-                entry,
-                exactContext ? "context" : "contextless-fallback");
+                false,
+                out entry);
+            if (entry != null)
+            {
+                LogEditorOverridePickOnce(
+                    speciesName,
+                    context.ModelPath,
+                    context.ExperimentName,
+                    entry,
+                    "context");
+            }
         }
         else
         {
@@ -247,7 +230,6 @@ public static class GamaEditorPreviewOverrideApplier
                           " renderers=" + updatedRenderers);
             }
 
-            RunActivePreviewSpreadDiagnostics(root.transform, "species=" + speciesName);
             SceneView.RepaintAll();
             EditorApplication.QueuePlayerLoopUpdate();
         }
@@ -260,7 +242,7 @@ public static class GamaEditorPreviewOverrideApplier
         GamaSpeciesRenderOverrideEntry entry,
         string source)
     {
-        string logKey = GamaSpeciesRenderOverrides.NormalizeKey(modelPath) + "|" +
+        string logKey = GamaSpeciesRenderOverrides.NormalizeModelPath(modelPath) + "|" +
             GamaSpeciesRenderOverrides.NormalizeKey(experimentName) + "|" +
             GamaSpeciesRenderOverrides.NormalizeKey(speciesName) + "|" +
             (source ?? string.Empty);
@@ -285,25 +267,36 @@ public static class GamaEditorPreviewOverrideApplier
         GamaSpeciesRenderOverrideEntry entry,
         bool rebuildVisual)
     {
-        if (previewObj == null || entry == null)
+        if (previewObj == null)
         {
             return 0;
         }
 
         Transform parent = previewObj.transform;
+        if (entry == null)
+        {
+            Transform staleVisual = parent.Find(VisualChildName);
+            if (staleVisual != null)
+            {
+                DestroyImmediateSafe(staleVisual.gameObject);
+            }
+            previewObj.ApplySpeciesOverride(null);
+            Renderer[] restoredRenderers = parent.GetComponentsInChildren<Renderer>(true);
+            return restoredRenderers != null ? restoredRenderers.Length : 0;
+        }
+
         bool visible = ResolvePreviewVisible(entry);
         bool hasPrefabOverride = entry.prefabOverride != null;
-        previewObj.gameObject.SetActive(true);
-        EnsureStableScalePivot(previewObj);
-
         if (hasPrefabOverride)
         {
-            previewObj.RestoreBaseLocalScaleIfCaptured();
-            Transform visual = parent.Find(VisualChildName);
-            if (rebuildVisual || visual == null || PrefabUtility.GetCorrespondingObjectFromSource(visual.gameObject) != entry.prefabOverride)
+            previewObj.ApplySpeciesOverride(null);
+            bool overridesVisibility = entry.UsesPreviewVisibilityOverride();
+            if (overridesVisibility)
             {
-                visual = EnsurePrefabVisual(parent, entry.prefabOverride);
+                previewObj.gameObject.SetActive(visible);
             }
+
+            Transform visual = EnsurePrefabVisual(parent, entry.prefabOverride);
 
             if (visual == null)
             {
@@ -312,7 +305,7 @@ public static class GamaEditorPreviewOverrideApplier
 
             ApplyVisualTransform(previewObj, visual, entry);
             int updated = SetOriginalGeometryRenderersEnabled(parent, visual, false);
-            updated += SetVisualRenderersState(visual, visible, entry);
+            updated += SetVisualRenderersState(visual, entry);
             return updated;
         }
 
@@ -324,7 +317,7 @@ public static class GamaEditorPreviewOverrideApplier
             Transform fallbackVisual = existingVisual;
             bool existingIsPrefab = fallbackVisual != null &&
                                     PrefabUtility.GetCorrespondingObjectFromSource(fallbackVisual.gameObject) != null;
-            if (fallbackVisual == null || existingIsPrefab)
+            if (fallbackVisual == null || existingIsPrefab || !HasCompleteVisualRendererBaselines(fallbackVisual))
             {
                 if (fallbackVisual != null)
                 {
@@ -335,8 +328,9 @@ public static class GamaEditorPreviewOverrideApplier
             }
 
             NormalizeFallbackVisualTransform(fallbackVisual);
+            EnsureVisualRendererBaselines(fallbackVisual);
             int updated = SetOriginalGeometryRenderersEnabled(parent, fallbackVisual, false);
-            updated += SetVisualRenderersState(fallbackVisual, visible, entry);
+            updated += SetVisualRenderersState(fallbackVisual, entry);
             return updated;
         }
 
@@ -346,7 +340,8 @@ public static class GamaEditorPreviewOverrideApplier
         }
 
         previewObj.ApplySpeciesOverride(entry);
-        return SetOriginalGeometryRenderersEnabled(parent, null, visible);
+        Renderer[] originalRenderers = parent.GetComponentsInChildren<Renderer>(true);
+        return originalRenderers != null ? originalRenderers.Length : 0;
     }
 
     private static void NormalizePreviewContainerScales(Transform root)
@@ -689,22 +684,6 @@ public static class GamaEditorPreviewOverrideApplier
         }
     }
 
-    private static void EnsureStableScalePivot(GamaPreviewObject previewObj)
-    {
-        if (previewObj == null)
-        {
-            return;
-        }
-
-        if (previewObj.NormalizePivotToVisualAnchorForStableScale())
-        {
-            EditorUtility.SetDirty(previewObj);
-            EditorUtility.SetDirty(previewObj.gameObject);
-            Debug.Log("[GAMA][PREVIEW][SCALE] Recentered preview pivot for species=" +
-                      (string.IsNullOrWhiteSpace(previewObj.speciesName) ? "unknown" : previewObj.speciesName));
-        }
-    }
-
     private static Transform EnsurePrefabVisual(Transform parent, GameObject prefab)
     {
         if (parent == null || prefab == null)
@@ -715,9 +694,12 @@ public static class GamaEditorPreviewOverrideApplier
         Transform existingVisual = parent.Find(VisualChildName);
         if (existingVisual != null)
         {
-            GameObject sourcePrefab = PrefabUtility.GetCorrespondingObjectFromSource(existingVisual.gameObject);
-            if (sourcePrefab == prefab)
+            GamaPreviewBaseline existingBaseline = existingVisual.GetComponent<GamaPreviewBaseline>();
+            GameObject source = PrefabUtility.GetCorrespondingObjectFromSource(existingVisual.gameObject) as GameObject;
+            if ((source == prefab || (existingBaseline != null && existingBaseline.sourcePrefab == prefab)) &&
+                HasCompleteVisualRendererBaselines(existingVisual))
             {
+                EnsureVisualRendererBaselines(existingVisual);
                 return existingVisual;
             }
 
@@ -731,8 +713,63 @@ public static class GamaEditorPreviewOverrideApplier
         }
 
         visual.name = VisualChildName;
-        visual.transform.SetParent(parent, true);
+        visual.transform.SetParent(parent, false);
+        GamaPreviewBaseline baseline = visual.GetComponent<GamaPreviewBaseline>();
+        if (baseline == null)
+        {
+            baseline = visual.AddComponent<GamaPreviewBaseline>();
+        }
+        baseline.localPosition = visual.transform.localPosition;
+        baseline.localRotation = visual.transform.localRotation;
+        baseline.localScale = visual.transform.localScale;
+        baseline.sourcePrefab = prefab;
+
+        EnsureVisualRendererBaselines(visual.transform);
         return visual.transform;
+    }
+
+    private static void EnsureVisualRendererBaselines(Transform visual)
+    {
+        if (visual == null)
+        {
+            return;
+        }
+
+        Renderer[] renderers = visual.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null)
+            {
+                continue;
+            }
+            GamaPreviewRendererBaseline rendererBaseline =
+                renderer.GetComponent<GamaPreviewRendererBaseline>();
+            if (rendererBaseline == null)
+            {
+                rendererBaseline = renderer.gameObject.AddComponent<GamaPreviewRendererBaseline>();
+            }
+            rendererBaseline.Capture(renderer);
+        }
+    }
+
+    private static bool HasCompleteVisualRendererBaselines(Transform visual)
+    {
+        if (visual == null)
+        {
+            return false;
+        }
+
+        Renderer[] renderers = visual.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i] != null &&
+                renderers[i].GetComponent<GamaPreviewRendererBaseline>() == null)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void ApplyVisualTransform(
@@ -748,7 +785,9 @@ public static class GamaEditorPreviewOverrideApplier
         Vector3 worldAnchor = GetPreviewObjectWorldAnchor(previewObj);
         visual.position = worldAnchor + entry.GetEffectivePositionOffset();
         visual.rotation = previewObj.transform.rotation * Quaternion.Euler(entry.GetEffectiveRotationOffsetEuler());
-        visual.localScale = Vector3.one * Mathf.Max(0.0001f, entry.GetEffectiveScaleMultiplier());
+        GamaPreviewBaseline baseline = visual.GetComponent<GamaPreviewBaseline>();
+        Vector3 baseScale = baseline != null ? baseline.localScale : visual.localScale;
+        visual.localScale = baseScale * Mathf.Max(0.0001f, entry.GetEffectiveScaleMultiplier());
         EditorUtility.SetDirty(visual);
     }
 
@@ -962,7 +1001,6 @@ public static class GamaEditorPreviewOverrideApplier
 
     private static int SetVisualRenderersState(
         Transform visualRoot,
-        bool visible,
         GamaSpeciesRenderOverrideEntry entry)
     {
         if (visualRoot == null)
@@ -980,8 +1018,25 @@ public static class GamaEditorPreviewOverrideApplier
                 continue;
             }
 
-            renderer.enabled = visible;
-            ApplyRendererColorOverride(renderer, entry != null, entry != null ? entry.color : Color.white);
+            GamaPreviewRendererBaseline baseline = renderer.GetComponent<GamaPreviewRendererBaseline>();
+            baseline?.Restore(renderer);
+            if (entry != null && entry.materialOverride != null)
+            {
+                Material[] materials = renderer.sharedMaterials;
+                for (int materialIndex = 0; materialIndex < materials.Length; materialIndex++)
+                {
+                    materials[materialIndex] = entry.materialOverride;
+                }
+                renderer.sharedMaterials = materials;
+            }
+            if (entry != null && entry.UsesPreviewVisibilityOverride())
+            {
+                renderer.enabled = entry.GetEffectivePreviewVisible();
+            }
+            if (entry != null && entry.overrideColor)
+            {
+                ApplyRendererColorOverride(renderer, true, entry.color);
+            }
             EditorUtility.SetDirty(renderer);
             count++;
         }
@@ -1000,14 +1055,22 @@ public static class GamaEditorPreviewOverrideApplier
         renderer.GetPropertyBlock(block);
         if (!overrideColor)
         {
-            block.Clear();
-            renderer.SetPropertyBlock(block);
             return;
         }
 
         block.SetColor("_BaseColor", color);
         block.SetColor("_Color", color);
         renderer.SetPropertyBlock(block);
+
+        Material[] materials = renderer.sharedMaterials;
+        for (int i = 0; i < materials.Length; i++)
+        {
+            MaterialPropertyBlock indexedBlock = new MaterialPropertyBlock();
+            renderer.GetPropertyBlock(indexedBlock, i);
+            indexedBlock.SetColor("_BaseColor", color);
+            indexedBlock.SetColor("_Color", color);
+            renderer.SetPropertyBlock(indexedBlock, i);
+        }
     }
 
     private static GameObject CreateFallbackPrimitive(Transform parent, string speciesName)
@@ -1042,5 +1105,27 @@ public static class GamaEditorPreviewOverrideApplier
         {
             UnityEngine.Object.DestroyImmediate(obj);
         }
+    }
+
+    private static GameObject FindPreviewRootIncludingInactive()
+    {
+        GamaPreviewSession session = GamaSpeciesAppearanceEditorCoordinator.FindCurrentPreviewSession();
+        if (session != null && session.gameObject != null && session.gameObject.name == PreviewRootName)
+        {
+            return session.gameObject;
+        }
+
+        Transform[] transforms = UnityEngine.Object.FindObjectsByType<Transform>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.InstanceID);
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            Transform transform = transforms[i];
+            if (transform != null && transform.parent == null && transform.gameObject.name == PreviewRootName)
+            {
+                return transform.gameObject;
+            }
+        }
+        return null;
     }
 }

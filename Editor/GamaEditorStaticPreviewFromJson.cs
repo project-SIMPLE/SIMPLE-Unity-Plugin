@@ -532,11 +532,6 @@ internal static class GamaEditorStaticPreviewFromJson
             " builtGeometries=" + builtGeometries +
             " skippedGeometries=" + skippedGeometries);
 
-        if (builtAgents > 0 || builtGeometries > 0)
-        {
-            RunPreviewSpreadDiagnostics(parent, spreadProbes);
-        }
-
         if (builtAgents == 0 && builtGeometries == 0)
         {
             error = "Aucun objet preview construit. skippedAgents=" + skippedAgents + ", skippedGeometries=" + skippedGeometries;
@@ -979,7 +974,6 @@ internal static class GamaEditorStaticPreviewFromJson
         if (speciesOverrides.TryGetOverride(modelPath, experimentName, speciesKey, out GamaSpeciesRenderOverrideEntry entry, true) && entry != null)
         {
             LogPreviewOverridePickOnce(speciesKey, modelPath, experimentName, entry);
-            marker.NormalizePivotToVisualAnchorForStableScale();
             marker.ApplySpeciesOverride(entry);
         }
     }
@@ -990,7 +984,7 @@ internal static class GamaEditorStaticPreviewFromJson
         string experimentName,
         GamaSpeciesRenderOverrideEntry entry)
     {
-        string logKey = GamaSpeciesRenderOverrides.NormalizeKey(modelPath) + "|" +
+        string logKey = GamaSpeciesRenderOverrides.NormalizeModelPath(modelPath) + "|" +
             GamaSpeciesRenderOverrides.NormalizeKey(experimentName) + "|" +
             GamaSpeciesRenderOverrides.NormalizeKey(speciesKey);
         if (!OverridePickLogKeys.Add(logKey))
