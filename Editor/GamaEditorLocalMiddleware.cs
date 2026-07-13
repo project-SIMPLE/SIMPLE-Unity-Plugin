@@ -308,13 +308,13 @@ internal static class GamaEditorLocalMiddleware
         const int chunkSize = 12000;
         if (string.IsNullOrEmpty(text))
         {
-            Debug.Log("[GAMA][RAW][" + source + "] <empty>");
+            GamaLog.Dev("[GAMA][RAW][" + source + "] <empty>");
             return;
         }
 
         if (text.Length <= chunkSize)
         {
-            Debug.Log("[GAMA][RAW][" + source + "] " + text);
+            GamaLog.Dev("[GAMA][RAW][" + source + "] " + text);
             return;
         }
 
@@ -323,7 +323,7 @@ internal static class GamaEditorLocalMiddleware
         {
             int start = i * chunkSize;
             int length = Math.Min(chunkSize, text.Length - start);
-            Debug.Log("[GAMA][RAW][" + source + "] chunk " + (i + 1) + "/" + total + ": " + text.Substring(start, length));
+            GamaLog.Dev("[GAMA][RAW][" + source + "] chunk " + (i + 1) + "/" + total + ": " + text.Substring(start, length));
         }
     }
 

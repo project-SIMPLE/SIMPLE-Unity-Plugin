@@ -6,9 +6,9 @@ using System.Text;
 using System.Threading.Tasks;
 
 /// <summary>
-/// Wrapper non bloquant autour d'un <see cref="Process"/> : démarrage via cmd /c "script.bat",
-/// capture asynchrone de stdout/stderr, kill propre. Utilisé pour lancer GAMA et/ou le middleware
-/// en arrière-plan pendant que l'éditeur écoute la websocket.
+/// Non-blocking wrapper around a <see cref="Process"/>: starts it through cmd /c "script.bat",
+/// captures stdout/stderr asynchronously, and terminates it cleanly. Used to run GAMA and/or the
+/// middleware in the background while the editor listens to the WebSocket.
 /// </summary>
 internal sealed class GamaEditorBackgroundProcess : IDisposable
 {
@@ -70,7 +70,7 @@ internal sealed class GamaEditorBackgroundProcess : IDisposable
         error = null;
         if (string.IsNullOrWhiteSpace(scriptPath) || !File.Exists(scriptPath))
         {
-            error = "Script introuvable : " + scriptPath;
+            error = "Script not found: " + scriptPath;
             return null;
         }
 
@@ -108,7 +108,7 @@ internal sealed class GamaEditorBackgroundProcess : IDisposable
         {
             if (!p.Start())
             {
-                error = "Process.Start a retourné false.";
+                error = "Process.Start returned false.";
                 return null;
             }
 
@@ -119,7 +119,7 @@ internal sealed class GamaEditorBackgroundProcess : IDisposable
         }
         catch (Exception ex)
         {
-            error = "Échec du démarrage : " + ex.Message;
+            error = "Failed to start process: " + ex.Message;
             try { p.Dispose(); } catch { /* ignore */ }
             return null;
         }
@@ -137,7 +137,7 @@ internal sealed class GamaEditorBackgroundProcess : IDisposable
         error = null;
         if (string.IsNullOrWhiteSpace(fileName))
         {
-            error = "Commande vide.";
+            error = "Command is empty.";
             return null;
         }
 
@@ -175,7 +175,7 @@ internal sealed class GamaEditorBackgroundProcess : IDisposable
         {
             if (!p.Start())
             {
-                error = "Process.Start a retourné false.";
+                error = "Process.Start returned false.";
                 return null;
             }
 
@@ -186,7 +186,7 @@ internal sealed class GamaEditorBackgroundProcess : IDisposable
         }
         catch (Exception ex)
         {
-            error = "Échec du démarrage : " + ex.Message;
+            error = "Failed to start process: " + ex.Message;
             try { p.Dispose(); } catch { /* ignore */ }
             return null;
         }

@@ -38,7 +38,7 @@ public class LocalizationManager : MonoBehaviour
 
         if (csvFile == null)
         {
-            Debug.LogError($"Localization CSV not found at 'Resources/{CsvFilePath}'.");
+            GamaLog.Error($"Localization CSV not found at 'Resources/{CsvFilePath}'.");
             return;
         }
 
@@ -80,7 +80,7 @@ public class LocalizationManager : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning($"Language '{languageName}' not found in localization data.");
+            GamaLog.Warning($"Language '{languageName}' not found in localization data.");
         }
     }
 
@@ -91,7 +91,7 @@ public class LocalizationManager : MonoBehaviour
             return localizedData[currentLanguage][key];
         }
 
-        Debug.LogWarning($"Localization key '{key}' not found for language '{currentLanguage}'.");
+        GamaLog.Warning($"Localization key '{key}' not found for language '{currentLanguage}'.");
         return key;
     }
 }

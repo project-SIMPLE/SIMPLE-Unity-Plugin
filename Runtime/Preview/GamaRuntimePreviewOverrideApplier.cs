@@ -97,20 +97,21 @@ public static class GamaRuntimePreviewOverrideApplier
         }
 
         bool found = overridesBySpecies.TryGetValue(speciesKey, out entry);
-        if (found && logCount < MaxLogs)
+        if (GamaLog.VerboseEnabled && logCount < MaxLogs)
         {
             logCount++;
-            Debug.Log("[GAMA][RUNTIME][OVERRIDE] Applied species=" + speciesKey + " to an object.");
-        }
-        else if (!runtimeContextAvailable && logCount < MaxLogs)
-        {
-            logCount++;
-            Debug.Log("[GAMA][RUNTIME][OVERRIDE] No species-only override for species=" + speciesKey);
-        }
-        else if (!found && logCount < MaxLogs)
-        {
-            logCount++;
-            Debug.Log("[GAMA][RUNTIME][OVERRIDE] No override for species=" + speciesKey);
+            if (found)
+            {
+                GamaLog.Dev("[GAMA][RUNTIME][OVERRIDE] Applied species=" + speciesKey + " to an object.");
+            }
+            else if (!runtimeContextAvailable)
+            {
+                GamaLog.Dev("[GAMA][RUNTIME][OVERRIDE] No species-only override for species=" + speciesKey);
+            }
+            else
+            {
+                GamaLog.Dev("[GAMA][RUNTIME][OVERRIDE] No override for species=" + speciesKey);
+            }
         }
         return found;
     }
@@ -129,10 +130,10 @@ public static class GamaRuntimePreviewOverrideApplier
 
         if (entry != null)
         {
-            if (logCount < MaxLogs)
+            if (GamaLog.VerboseEnabled && logCount < MaxLogs)
             {
                 logCount++;
-                Debug.Log("[GAMA][RUNTIME][OVERRIDE] Applied property=" + propertyId +
+                GamaLog.Dev("[GAMA][RUNTIME][OVERRIDE] Applied property=" + propertyId +
                           " tag=" + tag +
                           " overrideSpecies=" + entry.GetSpeciesName() +
                           " scale=" + entry.GetEffectiveScaleMultiplier());
@@ -141,10 +142,10 @@ public static class GamaRuntimePreviewOverrideApplier
             return true;
         }
 
-        if (logCount < MaxLogs)
+        if (GamaLog.VerboseEnabled && logCount < MaxLogs)
         {
             logCount++;
-            Debug.Log("[GAMA][RUNTIME][OVERRIDE] No override for property=" + propertyId + " tag=" + tag);
+            GamaLog.Dev("[GAMA][RUNTIME][OVERRIDE] No override for property=" + propertyId + " tag=" + tag);
         }
 
         return false;
@@ -183,17 +184,20 @@ public static class GamaRuntimePreviewOverrideApplier
 
         if (asset == null && (runtimeSessionOverrides == null || runtimeSessionOverrides.Count == 0))
         {
-            Debug.Log("[GAMA][RUNTIME][OVERRIDE] No overrides asset found on the SimulationManager or preview session.");
+            GamaLog.Dev("[GAMA][RUNTIME][OVERRIDE] No overrides asset found on the SimulationManager or preview session.");
             return;
         }
 
         Dictionary<string, int> bestScoresBySpecies = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         runtimeContextAvailable = !string.IsNullOrWhiteSpace(modelPath) || !string.IsNullOrWhiteSpace(experimentName);
-        Debug.Log("[GAMA][RUNTIME][CONTEXT] model=" + (modelPath ?? string.Empty) +
-                  " experiment=" + (experimentName ?? string.Empty));
-        if (!runtimeContextAvailable)
+        if (GamaLog.VerboseEnabled)
         {
-            Debug.LogWarning("[GAMA][RUNTIME][OVERRIDE_WARN] missing context; using species-only runtime overrides from the active SimulationManager.");
+            GamaLog.Dev("[GAMA][RUNTIME][CONTEXT] model=" + (modelPath ?? string.Empty) +
+                      " experiment=" + (experimentName ?? string.Empty));
+            if (!runtimeContextAvailable)
+            {
+                GamaLog.DevWarning("[GAMA][RUNTIME][OVERRIDE_WARN] missing context; using species-only runtime overrides from the active SimulationManager.");
+            }
         }
 
         string wantedModel = GamaSpeciesRenderOverrides.NormalizeKey(modelPath);
@@ -227,8 +231,11 @@ public static class GamaRuntimePreviewOverrideApplier
             }
         }
 
-        Debug.Log("[GAMA][RUNTIME][OVERRIDE] Loaded preview overrides: " + string.Join(",", overridesBySpecies.Keys));
-        LogLoadedOverrides(bestScoresBySpecies, modelPath, experimentName);
+        if (GamaLog.VerboseEnabled)
+        {
+            GamaLog.Dev("[GAMA][RUNTIME][OVERRIDE] Loaded preview overrides: " + string.Join(",", overridesBySpecies.Keys));
+            LogLoadedOverrides(bestScoresBySpecies, modelPath, experimentName);
+        }
     }
 
     private static int GetRuntimeSelectionScore(
@@ -440,7 +447,7 @@ public static class GamaRuntimePreviewOverrideApplier
 
     private static void LogLoadedOverrides(Dictionary<string, int> scoresBySpecies, string requestedModel, string requestedExperiment)
     {
-        if (overridesBySpecies == null || overridesBySpecies.Count == 0)
+        if (!GamaLog.VerboseEnabled || overridesBySpecies == null || overridesBySpecies.Count == 0)
         {
             return;
         }
@@ -461,7 +468,7 @@ public static class GamaRuntimePreviewOverrideApplier
                 ? pickedScore
                 : -1;
 
-            Debug.Log("[GAMA][RUNTIME][OVERRIDE_PICK] species=" + pair.Key +
+            GamaLog.Dev("[GAMA][RUNTIME][OVERRIDE_PICK] species=" + pair.Key +
                       " pickedModel=" + (entry.modelPath ?? string.Empty) +
                       " pickedExperiment=" + (entry.experimentName ?? string.Empty) +
                       " requestedModel=" + (requestedModel ?? string.Empty) +
@@ -470,7 +477,7 @@ public static class GamaRuntimePreviewOverrideApplier
                       " scale=" + entry.GetEffectiveScaleMultiplier() +
                       " score=" + score);
 
-            Debug.Log("[GAMA][RUNTIME][OVERRIDES] species=" + pair.Key +
+            GamaLog.Dev("[GAMA][RUNTIME][OVERRIDES] species=" + pair.Key +
                       " prefab=" + prefab +
                       " colorOverride=" + entry.overrideColor +
                       " scale=" + entry.GetEffectiveScaleMultiplier() +
@@ -503,10 +510,10 @@ public static class GamaRuntimePreviewOverrideApplier
             return true;
         }
 
-        if (!runtimeContextAvailable && logCount < MaxLogs)
+        if (GamaLog.VerboseEnabled && !runtimeContextAvailable && logCount < MaxLogs)
         {
             logCount++;
-            Debug.Log("[GAMA][RUNTIME][OVERRIDE] No species-only override for species=" + speciesKey);
+            GamaLog.Dev("[GAMA][RUNTIME][OVERRIDE] No species-only override for species=" + speciesKey);
         }
 
         return false;

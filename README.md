@@ -169,17 +169,18 @@ The **GAMA Panel** is the main entry point for the demo workflow.
 
 It includes:
 
-- **Setup Scene**  
-  Prepares the Unity scene for GAMA communication and runtime visualization.
+- **Setup Scene:** Prepares the Unity scene for GAMA communication and runtime visualization.
 
-- **Workspace Explorer**  
-  Allows browsing local GAMA workspaces and experiments.
+- **GAMA Preview:** Generates a static preview from the experiment currently opened or selected in GAMA.
 
-- **Preview from the Open GAMA Experiment**  
-  Generates a static preview from the experiment currently opened or selected in GAMA.
+- **Troubleshooting:** Provides a global **Enable verbose mode** toggle,
+  common-issue guidance, and
+  quick access to the Unity Console. Verbose mode is disabled by default;
+  essential warnings, errors, and actionable UI messages remain available.
 
-- **Species Settings**  
-  Lets users adjust visual settings per species.
+- **Workspace Explorer:** Allows browsing local GAMA workspaces and experiments.
+
+- **Species Settings:** Lets users adjust visual settings per species.
 
 - **Advanced Sections**  
   Contains diagnostics, captured JSON tools, and legacy catalogue-based workflows.
@@ -305,8 +306,10 @@ The Simulation Manager Inspector is organized into compact sections:
 - **Performance and Streaming**  
   Contains runtime performance options such as object pooling, update budgets, culling, and streaming.
 
-- **Advanced Debug**  
-  Contains troubleshooting and verbose diagnostic settings.
+- **Advanced Debug:** Contains per-scene switches for specific diagnostics such as streaming and
+  agent update statistics. These are distinct from the global **Enable verbose
+  mode** toggle in **GAMA Panel > Troubleshooting**; verbose Console output
+  requires the global toggle to be enabled as well.
 
 The most important demo sections appear first. Advanced performance and debug options are collapsed by default.
 

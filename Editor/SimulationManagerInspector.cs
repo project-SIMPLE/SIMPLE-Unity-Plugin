@@ -446,7 +446,7 @@ public class SimulationManagerInspector : Editor
                 }
 
                 TrackChangedSpecies(changedSpecies, speciesName, tag != null ? tag.stringValue : string.Empty);
-                Debug.Log($"[GAMA][OVERRIDES] GameManager editing species={speciesName} scale={overrideEntry.GetEffectiveScaleMultiplier()}");
+                GamaLog.Dev($"[GAMA][OVERRIDES] GameManager editing species={speciesName} scale={overrideEntry.GetEffectiveScaleMultiplier()}");
             }
 
             EditorGUI.indentLevel--;

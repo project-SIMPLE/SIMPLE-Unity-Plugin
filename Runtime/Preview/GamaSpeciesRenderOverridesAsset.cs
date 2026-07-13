@@ -4,7 +4,7 @@ using System.Globalization;
 using UnityEngine;
 
 /// <summary>
-/// Overrides visuels persistants par espèce avec clé contextuelle model/experiment/species.
+/// Persistent visual overrides per species, keyed by model/experiment/species context.
 /// </summary>
 public class GamaSpeciesRenderOverrides : ScriptableObject
 {

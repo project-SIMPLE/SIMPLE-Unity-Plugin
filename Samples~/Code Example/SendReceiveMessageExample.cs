@@ -28,12 +28,12 @@ public class SendReceiveMessageExample : SimulationManager
          {"id",ConnectionManager.Instance.GetConnectionId() },
          {"mes",  mes }};
 
-            Debug.Log("sent to GAMA: " + mes);
+            GamaLog.Dev("Sent to GAMA: " + mes);
          ConnectionManager.Instance.SendExecutableAsk("receive_message", args);
      }
      if (message != null)
         {
-            Debug.Log("received from GAMA: cycle " + message.cycle);
+            GamaLog.Dev("Received from GAMA: cycle " + message.cycle);
             message = null;
         }
 

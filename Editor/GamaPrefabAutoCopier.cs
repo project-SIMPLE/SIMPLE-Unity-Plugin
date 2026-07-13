@@ -91,6 +91,6 @@ public class GamaPrefabAutoCopier
         }
         
         AssetDatabase.Refresh();
-        Debug.Log("[GAMA] Successfully copied prefabs to " + TARGET_DIR);
+        GamaLog.Dev("[GAMA] Successfully copied prefabs to " + TARGET_DIR);
     }
 }

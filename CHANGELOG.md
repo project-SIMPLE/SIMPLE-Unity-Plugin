@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Troubleshooting Tab**: Added a persistent **Enable verbose mode** option to the GAMA Panel, with common-issue guidance and quick access to the Unity Console.
+
+### Changed
+- **Unified Logging**: Detailed diagnostics are now controlled by verbose mode instead of requiring a separate development branch; essential warnings, errors, and actionable UI messages remain enabled.
+- **English Messages**: Standardized package-owned Console, debug, and UI messages in English.
+
 ## [1.0.0-preview.1] - 2026-04-24
 
 ### Changed

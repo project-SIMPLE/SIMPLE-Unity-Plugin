@@ -37,7 +37,7 @@ public static class GamaPreviewPlayModeGuard
                 TryRemoveRuntimePlayerFromUnity("Before new Unity Play", previousPlayerId);
             }
 
-            Debug.Log("[GAMA][PLAY] Unity Play player id: " + StaticInformation.getId());
+            GamaLog.Dev("[GAMA][PLAY] Unity Play player id: " + StaticInformation.getId());
             AssignSpeciesOverrideContextForPlay();
 
             GameObject root = FindPreviewRoot();
@@ -50,7 +50,7 @@ public static class GamaPreviewPlayModeGuard
                 if (autoHide && wasActive)
                 {
                     root.SetActive(false);
-                    Debug.Log("[GAMA][PREVIEW][PLAY] Static preview hidden before Play mode.");
+                    GamaLog.Dev("[GAMA][PREVIEW][PLAY] Static preview hidden before Play mode.");
                 }
             }
 
@@ -78,7 +78,7 @@ public static class GamaPreviewPlayModeGuard
                     if (autoHide && !root.activeSelf)
                     {
                         root.SetActive(true);
-                        Debug.Log("[GAMA][PREVIEW][PLAY] Static preview restored after Play mode.");
+                        GamaLog.Dev("[GAMA][PREVIEW][PLAY] Static preview restored after Play mode.");
                     }
                 }
             }
@@ -141,12 +141,16 @@ public static class GamaPreviewPlayModeGuard
 
             if (!paused)
             {
-                Debug.LogWarning("[GAMA][PLAY] " + reason + ", but pause_experiment was not confirmed on monitor " + monitorPort + ".");
+                GamaLog.Warning("[GAMA][PLAY] " + reason + ", but pause_experiment was not confirmed on monitor " + monitorPort + ".");
+            }
+            else
+            {
+                GamaLog.Info("[GAMA] GAMA experiment paused after Play Mode.");
             }
         }
         catch (Exception ex)
         {
-            Debug.LogWarning("[GAMA][PLAY] Failed to pause GAMA after " + reason + ": " + ex.Message);
+            GamaLog.Warning("[GAMA][PLAY] Failed to pause GAMA after " + reason + ": " + ex.Message);
         }
     }
 
@@ -181,13 +185,13 @@ public static class GamaPreviewPlayModeGuard
                     .GetResult();
                 if (!resumed)
                 {
-                    Debug.LogWarning("[GAMA][PLAY] " + reason + ", but resume_experiment was not confirmed on monitor " + monitorPort + ".");
+                    GamaLog.Warning("[GAMA][PLAY] " + reason + ", but resume_experiment was not confirmed on monitor " + monitorPort + ".");
                 }
             }
         }
         catch (Exception ex)
         {
-            Debug.LogWarning("[GAMA][PLAY] Failed to resume GAMA after " + reason + ": " + ex.Message);
+            GamaLog.Warning("[GAMA][PLAY] Failed to resume GAMA after " + reason + ": " + ex.Message);
         }
     }
 
@@ -203,11 +207,11 @@ public static class GamaPreviewPlayModeGuard
         {
             manager.DisconnectProperlyAsync().GetAwaiter().GetResult();
             Thread.Sleep(150);
-            Debug.Log("[GAMA][PLAY] " + reason + ": runtime websocket disconnected cleanly.");
+            GamaLog.Dev("[GAMA][PLAY] " + reason + ": runtime websocket disconnected cleanly.");
         }
         catch (Exception ex)
         {
-            Debug.LogWarning("[GAMA][PLAY] Failed to disconnect runtime websocket after " + reason + ": " + ex.Message);
+            GamaLog.DevWarning("[GAMA][PLAY] Failed to disconnect runtime websocket after " + reason + ": " + ex.Message);
         }
     }
 
@@ -244,15 +248,15 @@ public static class GamaPreviewPlayModeGuard
                         monitorPort,
                         playerId,
                         cts.Token,
-                        Debug.Log)
+                        GamaLog.Dev)
                     .GetAwaiter()
                     .GetResult();
-                Debug.Log("[GAMA][PLAY] " + reason + ": runtime player cleanup id=" + playerId + " removed=" + removed);
+                GamaLog.Dev("[GAMA][PLAY] " + reason + ": runtime player cleanup id=" + playerId + " removed=" + removed);
             }
         }
         catch (Exception ex)
         {
-            Debug.LogWarning("[GAMA][PLAY] Failed to remove runtime player after " + reason + ": " + ex.Message);
+            GamaLog.DevWarning("[GAMA][PLAY] Failed to remove runtime player after " + reason + ": " + ex.Message);
         }
     }
 
@@ -363,7 +367,7 @@ public static class GamaPreviewPlayModeGuard
     {
         if (!EditorPrefs.GetBool(AutoLaunchGamaOnPlayPrefKey, true))
         {
-            Debug.Log("[GAMA][PLAY] Auto-launch disabled; Play will only connect to the existing middleware state.");
+            GamaLog.Dev("[GAMA][PLAY] Auto-launch disabled; Play will only connect to the existing middleware state.");
             return;
         }
 
@@ -393,10 +397,7 @@ public static class GamaPreviewPlayModeGuard
             out string experimentName,
             out string source);
 
-        Debug.Log("[GAMA][PLAY] Preparing GAMA before Play. middleware=ws://" + host + ":" + playerPort +
-                  "/ monitor=ws://" + host + ":" + monitorPort + "/ targetSource=" + source +
-                  " model=" + (modelPath ?? string.Empty) +
-                  " experiment=" + (experimentName ?? string.Empty));
+        GamaLog.Info("[GAMA] Preparing GAMA experiment before Play Mode.");
 
         try
         {
@@ -411,20 +412,20 @@ public static class GamaPreviewPlayModeGuard
                             experimentName,
                             modelPath,
                             cts.Token,
-                            Debug.Log)
+                            GamaLog.Dev)
                         .GetAwaiter()
                         .GetResult()
                     : GamaEditorMiddlewareOrchestrator.LaunchCurrentMonitorExperimentAsync(
                             host,
                             monitorPort,
                             cts.Token,
-                            Debug.Log)
+                            GamaLog.Dev)
                         .GetAwaiter()
                         .GetResult();
 
                 if (hasTarget && result != null && !result.Success && ShouldAttachToCurrentMonitorFallback(result.Error))
                 {
-                    Debug.LogWarning("[GAMA][PLAY] Strict middleware catalog launch failed; attaching to current monitor experiment instead. " +
+                    GamaLog.DevWarning("[GAMA][PLAY] Strict middleware catalog launch failed; attaching to current monitor experiment instead. " +
                                      "The Unity selection remains model=" + (modelPath ?? string.Empty) +
                                      " experiment=" + (experimentName ?? string.Empty) +
                                      ". Error: " + (result.Error ?? "unknown"));
@@ -433,7 +434,7 @@ public static class GamaPreviewPlayModeGuard
                             host,
                             monitorPort,
                             cts.Token,
-                            Debug.Log)
+                            GamaLog.Dev)
                         .GetAwaiter()
                         .GetResult();
                 }
@@ -446,9 +447,7 @@ public static class GamaPreviewPlayModeGuard
                         EditorPrefs.SetString(PlayExperimentPrefKey, experimentName);
                     }
 
-                    Debug.Log("[GAMA][PLAY] GAMA ready before Play: state=" +
-                              (result.FinalExperimentState ?? string.Empty) +
-                              (string.IsNullOrEmpty(result.ExperimentId) ? string.Empty : " exp_id=" + result.ExperimentId));
+                    GamaLog.Info("[GAMA] GAMA experiment ready before Play Mode.");
                     return;
                 }
 
@@ -457,17 +456,17 @@ public static class GamaPreviewPlayModeGuard
                     : "unknown reason";
                 if (hasTarget)
                 {
-                    Debug.LogWarning("[GAMA][PLAY] GAMA auto-launch failed before Play: " + error);
+                    GamaLog.Warning("[GAMA][PLAY] GAMA auto-launch failed before Play: " + error);
                 }
                 else
                 {
-                    Debug.Log("[GAMA][PLAY] No Unity .gaml target for auto-launch; continuing Play attached to current GAMA/middleware state. " + error);
+                    GamaLog.Dev("[GAMA][PLAY] No Unity .gaml target for auto-launch; continuing Play attached to current GAMA/middleware state. " + error);
                 }
             }
         }
         catch (Exception ex)
         {
-            Debug.LogWarning("[GAMA][PLAY] GAMA auto-launch exception before Play: " + ex.Message);
+            GamaLog.Warning("[GAMA][PLAY] GAMA auto-launch exception before Play: " + ex.Message);
         }
     }
 
@@ -478,8 +477,12 @@ public static class GamaPreviewPlayModeGuard
             return false;
         }
 
-        return error.IndexOf("catalogue middleware", StringComparison.OrdinalIgnoreCase) >= 0 ||
+        return error.IndexOf("middleware catalog", StringComparison.OrdinalIgnoreCase) >= 0 ||
                error.IndexOf("catalog", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               error.IndexOf("not found", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               error.IndexOf("no strict match", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               error.IndexOf("missing from the middleware catalog", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               // Retain compatibility with errors produced by earlier package versions.
                error.IndexOf("introuvable", StringComparison.OrdinalIgnoreCase) >= 0 ||
                error.IndexOf("Aucun match", StringComparison.OrdinalIgnoreCase) >= 0 ||
                error.IndexOf("absent du catalogue", StringComparison.OrdinalIgnoreCase) >= 0;
@@ -513,7 +516,7 @@ public static class GamaPreviewPlayModeGuard
         {
             try
             {
-                Debug.Log("[GAMA][PLAY] Cleaning preview player before Play: " + id);
+                GamaLog.Dev("[GAMA][PLAY] Cleaning preview player before Play: " + id);
                 string outcome = GamaEditorFirstTickCapture.PurgeGhostPlayerAsync(
                         host,
                         playerPort,
@@ -522,11 +525,11 @@ public static class GamaPreviewPlayModeGuard
                         ct)
                     .GetAwaiter()
                     .GetResult();
-                Debug.Log("[GAMA][PLAY] " + outcome);
+                GamaLog.Dev("[GAMA][PLAY] " + outcome);
             }
             catch (Exception ex)
             {
-                Debug.LogWarning("[GAMA][PLAY] Preview player websocket cleanup failed for " + id + ": " + ex.Message);
+                GamaLog.DevWarning("[GAMA][PLAY] Preview player websocket cleanup failed for " + id + ": " + ex.Message);
             }
 
             try
@@ -536,14 +539,14 @@ public static class GamaPreviewPlayModeGuard
                         monitorPort,
                         id,
                         ct,
-                        Debug.Log)
+                            GamaLog.Dev)
                     .GetAwaiter()
                     .GetResult();
-                Debug.Log("[GAMA][PLAY] Preview player monitor cleanup " + id + " removed=" + removed);
+                GamaLog.Dev("[GAMA][PLAY] Preview player monitor cleanup " + id + " removed=" + removed);
             }
             catch (Exception ex)
             {
-                Debug.LogWarning("[GAMA][PLAY] Preview player monitor cleanup failed for " + id + ": " + ex.Message);
+                GamaLog.DevWarning("[GAMA][PLAY] Preview player monitor cleanup failed for " + id + ": " + ex.Message);
             }
         }
     }

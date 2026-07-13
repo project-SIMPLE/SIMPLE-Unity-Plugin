@@ -409,7 +409,7 @@ public abstract partial class SimulationManager
             ? string.Join(", ", candidateKeys.ToArray())
             : "(none)";
 
-        Debug.LogWarning(
+        GamaLog.Warning(
             "[GAMA] Could not resolve prefab for property '" +
             (property != null ? property.id : "(null)") +
             "' (source='" +
@@ -578,7 +578,7 @@ public class GamaPrefabPropertyBinding
                 string warningKey = propertyId + "::" + previewOverride.prefabResourcePath;
                 if (MissingPreviewOverridePrefabWarnings.Add(warningKey))
                 {
-                    Debug.LogWarning("[GAMA][RUNTIME][PREFAB] species=" + propertyId +
+                    GamaLog.Warning("[GAMA][RUNTIME][PREFAB] species=" + propertyId +
                                      " cannot load prefabResourcePath=" + previewOverride.prefabResourcePath);
                 }
             }

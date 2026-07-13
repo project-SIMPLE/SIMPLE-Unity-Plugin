@@ -310,7 +310,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
         hasSimulator = UnityEngine.Object.FindFirstObjectByType<XRDeviceSimulator>() != null;
         connectionID["id"] = ConnectionManager.Instance != null ? ConnectionManager.Instance.GetConnectionId() : StaticInformation.getId();
-        Debug.Log("[GAMA] SimulationManager initialized");
+        GamaLog.Dev("[GAMA] SimulationManager initialized");
         Instance = this;
         TrySubscribeConnectionManager();
         SelectedObjects = new List<GameObject>();
@@ -328,7 +328,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
         if (player == null)
         {
-            Debug.LogError("[GAMA] SimulationManager could not find or create a player object.");
+            GamaLog.Error("[GAMA] SimulationManager could not find or create a player object.");
             enabled = false;
             return;
         }
@@ -417,7 +417,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             InitGroundParameters();
             handleGroundParametersRequested = false;
 
-           // Debug.Log("handleGroundParametersRequested: " + handleGroundParametersRequested);
+           // GamaLog.Dev("handleGroundParametersRequested: " + handleGroundParametersRequested);
 
         }
 
@@ -479,7 +479,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
         if (IsGameState(GameState.GAME))
         {
-           // Debug.Log("readyToSendPosition: " + readyToSendPosition + " readyToSendPositionInit:" + readyToSendPositionInit + " TimerSendPosition: "+ TimerSendPosition);
+           // GamaLog.Dev("readyToSendPosition: " + readyToSendPosition + " readyToSendPositionInit:" + readyToSendPositionInit + " TimerSendPosition: "+ TimerSendPosition);
             if ((readyToSendPosition && TimerSendPosition <= 0.0f)|| readyToSendPositionInit)
                 UpdatePlayerPosition();
             UpdateGameToFollowPosition();
@@ -515,7 +515,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
       /*  if (TryReconnectButton != null && TryReconnectButton.action.triggered)
         {
-            Debug.Log("TryReconnectButton activated");
+            GamaLog.Dev("TryReconnectButton activated");
             TryReconnect();
         }*/
 
@@ -802,9 +802,9 @@ public abstract partial class SimulationManager : MonoBehaviour
                 LogPlayerSetPosition("gama_world_position", XROrigin.localPosition, pos);
                 XROrigin.localPosition = pos;
             }
-            else
+            else if (GamaLog.VerboseEnabled)
             {
-                Debug.Log("[GAMA][PLAYER][KEEP_POSITION] ignored GAMA initial player position=" + FormatVector(pos) +
+                GamaLog.Dev("[GAMA][PLAYER][KEEP_POSITION] ignored GAMA initial player position=" + FormatVector(pos) +
                           " current=" + FormatVector(XROrigin.localPosition));
             }
 
@@ -931,8 +931,9 @@ public abstract partial class SimulationManager : MonoBehaviour
                 Vector3 pos = basePos + visualState.PositionOffset;
                 Quaternion baseRotation = ResolvePrefabHeadingRotation(agentKey, prop, pt, basePos);
                 Quaternion rotation = ComposePrefabRuntimeRotation(baseRotation, visualState, obj);
-                if (agentKey.ToLower().Contains("car") || agentKey.ToLower().Contains("voiture") || agentKey.ToLower().Contains("vehicle")) {
-                    Debug.Log($"[GAMA][ROTATION] {agentKey} pt[3]={(pt.Count > 3 ? pt[3].ToString() : "N/A")} baseRot={baseRotation.eulerAngles} finalRot={rotation.eulerAngles}");
+                if (GamaLog.VerboseEnabled &&
+                    (agentKey.ToLower().Contains("car") || agentKey.ToLower().Contains("voiture") || agentKey.ToLower().Contains("vehicle"))) {
+                    GamaLog.Dev($"[GAMA][ROTATION] {agentKey} pt[3]={(pt.Count > 3 ? pt[3].ToString() : "N/A")} baseRot={baseRotation.eulerAngles} finalRot={rotation.eulerAngles}");
                 }
 
                 obj.transform.SetPositionAndRotation(pos, rotation);
@@ -1127,7 +1128,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             case GameState.LOADING_DATA:
                 if (!loadedAlready)
                 {
-                    Debug.Log("[GAMA] Loading initial data from middleware");
+                    GamaLog.Dev("[GAMA] Loading initial data from middleware");
                     TrySendExecutableAsk("send_init_data", connectionID, "initial data");
 
                     TimerSendInit = TimeSendInit;
@@ -1145,7 +1146,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                 break;
 
             case GameState.CRASH:
-                Debug.LogWarning("[GAMA] Simulation crashed");
+                GamaLog.Warning("[GAMA] Simulation crashed");
                 break;
 
             default:
@@ -1422,7 +1423,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             suspicious = true;
         }
 
-        if (suspicious)
+        if (GamaLog.VerboseEnabled && suspicious)
         {
             LogOutgoingWarning("[GAMA][OUT][WARN] suspicious player position source=" + resolvedSource +
                                " unityPos=" + FormatVector(unityPos) +
@@ -1434,7 +1435,8 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     private void WarnIfRootAndCameraDiverge(PlayerPositionSource resolvedSource, Transform source)
     {
-        if (source == null ||
+        if (!GamaLog.VerboseEnabled ||
+            source == null ||
             Camera.main == null ||
             resolvedSource == PlayerPositionSource.MainCamera ||
             resolvedSource == PlayerPositionSource.ExplicitTransform)
@@ -1453,7 +1455,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     private void LogOutgoingPlayerPosition(PlayerPositionSource source, Vector3 unityPos, List<int> gamaPos, int angle)
     {
-        if (!logOutgoingPlayerPosition)
+        if (!GamaLog.VerboseEnabled || !logOutgoingPlayerPosition)
         {
             return;
         }
@@ -1470,7 +1472,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         string gama = gamaPos != null && gamaPos.Count >= 3
             ? "(" + gamaPos[0] + "," + gamaPos[1] + "," + gamaPos[2] + ")"
             : "(missing)";
-        Debug.Log("[GAMA][OUT][PLAYER_POS] source=" + source +
+        GamaLog.Dev("[GAMA][OUT][PLAYER_POS] source=" + source +
                   " unityPos=" + FormatVector(unityPos) +
                   " gamaPos=" + gama +
                   " angle=" + angle +
@@ -1480,6 +1482,11 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     private void LogOutgoingSkip(string reason, string action)
     {
+        if (!GamaLog.VerboseEnabled)
+        {
+            return;
+        }
+
         float now = Time.unscaledTime;
         if (now < nextOutgoingPlayerWarningLogTime)
         {
@@ -1487,11 +1494,16 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
 
         nextOutgoingPlayerWarningLogTime = now + OutgoingPlayerWarningLogIntervalSeconds;
-        Debug.LogWarning("[GAMA][OUT][SKIP] reason=" + reason + " action=" + action);
+        GamaLog.DevWarning("[GAMA][OUT][SKIP] reason=" + reason + " action=" + action);
     }
 
     private void LogOutgoingWarning(string message)
     {
+        if (!GamaLog.VerboseEnabled)
+        {
+            return;
+        }
+
         float now = Time.unscaledTime;
         if (now < nextOutgoingPlayerWarningLogTime)
         {
@@ -1499,12 +1511,17 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
 
         nextOutgoingPlayerWarningLogTime = now + OutgoingPlayerWarningLogIntervalSeconds;
-        Debug.LogWarning(message);
+        GamaLog.DevWarning(message);
     }
 
     private void LogPlayerSetPosition(string reason, Vector3 oldPosition, Vector3 newPosition)
     {
-        Debug.Log("[GAMA][PLAYER][SET_POSITION] reason=" + reason +
+        if (!GamaLog.VerboseEnabled)
+        {
+            return;
+        }
+
+        GamaLog.Dev("[GAMA][PLAYER][SET_POSITION] reason=" + reason +
                   " old=" + FormatVector(oldPosition) +
                   " new=" + FormatVector(newPosition));
     }
@@ -1612,13 +1629,18 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     private void LogSuppressedFollowedGeometrySync(PropertiesGAMA prop)
     {
+        if (!GamaLog.VerboseEnabled)
+        {
+            return;
+        }
+
         string propertyId = string.IsNullOrWhiteSpace(prop.id) ? "(unknown)" : prop.id;
         if (!suppressedFollowedGeometryPropertyWarnings.Add(propertyId))
         {
             return;
         }
 
-        Debug.LogWarning("[GAMA][OUT][FOLLOW] suppressed propertyID=" + propertyId +
+        GamaLog.DevWarning("[GAMA][OUT][FOLLOW] suppressed propertyID=" + propertyId +
                          " reason=not_unity_controlled toFollow=True isInteractable=" + prop.isInteractable +
                          " isGrabable=" + prop.isGrabable);
     }
@@ -1706,7 +1728,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             if (rootObj == null)
             {
                 rootObj = new GameObject("[GAMA] Runtime Live Agents");
-                Debug.Log("[GAMA][RUNTIME] Created runtime hierarchy root: [GAMA] Runtime Live Agents");
+                GamaLog.Dev("[GAMA][RUNTIME] Created runtime hierarchy root: [GAMA] Runtime Live Agents");
             }
             runtimeAgentsRoot = rootObj.transform;
             runtimeAgentsRoot.position = Vector3.zero;
@@ -1877,9 +1899,9 @@ public abstract partial class SimulationManager : MonoBehaviour
             }
         }
 
-        if (created && runtimeCreateLogCount < 20)
+        if (GamaLog.VerboseEnabled && created && runtimeCreateLogCount < 20)
         {
-            Debug.Log("[GAMA][RUNTIME][CREATE] species=" + record.SpeciesName + " agent=" + record.AgentId);
+            GamaLog.Dev("[GAMA][RUNTIME][CREATE] species=" + record.SpeciesName + " agent=" + record.AgentId);
             runtimeCreateLogCount++;
         }
 
@@ -2011,7 +2033,8 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     private void LogPeopleAttributeDebug(string agentName, string propertyId, Attributes attributes)
     {
-        if (peopleAttributeDebugLogCount >= PeopleAttributeDebugMaxLogs ||
+        if (!GamaLog.VerboseEnabled ||
+            peopleAttributeDebugLogCount >= PeopleAttributeDebugMaxLogs ||
             !string.Equals(propertyId, "people", StringComparison.OrdinalIgnoreCase))
         {
             return;
@@ -2020,7 +2043,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         peopleAttributeDebugLogCount++;
         if (attributes == null)
         {
-            Debug.Log("[GAMA][ATTR_DEBUG] agent=" + agentName +
+            GamaLog.Dev("[GAMA][ATTR_DEBUG] agent=" + agentName +
                       " species=" + propertyId +
                       " hasAttributes=false");
             return;
@@ -2036,13 +2059,13 @@ public abstract partial class SimulationManager : MonoBehaviour
 
         if (!hasBool && !hasString && !hasFloat)
         {
-            Debug.Log("[GAMA][ATTR_DEBUG] agent=" + agentName +
+            GamaLog.Dev("[GAMA][ATTR_DEBUG] agent=" + agentName +
                       " species=" + propertyId +
                       " hasAttributes=true is_infected_missing raw=" + raw);
             return;
         }
 
-        Debug.Log("[GAMA][ATTR_DEBUG] agent=" + agentName +
+        GamaLog.Dev("[GAMA][ATTR_DEBUG] agent=" + agentName +
                   " species=" + propertyId +
                   " hasAttributes=true" +
                   " is_infected_bool=" + hasBool +
@@ -2228,7 +2251,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             return;
         }
 
-        Debug.LogWarning(
+        GamaLog.Warning(
             "[GAMA] Prefab '" + prefab + "' not found for property '" + propertyId +
             "'. Agent sample='" + sampleAgentName + "'. Using placeholder cubes.");
     }
@@ -2982,7 +3005,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                     sig.signature = visualSignature;
                     visualOverride = visual.transform;
                 }
-                else
+                else if (GamaLog.VerboseEnabled)
                 {
                     string species = prop != null ? prop.id : "unknown";
                     string warningKey = "missing-runtime-prefab:" + species + ":" + visualState.PrefabResourcePath;
@@ -2994,7 +3017,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                     if (debugLogCounts[warningKey] < 1)
                     {
                         debugLogCounts[warningKey]++;
-                        Debug.LogWarning("[GAMA][RUNTIME][PREFAB] species=" + species +
+                        GamaLog.DevWarning("[GAMA][RUNTIME][PREFAB] species=" + species +
                                          " cannot load prefabResourcePath=" + visualState.PrefabResourcePath);
                     }
                 }
@@ -3013,29 +3036,32 @@ public abstract partial class SimulationManager : MonoBehaviour
                 visualOverride.rotation = visualRotation;
                 visualOverride.localScale = ResolveVisualOverrideLocalScale(scale, visualState, keepLogicalRootScaleStable);
 
-                string speciesKey = prop != null ? prop.id : "unknown";
-                if (!debugLogCounts.ContainsKey(speciesKey)) debugLogCounts[speciesKey] = 0;
-
-                if (debugLogCounts[speciesKey] < 5)
+                if (GamaLog.VerboseEnabled)
                 {
-                    debugLogCounts[speciesKey]++;
-                    Debug.Log($"[GAMA][RUNTIME][PREFAB] species={speciesKey} id={obj.name} agentRootPos={obj.transform.position:F3} visualPos={visualOverride.position:F3} scale={visualOverride.localScale:F3} prefab={visualSignature}");
-                }
+                    string speciesKey = prop != null ? prop.id : "unknown";
+                    if (!debugLogCounts.ContainsKey(speciesKey)) debugLogCounts[speciesKey] = 0;
 
-                if (!debugSummaryLogged.ContainsKey(speciesKey))
-                {
-                    debugSummaryLogged[speciesKey] = true;
-                    Debug.Log($"[GAMA][RUNTIME][PREFAB] species={speciesKey} prefab={visualSignature} scale={visualState.ScaleMultiplier}");
-                }
-
-                if (keepLogicalRootScaleStable)
-                {
-                    string scaleLogKey = "visual-scale:" + speciesKey;
-                    if (!debugLogCounts.ContainsKey(scaleLogKey)) debugLogCounts[scaleLogKey] = 0;
-                    if (debugLogCounts[scaleLogKey] < 5)
+                    if (debugLogCounts[speciesKey] < 5)
                     {
-                        debugLogCounts[scaleLogKey]++;
-                        Debug.Log($"[GAMA][RUNTIME][SCALE] species={speciesKey} id={obj.name} parentScale={obj.transform.localScale:F3} visualScale={visualOverride.localScale:F3}");
+                        debugLogCounts[speciesKey]++;
+                        GamaLog.Dev($"[GAMA][RUNTIME][PREFAB] species={speciesKey} id={obj.name} agentRootPos={obj.transform.position:F3} visualPos={visualOverride.position:F3} scale={visualOverride.localScale:F3} prefab={visualSignature}");
+                    }
+
+                    if (!debugSummaryLogged.ContainsKey(speciesKey))
+                    {
+                        debugSummaryLogged[speciesKey] = true;
+                        GamaLog.Dev($"[GAMA][RUNTIME][PREFAB] species={speciesKey} prefab={visualSignature} scale={visualState.ScaleMultiplier}");
+                    }
+
+                    if (keepLogicalRootScaleStable)
+                    {
+                        string scaleLogKey = "visual-scale:" + speciesKey;
+                        if (!debugLogCounts.ContainsKey(scaleLogKey)) debugLogCounts[scaleLogKey] = 0;
+                        if (debugLogCounts[scaleLogKey] < 5)
+                        {
+                            debugLogCounts[scaleLogKey]++;
+                            GamaLog.Dev($"[GAMA][RUNTIME][SCALE] species={speciesKey} id={obj.name} parentScale={obj.transform.localScale:F3} visualScale={visualOverride.localScale:F3}");
+                        }
                     }
                 }
             }
@@ -3242,7 +3268,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             updated++;
         }
 
-        Debug.Log("[GAMA][RUNTIME][OVERRIDE] refreshed species=" + speciesName + " agents=" + updated);
+        GamaLog.Dev("[GAMA][RUNTIME][OVERRIDE] refreshed species=" + speciesName + " agents=" + updated);
     }
 
     private static bool RuntimeRecordMatchesSpeciesSelection(RuntimeAgentRecord record, string speciesSelection)
@@ -3596,6 +3622,11 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     private void LogInvalidGeometryFallback(string speciesName)
     {
+        if (!GamaLog.VerboseEnabled)
+        {
+            return;
+        }
+
         string species = string.IsNullOrWhiteSpace(speciesName) ? "unknown" : speciesName.Trim();
         int count = 0;
         invalidGeometryFallbackCounts.TryGetValue(species, out count);
@@ -3604,7 +3635,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
         if (count == 1 || count == 10 || count % 100 == 0)
         {
-            Debug.LogWarning(
+            GamaLog.DevWarning(
                 "[GAMA][RUNTIME][GEOMETRY] species=" + species +
                 " invalidPolygonFallback=" + count);
         }
@@ -3726,7 +3757,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     private void EmitPrefabStreamingDiagnostic(int processedThisTick, int totalPrefabAgents)
     {
-        if (!logPrefabStreamingStats)
+        if (!GamaLog.VerboseEnabled || !logPrefabStreamingStats)
         {
             return;
         }
@@ -3738,7 +3769,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
 
         prefabStreamingLastDiagTime = now;
-        Debug.Log(
+        GamaLog.Dev(
             "[GAMA] Prefab streaming tick: evaluated=" + processedThisTick +
             " round_robin_total=" + totalPrefabAgents +
             " budget=" + prefabStreamingBudgetPerTick +
@@ -3748,7 +3779,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     private void EmitAgentUpdateBudgetDiagnostic(int processedThisTick, int totalAgents, int nextAgentIndex)
     {
-        if (!logAgentUpdateBudgetStats)
+        if (!GamaLog.VerboseEnabled || !logAgentUpdateBudgetStats)
         {
             return;
         }
@@ -3760,7 +3791,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
 
         agentUpdateBudgetLastDiagTime = now;
-        Debug.Log(
+        GamaLog.Dev(
             "[GAMA] Agent update budget tick: processed=" + processedThisTick +
             " total=" + totalAgents +
             " next_index=" + nextAgentIndex +
@@ -3769,7 +3800,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     private void EmitRuntimeSyncSummaryIfNeeded()
     {
-        if (!logAgentUpdateBudgetStats || runtimeSyncCountersBySpecies.Count == 0)
+        if (!GamaLog.VerboseEnabled || !logAgentUpdateBudgetStats || runtimeSyncCountersBySpecies.Count == 0)
         {
             return;
         }
@@ -3783,7 +3814,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             }
 
             int active = CountActiveDynamicAgents(pair.Key);
-            Debug.Log(
+            GamaLog.Dev(
                 "[GAMA][RUNTIME][SYNC] tick=" + runtimeLiveTickSerial +
                 " species=" + pair.Key +
                 " active=" + active +
@@ -3885,7 +3916,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         if (!loggedMissingMainCameraForStreaming)
         {
             loggedMissingMainCameraForStreaming = true;
-            Debug.LogWarning("[GAMA] Streaming culling disabled because Camera.main is missing. Tag the runtime game camera as MainCamera.");
+            GamaLog.Warning("[GAMA] Streaming culling disabled because Camera.main is missing. Tag the runtime game camera as MainCamera.");
         }
 
         return null;
@@ -4067,7 +4098,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             else
             {
                 runtimePlayerBootstrapConfirmed = true;
-                Debug.Log("[GAMA] Authenticated, loading simulation data");
+                GamaLog.Info("[GAMA] Loading simulation data.");
                 UpdateGameState(GameState.LOADING_DATA);
             }
         }
@@ -4078,13 +4109,13 @@ public abstract partial class SimulationManager : MonoBehaviour
             nextRuntimePlayerBootstrapTime = 0f;
             if (IsGameState(GameState.MENU))
             {
-                Debug.Log("[GAMA] Connected to middleware");
+                GamaLog.Info("[GAMA] Connected to simple.webplatform.");
                 UpdateGameState(GameState.WAITING);
             }
         }
         else if (state == ConnectionState.DISCONNECTED)
         {
-            Debug.Log("[GAMA] Disconnected from middleware, resetting state");
+            GamaLog.Info("[GAMA] Disconnected from simple.webplatform.");
             runtimePlayerBootstrapConfirmed = false;
             runtimePlayerBootstrapAttempts = 0;
             nextRuntimePlayerBootstrapTime = 0f;
@@ -4116,7 +4147,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         subscribedConnectionManager.OnConnectionAttempted += HandleConnectionAttempted;
         subscribedConnectionManager.OnConnectionStateChanged += HandleConnectionStateChanged;
         SyncConnectionIdFromManager();
-        Debug.Log("[GAMA][RUNTIME][CONNECTION] subscribed to ConnectionManager");
+        GamaLog.Dev("[GAMA][RUNTIME][CONNECTION] subscribed to ConnectionManager");
         if (subscribedConnectionManager.IsConnectionState(ConnectionState.AUTHENTICATED))
         {
             HandleConnectionStateChanged(ConnectionState.AUTHENTICATED);
@@ -4179,19 +4210,22 @@ public abstract partial class SimulationManager : MonoBehaviour
             return true;
         }
 
-        float now = Time.unscaledTime;
-        if (now >= nextSocketClosedWarningTime)
+        if (GamaLog.VerboseEnabled)
         {
-            string reason = manager == null ? "connection_manager_missing" : "socket_not_open";
-            if (!string.IsNullOrWhiteSpace(action))
+            float now = Time.unscaledTime;
+            if (now >= nextSocketClosedWarningTime)
             {
-                Debug.LogWarning("[GAMA][OUT][SKIP] reason=" + reason + " action=" + action);
+                string reason = manager == null ? "connection_manager_missing" : "socket_not_open";
+                if (!string.IsNullOrWhiteSpace(action))
+                {
+                    GamaLog.DevWarning("[GAMA][OUT][SKIP] reason=" + reason + " action=" + action);
+                }
+                else
+                {
+                    GamaLog.DevWarning("[GAMA][RUNTIME][CONNECTION] " + reason + "; skipping " + sendLabel + " send");
+                }
+                nextSocketClosedWarningTime = now + SocketClosedWarningIntervalSeconds;
             }
-            else
-            {
-                Debug.LogWarning("[GAMA][RUNTIME][CONNECTION] " + reason + "; skipping " + sendLabel + " send");
-            }
-            nextSocketClosedWarningTime = now + SocketClosedWarningIntervalSeconds;
         }
 
         return false;
@@ -4223,11 +4257,16 @@ public abstract partial class SimulationManager : MonoBehaviour
 
         previewRoot.SetActive(false);
         staticPreviewHiddenAfterRuntimeData = true;
-        Debug.Log("[GAMA][RUNTIME] Static preview hidden after live runtime data arrived.");
+        GamaLog.Dev("[GAMA][RUNTIME] Static preview hidden after live runtime data arrived.");
     }
 
     private void LogRuntimeFlow(WorldJSONInfo world)
     {
+        if (!GamaLog.VerboseEnabled)
+        {
+            return;
+        }
+
         runtimeFlowLogCount++;
         if (runtimeFlowLogCount > 20 && runtimeFlowLogCount % 100 != 0)
         {
@@ -4236,7 +4275,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
         int names = world != null && world.names != null ? world.names.Count : 0;
         int propertyIds = world != null && world.propertyID != null ? world.propertyID.Count : 0;
-        Debug.Log("[GAMA][RUNTIME][FLOW] received json_output names=" + names + " propertyIDs=" + propertyIds);
+        GamaLog.Dev("[GAMA][RUNTIME][FLOW] received json_output names=" + names + " propertyIDs=" + propertyIds);
     }
 
     private RuntimeImportProfile AnalyzeRuntimeImport(WorldJSONInfo world, int messageBytes, long parseMs)
@@ -4293,7 +4332,7 @@ public abstract partial class SimulationManager : MonoBehaviour
 
     private void LogRuntimeImportProfile(RuntimeImportProfile profile)
     {
-        if (profile == null)
+        if (!GamaLog.VerboseEnabled || profile == null)
         {
             return;
         }
@@ -4308,7 +4347,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             return;
         }
 
-        Debug.Log(
+        GamaLog.Dev(
             "[GAMA][PERF][STREAM] isInit=" + profile.IsInit +
             " bytes=" + profile.MessageBytes +
             " names=" + profile.NamesCount +
@@ -4320,11 +4359,11 @@ public abstract partial class SimulationManager : MonoBehaviour
         {
             if (profile.IsLarge || pair.Value >= largeSpeciesThreshold)
             {
-                Debug.Log("[GAMA][PERF][SPECIES] propertyID=" + pair.Key + " count=" + pair.Value + " mode=" + largeSpeciesMode);
+                GamaLog.Dev("[GAMA][PERF][SPECIES] propertyID=" + pair.Key + " count=" + pair.Value + " mode=" + largeSpeciesMode);
             }
         }
 
-        Debug.Log("[GAMA][PERF][JSON] parseMs=" + profile.ParseMs + " applyMs=0");
+        GamaLog.Dev("[GAMA][PERF][JSON] parseMs=" + profile.ParseMs + " applyMs=0");
     }
 
     private void BeginImportApplyIfNeeded()
@@ -4346,18 +4385,33 @@ public abstract partial class SimulationManager : MonoBehaviour
             ? (long)((Time.realtimeSinceStartup - currentImportProfile.ApplyStartedAt) * 1000f)
             : 0L;
 
-        foreach (KeyValuePair<string, RuntimeImportCounters> pair in currentImportProfile.ImportCountersByPropertyId)
+        if (GamaLog.VerboseEnabled)
         {
-            RuntimeImportCounters counters = pair.Value;
-            Debug.Log(
-                "[GAMA][PERF][IMPORT] propertyID=" + pair.Key +
-                " created=" + counters.Created +
-                " updated=" + counters.Updated +
-                " skippedUnchanged=" + counters.SkippedUnchanged +
-                " deferred=" + counters.Deferred);
+            foreach (KeyValuePair<string, RuntimeImportCounters> pair in currentImportProfile.ImportCountersByPropertyId)
+            {
+                RuntimeImportCounters counters = pair.Value;
+                GamaLog.Dev(
+                    "[GAMA][PERF][IMPORT] propertyID=" + pair.Key +
+                    " created=" + counters.Created +
+                    " updated=" + counters.Updated +
+                    " skippedUnchanged=" + counters.SkippedUnchanged +
+                    " deferred=" + counters.Deferred);
+            }
         }
 
-        Debug.Log("[GAMA][PERF][JSON] parseMs=" + currentImportProfile.ParseMs + " applyMs=" + applyMs);
+        if (currentImportProfile.IsInit)
+        {
+            GamaLog.Info(
+                "[GAMA] Initial import complete: " + currentImportProfile.NamesCount +
+                " agent(s), " + currentImportProfile.PointsGeomCount +
+                " geometries, " + currentImportProfile.PointsLocCount +
+                " prefab position(s).");
+        }
+
+        if (GamaLog.VerboseEnabled)
+        {
+            GamaLog.Dev("[GAMA][PERF][JSON] parseMs=" + currentImportProfile.ParseMs + " applyMs=" + applyMs);
+        }
         currentImportProfile = null;
     }
 
@@ -4678,7 +4732,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         {
             if (IsGameState(GameState.MENU))
             {
-                Debug.Log("[GAMA] Connected to middleware");
+                GamaLog.Dev("[GAMA] Connected to middleware");
                 UpdateGameState(GameState.WAITING);
             }
 
@@ -4728,10 +4782,10 @@ public abstract partial class SimulationManager : MonoBehaviour
 
         if (runtimePlayerBootstrapAttempts >= RuntimePlayerBootstrapMaxAttempts)
         {
-            if (runtimePlayerBootstrapAttempts == RuntimePlayerBootstrapMaxAttempts)
+            if (GamaLog.VerboseEnabled && runtimePlayerBootstrapAttempts == RuntimePlayerBootstrapMaxAttempts)
             {
                 runtimePlayerBootstrapAttempts++;
-                Debug.LogWarning("[GAMA][RUNTIME][BOOTSTRAP] create_player did not authenticate after " +
+                GamaLog.DevWarning("[GAMA][RUNTIME][BOOTSTRAP] create_player did not authenticate after " +
                                  RuntimePlayerBootstrapMaxAttempts + " attempts. Check simple.webplatform/GAMA logs.");
             }
             return;
@@ -4747,7 +4801,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         string expression = "do create_player(\"" + EscapeGamlString(id) + "\");";
         runtimePlayerBootstrapAttempts++;
         nextRuntimePlayerBootstrapTime = now + RuntimePlayerBootstrapRetrySeconds;
-        Debug.Log("[GAMA][RUNTIME][BOOTSTRAP] create_player attempt " + runtimePlayerBootstrapAttempts +
+        GamaLog.Dev("[GAMA][RUNTIME][BOOTSTRAP] create_player attempt " + runtimePlayerBootstrapAttempts +
                   "/" + RuntimePlayerBootstrapMaxAttempts + " id=" + id);
         manager.SendExecutableExpression(expression);
     }

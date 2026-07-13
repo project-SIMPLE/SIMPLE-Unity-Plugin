@@ -61,7 +61,7 @@ internal sealed class GamaWorkspaceExplorerPanel
     }
 
     /// <summary>
-    /// Chemin, scan, statut et liste — utilisé aussi depuis <see cref="GamaPanelWindow"/> au-dessus du repliable global.
+    /// Path, scan, status, and list; also used from <see cref="GamaPanelWindow"/> above the global foldout.
     /// </summary>
     public void DrawCompactWorkspaceUi()
     {
@@ -73,7 +73,7 @@ internal sealed class GamaWorkspaceExplorerPanel
     }
 
     /// <summary>
-    /// Options secondaires du scan (sans repliable). Le repliable est géré par l’hôte ou par <see cref="DrawAdvancedFoldout"/>.
+    /// Secondary scan options without a foldout. The host or <see cref="DrawAdvancedFoldout"/> owns the foldout.
     /// </summary>
     public void DrawAdvancedScannerOptions()
     {
@@ -201,7 +201,7 @@ internal sealed class GamaWorkspaceExplorerPanel
         catch (System.Exception ex)
         {
             statusMessage = $"Unexpected auto-detection failure: {ex.GetType().Name}. You can still enter a path or use Browse.";
-            Debug.LogWarning($"[GAMA] Workspace auto-detection failed: {ex.Message}");
+            GamaLog.DevWarning($"[GAMA] Workspace auto-detection failed: {ex.Message}");
             return;
         }
 
@@ -211,12 +211,12 @@ internal sealed class GamaWorkspaceExplorerPanel
             workspacePath = result.WorkspacePath;
             EditorPrefs.SetString(WorkspacePathPrefKey, workspacePath);
             statusMessage = $"Workspace detected. Method: {result.Method}. Port: {portLabel}. Confidence: {result.Confidence}. Path: {workspacePath}";
-            Debug.Log($"[GAMA] Workspace auto-detected via {result.Method} (port {portLabel}, {result.Confidence}).");
+            GamaLog.Dev($"[GAMA] Workspace auto-detected via {result.Method} (port {portLabel}, {result.Confidence}).");
             return;
         }
 
         statusMessage = $"Cannot auto-detect workspace. Method: {result.Method}. Port: {portLabel}. Confidence: {result.Confidence}. {result.Message}";
-        Debug.LogWarning("[GAMA] Auto-detection failed. Manual path entry is still possible.");
+        GamaLog.DevWarning("[GAMA] Auto-detection failed. Manual path entry is still possible.");
     }
 
     private void ScanWorkspace()
@@ -243,11 +243,11 @@ internal sealed class GamaWorkspaceExplorerPanel
 
         if (errorCount > 0)
         {
-            Debug.LogWarning($"[GAMA] Workspace Explorer completed with {errorCount} scanning issue(s).");
+            GamaLog.DevWarning($"[GAMA] Workspace Explorer completed with {errorCount} scanning issue(s).");
         }
         else
         {
-            Debug.Log($"[GAMA] Workspace Explorer found {experiments.Count} experiment(s).");
+            GamaLog.Dev($"[GAMA] Workspace Explorer found {experiments.Count} experiment(s).");
         }
     }
 

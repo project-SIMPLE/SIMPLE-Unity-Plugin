@@ -55,12 +55,14 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         "Setup Scene",
         "GAMA Preview",
+        "Troubleshooting",
         "Workspace Explorer (alpha)"
     };
 
     private const int TabSetupScene = 0;
     private const int TabImportExperiment = 1;
-    private const int TabWorkspace = 2;
+    private const int TabTroubleshooting = 2;
+    private const int TabWorkspace = 3;
 
     private int selectedTab;
     private readonly GamaWorkspaceExplorerPanel workspaceExplorerPanel = new GamaWorkspaceExplorerPanel();
@@ -133,6 +135,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private string experimentStatus = "Enter a .gaml experiment file or a workspace folder, then click Explore.";
     private Vector2 experimentScroll;
     private Vector2 agentsScroll;
+    private Vector2 troubleshootingScroll;
     private Vector2 workspaceScroll;
     private Vector2 workspaceExperimentListScroll;
     private Vector2 setupSceneScroll;
@@ -390,10 +393,60 @@ public sealed class GamaPanelWindow : EditorWindow
             case TabImportExperiment:
                 DrawExperimentImportTab();
                 break;
+            case TabTroubleshooting:
+                DrawTroubleshootingTab();
+                break;
             default:
                 DrawWorkspaceTab();
                 break;
         }
+    }
+
+    private void DrawTroubleshootingTab()
+    {
+        troubleshootingScroll = EditorGUILayout.BeginScrollView(troubleshootingScroll);
+
+        EditorGUILayout.LabelField("Troubleshooting", EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox(
+            "Verbose mode adds detailed diagnostic messages to the Unity Console. It is disabled by default because frequent logging can affect Editor and Play Mode performance. Essential warnings, errors, and actionable UI messages remain enabled in both modes.",
+            MessageType.Info);
+
+        EditorGUI.BeginChangeCheck();
+        bool verboseEnabled = EditorGUILayout.ToggleLeft(
+            "Enable verbose mode",
+            GamaLogPreferences.VerboseEnabled,
+            EditorStyles.boldLabel);
+        if (EditorGUI.EndChangeCheck())
+        {
+            GamaLogPreferences.VerboseEnabled = verboseEnabled;
+        }
+
+        if (verboseEnabled)
+        {
+            EditorGUILayout.HelpBox(
+                "Verbose mode is enabled. The Unity Console may receive a large number of messages and performance may be reduced. Disable it after collecting the diagnostics you need.",
+                MessageType.Warning);
+        }
+
+        EditorGUILayout.Space(12f);
+        EditorGUILayout.LabelField("Common Issues", EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox(
+            "No preview is generated: make sure GAMA and simple.webplatform are running, open the target experiment in GAMA, then try Generate Preview from GAMA again.",
+            MessageType.Info);
+        EditorGUILayout.HelpBox(
+            "Preview generation is unavailable during Play Mode. Stop Play Mode before starting a new editor preview capture.",
+            MessageType.Info);
+        EditorGUILayout.HelpBox(
+            "Repeated 'Reconnecting player of id ...' messages usually mean that a cancelled preview player is still registered in GAMA. Open GAMA Preview > Advanced Preview Settings and use Purge Ghost Player.",
+            MessageType.Info);
+
+        EditorGUILayout.Space(8f);
+        if (GUILayout.Button("Open Unity Console", GUILayout.Height(28f), GUILayout.Width(180f)))
+        {
+            EditorApplication.ExecuteMenuItem("Window/General/Console");
+        }
+
+        EditorGUILayout.EndScrollView();
     }
 
     private void EnsureWorkspaceExplorerHostReady()
@@ -1351,7 +1404,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         captureRuntimeStatus = outcome;
-        UnityEngine.Debug.Log("[GAMA] " + outcome);
+        GamaLog.Dev("[GAMA] " + outcome);
         Repaint();
     }
 
@@ -1408,15 +1461,15 @@ public sealed class GamaPanelWindow : EditorWindow
         lastMiddlewareLearningPackagePath = learningPackagePath;
         lastMiddlewareExtraLearningPackagePath = middlewareEnv["EXTRA_LEARNING_PACKAGE_PATH"] ?? string.Empty;
 
-        Debug.Log("[GAMA][SYNC] Restarting middleware with LEARNING_PACKAGE_PATH=" + learningPackagePath);
-        Debug.Log("[GAMA][MW] Starting simple.webplatform");
-        Debug.Log("[GAMA][MW] FileName=" + cmdExe);
-        Debug.Log("[GAMA][MW] Arguments=" + cmdArguments);
-        Debug.Log("[GAMA][MW] WorkingDirectory=" + webplatformRoot);
-        Debug.Log("[GAMA][MW] LEARNING_PACKAGE_PATH=" + learningPackagePath);
-        Debug.Log("[GAMA][MW] EXTRA_LEARNING_PACKAGE_PATH=" + lastMiddlewareExtraLearningPackagePath);
-        Debug.Log("[GAMA][MW] MONITOR_WS_PORT=" + captureMonitorPort);
-        Debug.Log("[GAMA][MW] HEADSET_WS_PORT=" + playerPort);
+        GamaLog.Dev("[GAMA][SYNC] Restarting middleware with LEARNING_PACKAGE_PATH=" + learningPackagePath);
+        GamaLog.Dev("[GAMA][MW] Starting simple.webplatform");
+        GamaLog.Dev("[GAMA][MW] FileName=" + cmdExe);
+        GamaLog.Dev("[GAMA][MW] Arguments=" + cmdArguments);
+        GamaLog.Dev("[GAMA][MW] WorkingDirectory=" + webplatformRoot);
+        GamaLog.Dev("[GAMA][MW] LEARNING_PACKAGE_PATH=" + learningPackagePath);
+        GamaLog.Dev("[GAMA][MW] EXTRA_LEARNING_PACKAGE_PATH=" + lastMiddlewareExtraLearningPackagePath);
+        GamaLog.Dev("[GAMA][MW] MONITOR_WS_PORT=" + captureMonitorPort);
+        GamaLog.Dev("[GAMA][MW] HEADSET_WS_PORT=" + playerPort);
         LogMiddlewareEnvironmentSnapshot(middlewareEnv);
 
         string startError;
@@ -1436,7 +1489,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         lastMiddlewareProcessId = captureMiddlewareProcess.ProcessId;
-        Debug.Log("[GAMA][MW] New middleware PID=" + lastMiddlewareProcessId + " cwd=" + webplatformRoot);
+        GamaLog.Dev("[GAMA][MW] New middleware PID=" + lastMiddlewareProcessId + " cwd=" + webplatformRoot);
         captureRuntimeStatus = "Waiting for monitor ports " + captureMonitorPort + " and player " + playerPort + "...";
         Repaint();
 
@@ -1480,12 +1533,12 @@ public sealed class GamaPanelWindow : EditorWindow
             return false;
         }
 
-        List<int> monitorListenerPids = GamaEditorMiddlewareOrchestrator.GetListeningPidsOnTcpPort(captureMonitorPort, Debug.Log);
-        List<int> playerListenerPids = GamaEditorMiddlewareOrchestrator.GetListeningPidsOnTcpPort(playerPort, Debug.Log);
+        List<int> monitorListenerPids = GamaEditorMiddlewareOrchestrator.GetListeningPidsOnTcpPort(captureMonitorPort, GamaLog.Dev);
+        List<int> playerListenerPids = GamaEditorMiddlewareOrchestrator.GetListeningPidsOnTcpPort(playerPort, GamaLog.Dev);
         string monitorListener = monitorListenerPids.Count == 0 ? "?" : string.Join(",", monitorListenerPids);
         string playerListener = playerListenerPids.Count == 0 ? "?" : string.Join(",", playerListenerPids);
-        Debug.Log("[GAMA][MW] Monitor TCP ready on port " + captureMonitorPort + " (listener PID=" + monitorListener + ").");
-        Debug.Log("[GAMA][MW] Player socket ready on port " + playerPort + " (listener PID=" + playerListener + ").");
+        GamaLog.Dev("[GAMA][MW] Monitor TCP ready on port " + captureMonitorPort + " (listener PID=" + monitorListener + ").");
+        GamaLog.Dev("[GAMA][MW] Player socket ready on port " + playerPort + " (listener PID=" + playerListener + ").");
         return true;
     }
 
@@ -1497,24 +1550,24 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         error = null;
         HashSet<int> allPids = new HashSet<int>();
-        List<int> monitorPids = GamaEditorMiddlewareOrchestrator.GetListeningPidsOnTcpPort(monitorPort, Debug.Log);
-        List<int> playerPids = GamaEditorMiddlewareOrchestrator.GetListeningPidsOnTcpPort(playerPort, Debug.Log);
+        List<int> monitorPids = GamaEditorMiddlewareOrchestrator.GetListeningPidsOnTcpPort(monitorPort, GamaLog.Dev);
+        List<int> playerPids = GamaEditorMiddlewareOrchestrator.GetListeningPidsOnTcpPort(playerPort, GamaLog.Dev);
         for (int i = 0; i < monitorPids.Count; i++)
         {
             allPids.Add(monitorPids[i]);
-            Debug.Log("[GAMA][MW] Port " + monitorPort + " occupied by PID=" + monitorPids[i]);
+            GamaLog.Dev("[GAMA][MW] Port " + monitorPort + " occupied by PID=" + monitorPids[i]);
         }
 
         for (int i = 0; i < playerPids.Count; i++)
         {
             allPids.Add(playerPids[i]);
-            Debug.Log("[GAMA][MW] Port " + playerPort + " occupied by PID=" + playerPids[i]);
+            GamaLog.Dev("[GAMA][MW] Port " + playerPort + " occupied by PID=" + playerPids[i]);
         }
 
         if (allPids.Count == 0)
         {
-            Debug.Log("[GAMA][MW] Port " + monitorPort + " free");
-            Debug.Log("[GAMA][MW] Port " + playerPort + " free");
+            GamaLog.Dev("[GAMA][MW] Port " + monitorPort + " free");
+            GamaLog.Dev("[GAMA][MW] Port " + playerPort + " free");
             return true;
         }
 
@@ -1535,8 +1588,8 @@ public sealed class GamaPanelWindow : EditorWindow
 
         foreach (int pid in allPids)
         {
-            Debug.Log("[GAMA][MW] Stopping PID " + pid + "...");
-            GamaEditorMiddlewareOrchestrator.KillProcessByPid(pid, Debug.Log);
+            GamaLog.Dev("[GAMA][MW] Stopping PID " + pid + "...");
+            GamaEditorMiddlewareOrchestrator.KillProcessByPid(pid, GamaLog.Dev);
         }
 
         bool monitorClosed;
@@ -1559,14 +1612,14 @@ public sealed class GamaPanelWindow : EditorWindow
         if (!monitorClosed || !playerClosed)
         {
             error = "Ports " + monitorPort + "/" + playerPort + " remain occupied after taskkill. Monitor PIDs=" +
-                    string.Join(", ", GamaEditorMiddlewareOrchestrator.GetListeningPidsOnTcpPort(monitorPort, Debug.Log)) +
+                    string.Join(", ", GamaEditorMiddlewareOrchestrator.GetListeningPidsOnTcpPort(monitorPort, GamaLog.Dev)) +
                     " player=" +
-                    string.Join(", ", GamaEditorMiddlewareOrchestrator.GetListeningPidsOnTcpPort(playerPort, Debug.Log));
+                    string.Join(", ", GamaEditorMiddlewareOrchestrator.GetListeningPidsOnTcpPort(playerPort, GamaLog.Dev));
             return false;
         }
 
-        Debug.Log("[GAMA][MW] Port " + monitorPort + " free");
-        Debug.Log("[GAMA][MW] Port " + playerPort + " free");
+        GamaLog.Dev("[GAMA][MW] Port " + monitorPort + " free");
+        GamaLog.Dev("[GAMA][MW] Port " + playerPort + " free");
         return true;
     }
 
@@ -1616,7 +1669,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         string prefix = isStdErr ? "[GAMA][MW][stderr] " : "[GAMA][MW][stdout] ";
-        Debug.Log(prefix + line);
+        GamaLog.Dev(prefix + line);
     }
 
     private static void LogMiddlewareEnvironmentSnapshot(IDictionary<string, string> middlewareEnv)
@@ -1637,7 +1690,7 @@ public sealed class GamaPanelWindow : EditorWindow
                 kv.Key.StartsWith("LEARNING_", StringComparison.OrdinalIgnoreCase) ||
                 kv.Key.EndsWith("_WS_PORT", StringComparison.OrdinalIgnoreCase))
             {
-                Debug.Log("[GAMA][MW] env " + kv.Key + "=" + (kv.Value ?? string.Empty));
+                GamaLog.Dev("[GAMA][MW] env " + kv.Key + "=" + (kv.Value ?? string.Empty));
             }
         }
     }
@@ -1649,9 +1702,9 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         error = null;
         int playerPort = ResolveCapturePlayerPort();
-        Debug.Log("[GAMA][CAPTURE][8080][INFO] EXTERNAL MIDDLEWARE MODE — no kill, no restart");
-        Debug.Log("[GAMA][MW] Existing monitor connection ws://" + host + ":" + captureMonitorPort + "/");
-        Debug.Log("[GAMA][MW] Existing player socket connection ws://" + host + ":" + playerPort + "/");
+        GamaLog.Dev("[GAMA][CAPTURE][8080][INFO] EXTERNAL MIDDLEWARE MODE — no kill, no restart");
+        GamaLog.Dev("[GAMA][MW] Existing monitor connection ws://" + host + ":" + captureMonitorPort + "/");
+        GamaLog.Dev("[GAMA][MW] Existing player socket connection ws://" + host + ":" + playerPort + "/");
 
         bool monitorReady;
         bool playerReady;
@@ -1722,7 +1775,7 @@ public sealed class GamaPanelWindow : EditorWindow
         if (EditorApplication.isPlayingOrWillChangePlaymode)
         {
             captureRuntimeStatus = "Preview generation is disabled during Play mode. Stop Play mode before generating a new editor preview.";
-            Debug.LogWarning("[GAMA][PREVIEW] Capture ignored during Play mode to avoid stealing the runtime websocket player.");
+            GamaLog.DevWarning("[GAMA][PREVIEW] Capture ignored during Play mode to avoid stealing the runtime websocket player.");
             Repaint();
             return;
         }
@@ -1770,9 +1823,9 @@ public sealed class GamaPanelWindow : EditorWindow
             return;
         }
 
-        Debug.Log("[SYNC] UI selected model = " + uiSelectedModelPath);
-        Debug.Log("[SYNC] Runtime capture model = " + runtimeModelPath);
-        Debug.Log("[SYNC] Runtime experiment = " + runtimeExperimentName);
+        GamaLog.Dev("[SYNC] UI selected model = " + uiSelectedModelPath);
+        GamaLog.Dev("[SYNC] Runtime capture model = " + runtimeModelPath);
+        GamaLog.Dev("[SYNC] Runtime experiment = " + runtimeExperimentName);
 
         if (managedFromUnity)
         {
@@ -1792,13 +1845,13 @@ public sealed class GamaPanelWindow : EditorWindow
 
         if (!captureUseLocalMiddleware && !captureSkipRemoteLoad && !managedFromUnity)
         {
-            UnityEngine.Debug.LogWarning(
+            GamaLog.DevWarning(
                 "[GAMA] Capture with remote load (port 1000): prefer 'Managed by Unity' or 'Launch and capture'.");
         }
 
         captureFlowActive = true;
         int panelSession = System.Threading.Interlocked.Increment(ref GamaPanelWindowCaptureSessionCounter);
-        UnityEngine.Debug.Log("[GAMA][DBG][panel #" + panelSession + "] StartCaptureFlow launchGama=" + launchGama +
+        GamaLog.Dev("[GAMA][DBG][panel #" + panelSession + "] StartCaptureFlow launchGama=" + launchGama +
             " managed=" + managedFromUnity +
             " externalMw=" + (managedFromUnity && captureUseExternalMiddleware) +
             " directMw=" + captureUseLocalMiddleware + " port=" + (capturePort ?? "?") +
@@ -1854,7 +1907,7 @@ public sealed class GamaPanelWindow : EditorWindow
             EditorUtility.DisplayDialog("Capture — incompatible Unity model", unityCompatError, "OK");
             captureFlowActive = false;
             captureRuntimeStatus = unityCompatError;
-            UnityEngine.Debug.LogWarning("[GAMA] Capture refused: " + unityCompatError);
+            GamaLog.DevWarning("[GAMA] Capture refused: " + unityCompatError);
             return;
         }
 
@@ -1871,7 +1924,7 @@ public sealed class GamaPanelWindow : EditorWindow
             }
 
             generatedLearningPackageRoot = learningRoot;
-            Debug.Log("[GAMA][SYNC] Generated middleware package root: " + generatedLearningPackageRoot);
+            GamaLog.Dev("[GAMA][SYNC] Generated middleware package root: " + generatedLearningPackageRoot);
         }
 
         captureCts?.Dispose();
@@ -1914,7 +1967,7 @@ public sealed class GamaPanelWindow : EditorWindow
                         runtimeExperimentName,
                         runtimeModelPath,
                         captureCts.Token,
-                        UnityEngine.Debug.Log)
+                        GamaLog.Dev)
                     .GetAwaiter()
                     .GetResult();
             }
@@ -1922,7 +1975,7 @@ public sealed class GamaPanelWindow : EditorWindow
             {
                 AbortCaptureIfRunning("Catalog diagnosis failed", purgePlayer: false);
                 EditorUtility.DisplayDialog("Capture",
-                    "Monitor catalog diagnosis impossible: " + ex.Message,
+                    "Monitor catalog diagnosis failed: " + ex.Message,
                     "OK");
                 captureFlowActive = false;
                 return;
@@ -1947,11 +2000,11 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         else if (selectedGamaPreviewMode)
         {
-            Debug.Log("[GAMA][PREVIEW][SELECTED] Preview de l'expérience sélectionnée dans GAMA");
-            Debug.Log("[GAMA][PREVIEW][SELECTED] Aucun catalogue middleware");
-            Debug.Log("[GAMA][PREVIEW][SELECTED] No settings.json");
-            Debug.Log("[GAMA][PREVIEW][SELECTED] No middleware restart");
-            Debug.Log("[GAMA][PREVIEW][SELECTED] Play-like Runtime sequence");
+            GamaLog.Dev("[GAMA][PREVIEW][SELECTED] Preview of the experiment selected in GAMA");
+            GamaLog.Dev("[GAMA][PREVIEW][SELECTED] No middleware catalog");
+            GamaLog.Dev("[GAMA][PREVIEW][SELECTED] No settings.json");
+            GamaLog.Dev("[GAMA][PREVIEW][SELECTED] No middleware restart");
+            GamaLog.Dev("[GAMA][PREVIEW][SELECTED] Play-like Runtime sequence");
         }
 
         if (launchGama)
@@ -2021,7 +2074,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
         if (!captureUseLocalMiddleware && GamaEditorFirstTickCapture.IsGamaNativeWebSocketPort(port))
         {
-            UnityEngine.Debug.LogWarning(
+            GamaLog.DevWarning(
                 "[GAMA] Port " + port + " = integrated GAMA server: direct capture mode (load/play protocol). " +
                 "For the Node middleware, launch simple.webplatform and use port 8080.");
         }
@@ -2032,20 +2085,20 @@ public sealed class GamaPanelWindow : EditorWindow
         {
             if (selectedGamaPreviewMode)
             {
-                UnityEngine.Debug.Log(
+                GamaLog.Dev(
                     "[GAMA] Preview from GAMA: external middleware ws://" + host + ":" + port +
                     "/, Play-like sequence, no monitor catalog.");
             }
             else
             {
-                UnityEngine.Debug.Log(
+                GamaLog.Dev(
                     "[GAMA] Managed by Unity: monitor ws://" + host + ":" + captureMonitorPort +
                     "/ (launch_experiment) then headset ws://" + host + ":" + port + "/.");
             }
         }
         else if (captureSkipRemoteLoad && !captureUseLocalMiddleware)
         {
-            UnityEngine.Debug.Log(
+            GamaLog.Dev(
                 "[GAMA] Experiment already open: 8080 middleware only (diagnostic, no launch monitor).");
         }
 
@@ -2079,12 +2132,12 @@ public sealed class GamaPanelWindow : EditorWindow
                 false,
                 captureStopWhenPreviewCacheStable,
                 stableSec,
-                UnityEngine.Debug.Log,
+                GamaLog.Dev,
                 captureCts.Token);
 
             captureRuntimeStatus = "Direct capture started to GAMA ws://localhost:" + gamaPort + "/  (min. " +
                 (captureTimeoutMs / 1000) + " s, extended after load/create_player). id = " + id + ".";
-            UnityEngine.Debug.Log("[GAMA] Direct GAMA Capture: ws://localhost:" + gamaPort + "/ id=\"" + id + "\".");
+            GamaLog.Dev("[GAMA] Direct GAMA Capture: ws://localhost:" + gamaPort + "/ id=\"" + id + "\".");
         }
         else
         {
@@ -2112,7 +2165,7 @@ public sealed class GamaPanelWindow : EditorWindow
                 capturePauseExperimentAfterPreview,
                 captureStopWhenPreviewCacheStable,
                 stableSec,
-                UnityEngine.Debug.Log,
+                GamaLog.Dev,
                 captureCts.Token);
 
             captureRuntimeStatus = "Middleware capture ws://" + host + ":" + port + "/ (min. " + (captureTimeoutMs / 1000) +
@@ -2124,7 +2177,7 @@ public sealed class GamaPanelWindow : EditorWindow
                     : captureSkipRemoteLoad
                         ? "8080 Middleware only (diagnostic)."
                         : "Automatic load/play/create_player if experiment is imported.");
-            UnityEngine.Debug.Log("[GAMA] Capture middleware id=\"" + id + "\" ws://" + host + ":" + port + "/");
+            GamaLog.Dev("[GAMA] Capture middleware id=\"" + id + "\" ws://" + host + ":" + port + "/");
         }
 
         if (captureTask == null)
@@ -2235,7 +2288,7 @@ public sealed class GamaPanelWindow : EditorWindow
             }
 
             generatedLearningPackageRoot = learningRoot;
-            Debug.Log("[GAMA][SYNC] Generated middleware package root: " + generatedLearningPackageRoot);
+            GamaLog.Dev("[GAMA][SYNC] Generated middleware package root: " + generatedLearningPackageRoot);
 
             using (System.Threading.CancellationTokenSource restartCts =
                    new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(120)))
@@ -2278,7 +2331,7 @@ public sealed class GamaPanelWindow : EditorWindow
             runtimeExperimentName,
             runtimeModelPath,
             System.Threading.CancellationToken.None,
-            UnityEngine.Debug.Log);
+            GamaLog.Dev);
     }
 
     private void SyncSelectedModelWithMiddleware()
@@ -2296,7 +2349,7 @@ public sealed class GamaPanelWindow : EditorWindow
         if (!EnsureGeneratedLearningPackage(runtimeModelPath, runtimeExperimentName, out string learningRoot, out string learningError))
         {
             captureRuntimeStatus = learningError;
-            Debug.LogError("[GAMA][SYNC] " + learningError);
+            GamaLog.Error("[GAMA][SYNC] " + learningError);
             return;
         }
 
@@ -2304,9 +2357,9 @@ public sealed class GamaPanelWindow : EditorWindow
         captureRuntimeStatus =
             "[GAMA][SYNC] Generated package: " + generatedLearningPackageRoot +
             " | Restart the middleware with LEARNING_PACKAGE_PATH including this folder.";
-        Debug.Log("[GAMA][SYNC] Selected model: " + runtimeModelPath);
-        Debug.Log("[GAMA][SYNC] Experiments found: " + runtimeExperimentName);
-        Debug.Log("[GAMA][SYNC] Generated middleware package: " + generatedLearningPackageRoot);
+        GamaLog.Dev("[GAMA][SYNC] Selected model: " + runtimeModelPath);
+        GamaLog.Dev("[GAMA][SYNC] Experiments found: " + runtimeExperimentName);
+        GamaLog.Dev("[GAMA][SYNC] Generated middleware package: " + generatedLearningPackageRoot);
         TryAssignGeneratedMiddlewareLauncherScript();
     }
 
@@ -2329,7 +2382,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         generatedLearningPackageRoot = learningRoot;
-        Debug.Log("[GAMA][SYNC] Generated middleware package root: " + generatedLearningPackageRoot);
+        GamaLog.Dev("[GAMA][SYNC] Generated middleware package root: " + generatedLearningPackageRoot);
 
         using (System.Threading.CancellationTokenSource restartCts =
                new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(120)))
@@ -2356,7 +2409,7 @@ public sealed class GamaPanelWindow : EditorWindow
                         runtimeExperimentName,
                         runtimeModelPath,
                         restartCts.Token,
-                        UnityEngine.Debug.Log)
+                        GamaLog.Dev)
                     .GetAwaiter()
                     .GetResult();
 
@@ -2386,7 +2439,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
         middlewareScriptPath = launcherPath;
         EditorPrefs.SetString(GamaMiddlewareScriptPrefKey, middlewareScriptPath);
-        Debug.Log("[GAMA][MW] Middleware script registered: " + middlewareScriptPath);
+        GamaLog.Dev("[GAMA][MW] Middleware script registered: " + middlewareScriptPath);
         return true;
     }
 
@@ -2432,8 +2485,8 @@ public sealed class GamaPanelWindow : EditorWindow
                                   "}";
             File.WriteAllText(settingsPath, settingsJson);
             bool exists = File.Exists(settingsPath);
-            Debug.Log("[GAMA][SYNC] settings.json path=" + settingsPath);
-            Debug.Log("[GAMA][SYNC] settings.json exists=" + exists);
+            GamaLog.Dev("[GAMA][SYNC] settings.json path=" + settingsPath);
+            GamaLog.Dev("[GAMA][SYNC] settings.json exists=" + exists);
             if (!exists)
             {
                 error = "settings.json not written: " + settingsPath;
@@ -2443,11 +2496,11 @@ public sealed class GamaPanelWindow : EditorWindow
             JObject settings = JObject.Parse(File.ReadAllText(settingsPath));
             string parsedExperiment = settings["experiment_name"]?.ToString() ?? string.Empty;
             string parsedModel = settings["model_file_path"]?.ToString() ?? string.Empty;
-            Debug.Log("[GAMA][SYNC] experiment_name=" + parsedExperiment);
-            Debug.Log("[GAMA][SYNC] model_file_path=" + parsedModel);
+            GamaLog.Dev("[GAMA][SYNC] experiment_name=" + parsedExperiment);
+            GamaLog.Dev("[GAMA][SYNC] model_file_path=" + parsedModel);
             lastGeneratedSettingsJsonPath = settingsPath;
             lastGeneratedSettingsJsonContent = settingsJson;
-            Debug.Log("[GAMA][SYNC] settings.json content:\n" + settingsJson);
+            GamaLog.Dev("[GAMA][SYNC] settings.json content:\n" + settingsJson);
             LogGeneratedPackageTree(root);
 
             if (!string.Equals(parsedExperiment.Trim(), runtimeExperimentName.Trim(), StringComparison.Ordinal))
@@ -2469,7 +2522,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         catch (Exception ex)
         {
-            error = "Middleware learning package generation impossible: " + ex.Message;
+            error = "Middleware learning package generation failed: " + ex.Message;
             return false;
         }
     }
@@ -2566,14 +2619,14 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
         {
-            Debug.Log("[GAMA][SYNC] Generated package tree: (missing root)");
+            GamaLog.Dev("[GAMA][SYNC] Generated package tree: (missing root)");
             return;
         }
 
-        Debug.Log("[GAMA][SYNC] Generated package tree:");
+        GamaLog.Dev("[GAMA][SYNC] Generated package tree:");
         foreach (string file in Directory.GetFiles(root, "*", SearchOption.AllDirectories))
         {
-            Debug.Log("[GAMA][SYNC] - " + file);
+            GamaLog.Dev("[GAMA][SYNC] - " + file);
         }
     }
 
@@ -2678,7 +2731,7 @@ public sealed class GamaPanelWindow : EditorWindow
         catch (Exception ex)
         {
             captureRuntimeStatus = "Capture failed: " + ex.Message;
-            UnityEngine.Debug.LogError("[GAMA] Capture : " + ex);
+            GamaLog.Error("[GAMA] Capture : " + ex);
         }
 
         CleanupPendingPreviewPlayer();
@@ -2692,7 +2745,7 @@ public sealed class GamaPanelWindow : EditorWindow
         if (!result.Success)
         {
             captureRuntimeStatus = "Capture failed: " + (result.Error ?? "unknown reason");
-            UnityEngine.Debug.LogError("[GAMA] Capture : " + result.Error + "\n" + result.LogTrail);
+            GamaLog.Error("[GAMA] Capture : " + result.Error + "\n" + result.LogTrail);
             Repaint();
             return;
         }
@@ -2727,11 +2780,11 @@ public sealed class GamaPanelWindow : EditorWindow
         if (!result.DynamicAgentsFound && !string.IsNullOrEmpty(result.PreviewWarning))
         {
             captureRuntimeStatus += " " + result.PreviewWarning;
-            UnityEngine.Debug.LogWarning("[GAMA] " + result.PreviewWarning);
+            GamaLog.DevWarning("[GAMA] " + result.PreviewWarning);
         }
 
         experimentStatus = captureRuntimeStatus;
-        UnityEngine.Debug.Log("[GAMA] " + captureRuntimeStatus + "\n" + result.LogTrail);
+        GamaLog.Dev("[GAMA] " + captureRuntimeStatus + "\n" + result.LogTrail);
 
         ApplySpeciesRenderOverridesToSimulationManager();
 
@@ -2766,23 +2819,23 @@ public sealed class GamaPanelWindow : EditorWindow
                         captureMonitorPort,
                         playerId,
                         cleanupCts.Token,
-                        UnityEngine.Debug.Log)
+                        GamaLog.Dev)
                     .GetAwaiter()
                     .GetResult();
 
                 if (removed)
                 {
-                    Debug.Log("[GAMA][PREVIEW][CLEANUP] Removed isolated preview player " + playerId + " before Play.");
+                    GamaLog.Dev("[GAMA][PREVIEW][CLEANUP] Removed isolated preview player " + playerId + " before Play.");
                 }
                 else
                 {
-                    Debug.LogWarning("[GAMA][PREVIEW][CLEANUP] Could not remove isolated preview player " + playerId + ".");
+                    GamaLog.DevWarning("[GAMA][PREVIEW][CLEANUP] Could not remove isolated preview player " + playerId + ".");
                 }
             }
         }
         catch (Exception ex)
         {
-            Debug.LogWarning("[GAMA][PREVIEW][CLEANUP] remove_player_headset failed for " + playerId + ": " + ex.Message);
+            GamaLog.DevWarning("[GAMA][PREVIEW][CLEANUP] remove_player_headset failed for " + playerId + ": " + ex.Message);
         }
     }
 
@@ -2881,11 +2934,11 @@ public sealed class GamaPanelWindow : EditorWindow
         try
         {
             GAMAMenu.SetupScene();
-            Debug.Log("[GAMA][PREVIEW] Scene reset with Setup Scene before generating preview.");
+            GamaLog.Dev("[GAMA][PREVIEW] Scene reset with Setup Scene before generating preview.");
         }
         catch (Exception ex)
         {
-            Debug.LogWarning("[GAMA][PREVIEW] Setup Scene before preview failed: " + ex);
+            GamaLog.DevWarning("[GAMA][PREVIEW] Setup Scene before preview failed: " + ex);
         }
 
         ClearStaticPreviewBeforeNewPreview();
@@ -2904,7 +2957,7 @@ public sealed class GamaPanelWindow : EditorWindow
         if (changed)
         {
             AssetDatabase.SaveAssets();
-            Debug.Log("[GAMA][PREVIEW][CLEAN] reset species position/rotation offsets before preview generation.");
+            GamaLog.Dev("[GAMA][PREVIEW][CLEAN] reset species position/rotation offsets before preview generation.");
         }
     }
 
@@ -3101,7 +3154,7 @@ public sealed class GamaPanelWindow : EditorWindow
         string prefabLog = !string.IsNullOrWhiteSpace(entry.prefabResourcePath)
             ? entry.prefabResourcePath
             : (entry.prefabOverride != null ? entry.prefabOverride.name : "none");
-        Debug.Log("[GAMA][PANEL][ASSET] write species=" + entry.speciesName +
+        GamaLog.Dev("[GAMA][PANEL][ASSET] write species=" + entry.speciesName +
                   " model=" + entry.modelPath +
                   " experiment=" + entry.experimentName +
                   " prefab=" + prefabLog +
@@ -3220,7 +3273,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         manager.ApplyRuntimeSpeciesOverrideNow(agent.Name);
-        Debug.Log("[GAMA][PANEL][LIVE] species=" + agent.Name +
+        GamaLog.Dev("[GAMA][PANEL][LIVE] species=" + agent.Name +
                   " applied prefab=" + (agent.PrefabOverride != null ? agent.PrefabOverride.name : "none") +
                   " color=" + agent.Color +
                   " scale=" + agent.ScaleMultiplier.ToString(CultureInfo.InvariantCulture) +
@@ -3760,7 +3813,7 @@ public sealed class GamaPanelWindow : EditorWindow
                 "Could not validate the preview settings: " + ex.Message,
                 "OK");
 
-            Debug.LogWarning("[GAMA][PREVIEW] Validate Preview failed: " + ex);
+            GamaLog.DevWarning("[GAMA][PREVIEW] Validate Preview failed: " + ex);
         }
     }
 
@@ -3975,7 +4028,7 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
         AssetDatabase.SaveAssets();
         experimentStatus = "Applied experiment settings to the active Unity scene.";
-        Debug.Log("[GAMA] Applied experiment import settings for " + analysis.Name + ".");
+        GamaLog.Dev("[GAMA] Applied experiment import settings for " + analysis.Name + ".");
     }
 
     private void ApplySceneObjects()
@@ -4064,7 +4117,7 @@ public sealed class GamaPanelWindow : EditorWindow
             string path = AssetDatabase.GetAssetPath(asset);
             EditorPrefs.SetString(SpeciesOverridesAssetPrefKey, path);
             Selection.activeObject = asset;
-            UnityEngine.Debug.Log("[GAMA] Overrides asset ready: " + path);
+            GamaLog.Dev("[GAMA] Overrides asset ready: " + path);
         }
 
         return asset;
@@ -4162,11 +4215,11 @@ public sealed class GamaPanelWindow : EditorWindow
         {
             string targetSceneAssetPath = GamaCodeExampleSceneBuilder.BuildAndSave(sceneInfo);
             codeExampleStatus = "Generated " + sceneInfo.DisplayName + ".";
-            Debug.Log("[GAMA] Code example scene generated: " + targetSceneAssetPath + ".");
+            GamaLog.Dev("[GAMA] Code example scene generated: " + targetSceneAssetPath + ".");
         }
         catch (Exception exception)
         {
-            Debug.LogError("[GAMA] Failed to generate code example scene: " + exception);
+            GamaLog.Error("[GAMA] Failed to generate code example scene: " + exception);
             EditorUtility.DisplayDialog("Code Example Setup", "Failed to generate the selected code example scene. See Console for details.\n\n" + exception.Message, "OK");
         }
     }
@@ -4191,7 +4244,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         catch (Exception exception)
         {
-            Debug.LogError("[GAMA] Failed to generate code example scenes: " + exception);
+            GamaLog.Error("[GAMA] Failed to generate code example scenes: " + exception);
             EditorUtility.DisplayDialog("Code Example Setup", "Failed to generate all code example scenes. See Console for details.\n\n" + exception.Message, "OK");
         }
     }
@@ -4246,7 +4299,7 @@ public sealed class GamaPanelWindow : EditorWindow
         SimulationManager manager = UnityEngine.Object.FindFirstObjectByType<SimulationManager>(FindObjectsInactive.Include);
         if (manager == null)
         {
-            Debug.LogWarning("[GAMA][PREVIEW][BUILD] No SimulationManager in the scene: building with CRS/visual defaults.");
+            GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] No SimulationManager in the scene: building with CRS/visual defaults.");
         }
 
         int prefabN;
@@ -4278,7 +4331,7 @@ public sealed class GamaPanelWindow : EditorWindow
             ? " (tick " + staticPreviewWorldTickIndex + ")"
             : string.Empty;
         status = "Preview (JSON middleware)" + tickLabel + ": " + prefabN + " prefab(s), " + geomN + " geometry(s). CRS = SimulationManager coefficients.";
-        Debug.Log("[GAMA] " + status);
+        GamaLog.Dev("[GAMA] " + status);
         return true;
     }
 
@@ -4290,7 +4343,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         catch (Exception ex)
         {
-            Debug.LogError("[GAMA][PREVIEW][BUILD] Exception: " + ex);
+            GamaLog.Error("[GAMA][PREVIEW][BUILD] Exception: " + ex);
             captureRuntimeStatus = "Capture OK but preview build failed: " + ex.Message;
             experimentStatus = captureRuntimeStatus;
         }
@@ -4324,7 +4377,7 @@ public sealed class GamaPanelWindow : EditorWindow
                     ? jsonStatus
                     : jsonStatus + " species=" + speciesSummary;
                 captureRuntimeStatus = "Static preview built: " + experimentStatus;
-                Debug.Log("[GAMA][PREVIEW][BUILD] " + captureRuntimeStatus);
+                GamaLog.Info("[GAMA] " + captureRuntimeStatus);
                 return;
             }
 
@@ -4332,7 +4385,7 @@ public sealed class GamaPanelWindow : EditorWindow
             Undo.CollapseUndoOperations(undoGroup);
             experimentStatus = jsonStatus ?? "JSON Error.";
             captureRuntimeStatus = "Capture successful, but preview build failed: " + experimentStatus;
-            Debug.LogError("[GAMA][PREVIEW][BUILD] " + captureRuntimeStatus);
+            GamaLog.Error("[GAMA][PREVIEW][BUILD] " + captureRuntimeStatus);
             return;
         }
 
@@ -4394,7 +4447,7 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
         experimentStatus = "Static preview generated: " + resolvedPrefabCount + " prefab instance(s), " + fallbackCount + " fallback instance(s).";
         string label = analysis != null && !string.IsNullOrWhiteSpace(analysis.Name) ? analysis.Name : "GAMA active selection";
-        Debug.Log("[GAMA] Static experiment preview generated for " + label + ".");
+        GamaLog.Info("[GAMA] Static experiment preview generated for " + label + ".");
     }
 
     private static string BuildPreviewSpeciesSummary(GameObject root)
@@ -4462,7 +4515,7 @@ public sealed class GamaPanelWindow : EditorWindow
             EnsureAgentUiDefaults(agent);
         }
 
-        Debug.Log("[GAMA][PREVIEW][UI] species rows rebuilt count=" + agentOverrides.Count.ToString(CultureInfo.InvariantCulture));
+        GamaLog.Dev("[GAMA][PREVIEW][UI] species rows rebuilt count=" + agentOverrides.Count.ToString(CultureInfo.InvariantCulture));
     }
 
     private void ConfigurePreviewSession(GameObject root)
@@ -4508,7 +4561,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         else
         {
-            Debug.Log("[GAMA][PREVIEW] Runtime selection store unmodified (mode " + session.selectionMode + ", model=" + model + ").");
+            GamaLog.Dev("[GAMA][PREVIEW] Runtime selection store unmodified (mode " + session.selectionMode + ", model=" + model + ").");
         }
 
         SimulationManager manager = UnityEngine.Object.FindFirstObjectByType<SimulationManager>(FindObjectsInactive.Include);
@@ -4530,7 +4583,7 @@ public sealed class GamaPanelWindow : EditorWindow
         PropagateSessionToSpeciesWizards(root, session);
         EditorUtility.SetDirty(session);
 
-        Debug.Log(
+        GamaLog.Dev(
             "[GAMA][PREVIEW] session model=" + session.modelPath +
             " exp=" + session.experimentName +
             " mode=" + session.selectionMode +
@@ -5086,7 +5139,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         catch (Exception exception)
         {
-            Debug.LogError("[GAMA] Error importing prefabs: " + exception.Message);
+            GamaLog.Error("[GAMA] Error importing prefabs: " + exception.Message);
             EditorUtility.DisplayDialog("Import Prefabs", "Failed to import prefabs. See console for details.\n\n" + exception.Message, "OK");
         }
     }

@@ -69,7 +69,7 @@ public class GAMAPrefabImporter : EditorWindow
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"[GAMA] Error importing prefabs: {e.Message}");
+            GamaLog.Error($"[GAMA] Error importing prefabs: {e.Message}");
             EditorUtility.DisplayDialog("Error", $"Failed to import prefabs. See console for details.\n\n{e.Message}", "OK");
         }
     }
