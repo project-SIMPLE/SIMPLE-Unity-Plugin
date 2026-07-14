@@ -476,9 +476,7 @@ public static class GamaPreviewPlayModeGuard
                         "[GAMA][PLAY] Strict middleware catalog launch failed; attaching to current monitor experiment instead. " +
                         "The Unity selection remains model=" + (modelPath ?? string.Empty) +
                         " experiment=" + (experimentName ?? string.Empty) +
-                        ". Error: " + (result.Error ?? "unknown"));                                     "The Unity selection remains model=" + (modelPath ?? string.Empty) +
-                                     " experiment=" + (experimentName ?? string.Empty) +
-                                     ". Error: " + (result.Error ?? "unknown"));
+                        ". Error: " + (result.Error ?? "unknown"));
 
                     result = GamaEditorMiddlewareOrchestrator.LaunchCurrentMonitorExperimentAsync(
                             host,
