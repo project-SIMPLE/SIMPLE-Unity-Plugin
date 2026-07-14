@@ -2944,7 +2944,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         bool hasVisualOverridePrefab = !prefabAgent &&
                                        (visualState.PrefabOverride != null ||
                                         !string.IsNullOrEmpty(visualState.PrefabResourcePath));
-        bool keepLogicalRootScaleStable = hasVisualOverridePrefab && IsVegetationCell(prop, obj);
+        bool keepLogicalRootScaleStable = hasVisualOverridePrefab;
         obj.transform.localScale = keepLogicalRootScaleStable
             ? Vector3.one
             : new Vector3(scale, scale, scale);
@@ -2967,6 +2967,15 @@ public abstract partial class SimulationManager : MonoBehaviour
                 UnityEngine.Object.Destroy(staleVisualOverride.gameObject);
             }
         }
+        else if (!hasVisualOverridePrefab)
+        {
+            Transform staleVisualOverride = obj.transform.Find("VisualOverride");
+            if (staleVisualOverride != null)
+            {
+                staleVisualOverride.gameObject.SetActive(false);
+                UnityEngine.Object.Destroy(staleVisualOverride.gameObject);
+            }
+        }
 
         if (hasVisualOverridePrefab)
         {
@@ -2978,7 +2987,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             if (visualOverride != null)
             {
                 GamaRuntimePrefabSignature sig = visualOverride.GetComponent<GamaRuntimePrefabSignature>();
-                if (sig == null || sig.signature != visualSignature)
+                if (sig == null || sig.signature != visualSignature || !sig.hasBaseLocalScale)
                 {
                     UnityEngine.Object.Destroy(visualOverride.gameObject);
                     visualOverride = null;
@@ -3003,6 +3012,8 @@ public abstract partial class SimulationManager : MonoBehaviour
 
                     GamaRuntimePrefabSignature sig = visual.AddComponent<GamaRuntimePrefabSignature>();
                     sig.signature = visualSignature;
+                    sig.baseLocalScale = visual.transform.localScale;
+                    sig.hasBaseLocalScale = true;
                     visualOverride = visual.transform;
                 }
                 else if (GamaLog.VerboseEnabled)
@@ -3034,7 +3045,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                     visualOverride.position = ResolveCurrentVisualWorldAnchor(obj);
                 }
                 visualOverride.rotation = visualRotation;
-                visualOverride.localScale = ResolveVisualOverrideLocalScale(scale, visualState, keepLogicalRootScaleStable);
+                visualOverride.localScale = ResolveVisualOverrideLocalScale(visualOverride, visualState);
 
                 if (GamaLog.VerboseEnabled)
                 {
@@ -3083,38 +3094,30 @@ public abstract partial class SimulationManager : MonoBehaviour
                     ChangeColor(obj, visualState.Color);
                 }
             }
+            else
+            {
+                RestoreRuntimeColor(visualOverride != null ? visualOverride.gameObject : obj);
+            }
+        }
+        else
+        {
+            RestoreRuntimeColor(visualOverride != null ? visualOverride.gameObject : obj);
         }
 
         SetRenderersEnabled(obj, visualState.Visible, visualOverride);
     }
 
     private static Vector3 ResolveVisualOverrideLocalScale(
-        float rootScale,
-        GamaAgentVisualState visualState,
-        bool keepLogicalRootScaleStable)
+        Transform visualOverride,
+        GamaAgentVisualState visualState)
     {
-        if (keepLogicalRootScaleStable)
-        {
-            return Vector3.one * Mathf.Max(0f, rootScale);
-        }
-
-        float parentScale = Mathf.Max(0.0001f, rootScale);
-        float targetWorldScale = Mathf.Max(0f, visualState.ScaleMultiplier);
-        return Vector3.one * (targetWorldScale / parentScale);
-    }
-
-    private static bool IsVegetationCell(PropertiesGAMA prop, GameObject obj)
-    {
-        return ContainsVegetationCell(prop != null ? prop.id : null) ||
-               ContainsVegetationCell(prop != null ? prop.tag : null) ||
-               ContainsVegetationCell(prop != null ? prop.prefab : null) ||
-               ContainsVegetationCell(obj != null ? obj.name : null);
-    }
-
-    private static bool ContainsVegetationCell(string value)
-    {
-        return !string.IsNullOrWhiteSpace(value) &&
-               value.IndexOf("vegetation_cell", StringComparison.OrdinalIgnoreCase) >= 0;
+        GamaRuntimePrefabSignature marker = visualOverride != null
+            ? visualOverride.GetComponent<GamaRuntimePrefabSignature>()
+            : null;
+        Vector3 baseLocalScale = marker != null && marker.hasBaseLocalScale
+            ? marker.baseLocalScale
+            : Vector3.one;
+        return baseLocalScale * Mathf.Max(0f, visualState.ScaleMultiplier);
     }
 
     private static Vector3 ResolveRuntimeBasePosition(RuntimeAgentRecord record, GameObject root)
@@ -3646,20 +3649,40 @@ public abstract partial class SimulationManager : MonoBehaviour
         Renderer[] renderers = obj.GetComponentsInChildren<Renderer>(true);
         for (int i = 0; i < renderers.Length; i++)
         {
+            Renderer renderer = renderers[i];
+            GamaRuntimeRendererAppearanceBaseline baseline =
+                renderer.GetComponent<GamaRuntimeRendererAppearanceBaseline>();
+            if (baseline == null)
+            {
+                baseline = renderer.gameObject.AddComponent<GamaRuntimeRendererAppearanceBaseline>();
+            }
+            baseline.Capture(renderer);
+
             if (visualOverride != null)
             {
-                if (renderers[i].transform == visualOverride || renderers[i].transform.IsChildOf(visualOverride))
+                if (renderer.transform == visualOverride || renderer.transform.IsChildOf(visualOverride))
                 {
-                    renderers[i].enabled = visible;
+                    if (visible)
+                    {
+                        baseline.RestoreRendererState(renderer);
+                    }
+                    else
+                    {
+                        renderer.enabled = false;
+                    }
                 }
                 else
                 {
-                    renderers[i].enabled = false;
+                    renderer.enabled = false;
                 }
+            }
+            else if (visible)
+            {
+                baseline.RestoreRendererState(renderer);
             }
             else
             {
-                renderers[i].enabled = visible;
+                renderer.enabled = false;
             }
         }
     }
@@ -4521,6 +4544,13 @@ public abstract partial class SimulationManager : MonoBehaviour
         for (int i = 0; i < renderers.Length; i++)
         {
             Renderer renderer = renderers[i];
+            GamaRuntimeRendererAppearanceBaseline baseline =
+                renderer.GetComponent<GamaRuntimeRendererAppearanceBaseline>();
+            if (baseline == null)
+            {
+                baseline = renderer.gameObject.AddComponent<GamaRuntimeRendererAppearanceBaseline>();
+            }
+            baseline.Capture(renderer);
             MaterialPropertyBlock colorPropertyBlock = SharedColorPropertyBlock;
             bool applied = false;
             for (int c = 0; c < colorIds.Length; c++)
@@ -4555,6 +4585,29 @@ public abstract partial class SimulationManager : MonoBehaviour
                 colorPropertyBlock.SetColor(colorIds[1], color);
                 renderer.SetPropertyBlock(colorPropertyBlock);
                 colorPropertyBlock.Clear();
+            }
+
+            Material[] indexedMaterials = renderer.sharedMaterials;
+            for (int m = 0; m < indexedMaterials.Length; m++)
+            {
+                Material material = indexedMaterials[m];
+                MaterialPropertyBlock indexedBlock = new MaterialPropertyBlock();
+                renderer.GetPropertyBlock(indexedBlock, m);
+                bool indexedApplied = false;
+                for (int c = 0; c < colorIds.Length; c++)
+                {
+                    int propertyId = colorIds[c];
+                    if (material != null && material.HasProperty(propertyId))
+                    {
+                        indexedBlock.SetColor(propertyId, color);
+                        indexedApplied = true;
+                    }
+                }
+                if (!indexedApplied)
+                {
+                    indexedBlock.SetColor(colorIds[1], color);
+                }
+                renderer.SetPropertyBlock(indexedBlock, m);
             }
         }
     }
@@ -4745,6 +4798,22 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
     }
 
+    private static void RestoreRuntimeColor(GameObject obj)
+    {
+        if (obj == null)
+        {
+            return;
+        }
+
+        Renderer[] renderers = obj.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            GamaRuntimeRendererAppearanceBaseline baseline =
+                renderers[i].GetComponent<GamaRuntimeRendererAppearanceBaseline>();
+            baseline?.Restore(renderers[i]);
+        }
+    }
+
     private void TryBootstrapRuntimePlayer()
     {
         if (runtimePlayerBootstrapConfirmed)
@@ -4852,6 +4921,81 @@ public class GamaRuntimePrefabSignature : MonoBehaviour
 {
     public string signature;
     public Quaternion baseRotation = Quaternion.identity;
+    public Vector3 baseLocalScale = Vector3.one;
+    public bool hasBaseLocalScale;
+}
+
+[DisallowMultipleComponent]
+public sealed class GamaRuntimeRendererAppearanceBaseline : MonoBehaviour
+{
+    [NonSerialized] private bool captured;
+    [NonSerialized] private bool hadPropertyBlock;
+    [NonSerialized] private MaterialPropertyBlock propertyBlock;
+    [NonSerialized] private bool rendererEnabled;
+    [NonSerialized] private UnityEngine.Rendering.ShadowCastingMode shadowCastingMode;
+    [NonSerialized] private bool receiveShadows;
+    [NonSerialized] private bool[] hadMaterialPropertyBlocks;
+    [NonSerialized] private MaterialPropertyBlock[] materialPropertyBlocks;
+
+    public void Capture(Renderer renderer)
+    {
+        if (captured || renderer == null)
+        {
+            return;
+        }
+
+        propertyBlock = new MaterialPropertyBlock();
+        renderer.GetPropertyBlock(propertyBlock);
+        hadPropertyBlock = !propertyBlock.isEmpty;
+        int materialCount = renderer.sharedMaterials != null ? renderer.sharedMaterials.Length : 0;
+        hadMaterialPropertyBlocks = new bool[materialCount];
+        materialPropertyBlocks = new MaterialPropertyBlock[materialCount];
+        for (int i = 0; i < materialCount; i++)
+        {
+            MaterialPropertyBlock block = new MaterialPropertyBlock();
+            renderer.GetPropertyBlock(block, i);
+            hadMaterialPropertyBlocks[i] = !block.isEmpty;
+            materialPropertyBlocks[i] = block;
+        }
+        rendererEnabled = renderer.enabled;
+        shadowCastingMode = renderer.shadowCastingMode;
+        receiveShadows = renderer.receiveShadows;
+        captured = true;
+    }
+
+    public void Restore(Renderer renderer)
+    {
+        if (!captured || renderer == null)
+        {
+            return;
+        }
+
+        renderer.SetPropertyBlock(hadPropertyBlock ? propertyBlock : null);
+        int materialCount = renderer.sharedMaterials != null ? renderer.sharedMaterials.Length : 0;
+        for (int i = 0; i < materialCount; i++)
+        {
+            bool hadBlock = hadMaterialPropertyBlocks != null &&
+                            i < hadMaterialPropertyBlocks.Length &&
+                            hadMaterialPropertyBlocks[i];
+            MaterialPropertyBlock block = materialPropertyBlocks != null &&
+                                          i < materialPropertyBlocks.Length
+                ? materialPropertyBlocks[i]
+                : null;
+            renderer.SetPropertyBlock(hadBlock ? block : null, i);
+        }
+    }
+
+    public void RestoreRendererState(Renderer renderer)
+    {
+        if (!captured || renderer == null)
+        {
+            return;
+        }
+
+        renderer.enabled = rendererEnabled;
+        renderer.shadowCastingMode = shadowCastingMode;
+        renderer.receiveShadows = receiveShadows;
+    }
 }
 
 

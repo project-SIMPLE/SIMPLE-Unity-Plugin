@@ -59,7 +59,7 @@ public static class GamaPreviewPlayModeGuard
         else if (state == PlayModeStateChange.ExitingPlayMode)
         {
             string runtimePlayerId = StaticInformation.getId();
-            GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
+            RestorePersistedAppearanceBeforeLeavingPlay();
 
             TryPauseGamaFromUnity("Unity Play stopped", 2);
             TryDisconnectRuntimePlayer("Unity Play stopped");
@@ -83,6 +83,7 @@ public static class GamaPreviewPlayModeGuard
                 }
             }
             SessionState.EraseBool(SessionStateKey);
+            GamaEditorPreviewOverrideApplier.ScheduleApplyOverridesToCurrentPreview();
         }
     }
 
@@ -287,44 +288,59 @@ public static class GamaPreviewPlayModeGuard
 
     private static void AssignSpeciesOverrideContextForPlay()
     {
-        GamaSpeciesRenderOverrides asset = null;
-        string modelPath = string.Empty;
-        string experimentName = string.Empty;
-
-        GamaPreviewSession session = FindCurrentPreviewSession();
-        if (session != null)
+        if (GamaSpeciesAppearanceEditorCoordinator.TryResolveActiveContext(
+                out GamaSpeciesAppearanceContext context))
         {
-            asset = session.speciesOverrides != null
-                ? session.speciesOverrides
-                : GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
-            if (asset != null && session.speciesOverrides == null)
+            GamaSpeciesAppearanceEditorCoordinator.SetActiveContext(context);
+        }
+    }
+
+    private static void RestorePersistedAppearanceBeforeLeavingPlay()
+    {
+        GamaSpeciesAppearanceContext context = GamaSpeciesAppearanceStateStore.ActiveContext;
+        IReadOnlyList<GamaSpeciesRenderOverrideEntry> overlayEntries =
+            GamaSpeciesAppearanceStateStore.GetRuntimeOverlayEntries(context);
+        List<string> speciesNames = new List<string>();
+        for (int i = 0; i < overlayEntries.Count; i++)
+        {
+            string speciesName = overlayEntries[i] != null
+                ? overlayEntries[i].GetSpeciesName()
+                : string.Empty;
+            if (!string.IsNullOrWhiteSpace(speciesName) && !speciesNames.Contains(speciesName))
             {
-                session.speciesOverrides = asset;
-                EditorUtility.SetDirty(session);
+                speciesNames.Add(speciesName);
             }
-
-            modelPath = session.modelPath ?? string.Empty;
-            experimentName = session.experimentName ?? string.Empty;
         }
 
-        if (asset == null)
+        GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
+        if (speciesNames.Count > 0)
         {
-            asset = GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
-        }
-
-        if (asset == null)
-        {
-            return;
-        }
-
-        SimulationManager[] managers = UnityEngine.Object.FindObjectsByType<SimulationManager>(
-            FindObjectsInactive.Include,
-            FindObjectsSortMode.None);
-        for (int i = 0; i < managers.Length; i++)
-        {
-            if (managers[i] != null)
+            GamaRuntimePreviewOverrideApplier.RefreshNow();
+            SimulationManager[] managers = UnityEngine.Object.FindObjectsByType<SimulationManager>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            for (int i = 0; i < managers.Length; i++)
             {
-                managers[i].SetSpeciesRenderOverridesContext(asset, modelPath, experimentName);
+                if (managers[i] == null)
+                {
+                    continue;
+                }
+                for (int speciesIndex = 0; speciesIndex < speciesNames.Count; speciesIndex++)
+                {
+                    managers[i].ApplyRuntimeSpeciesOverrideNow(speciesNames[speciesIndex]);
+                }
+            }
+        }
+
+        GamaRuntimeRendererAppearanceBaseline[] baselines =
+            UnityEngine.Object.FindObjectsByType<GamaRuntimeRendererAppearanceBaseline>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+        for (int i = 0; i < baselines.Length; i++)
+        {
+            if (baselines[i] != null)
+            {
+                UnityEngine.Object.DestroyImmediate(baselines[i]);
             }
         }
     }
