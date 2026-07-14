@@ -127,6 +127,8 @@ public sealed class GamaPanelWindow : EditorWindow
     private bool captureFlowActive;
     private string pendingPreviewPlayerCleanupId = string.Empty;
     private string lastPreviewCapturePlayerId = string.Empty;
+    private string lastPreviewMonitorExperimentId = string.Empty;
+    private bool lastPreviewCaptureUsedActiveGamaSelection;
     private System.Threading.CancellationTokenSource captureCts;
     private GamaEditorBackgroundProcess captureGamaProcess;
     private GamaEditorBackgroundProcess captureMiddlewareProcess;
@@ -1795,6 +1797,8 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         pendingPreviewPlayerCleanupId = string.Empty;
         lastPreviewCapturePlayerId = string.Empty;
+        lastPreviewMonitorExperimentId = string.Empty;
+        lastPreviewCaptureUsedActiveGamaSelection = false;
         if (EditorApplication.isPlayingOrWillChangePlaymode)
         {
             captureRuntimeStatus = "Preview generation is disabled during Play mode. Stop Play mode before generating a new editor preview.";
@@ -1810,6 +1814,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         bool selectedGamaPreviewMode = managedFromUnity && captureUseExternalMiddleware;
+        lastPreviewCaptureUsedActiveGamaSelection = selectedGamaPreviewMode;
         bool directOpenGamaPreviewMode = !managedFromUnity &&
                                          captureUseLocalMiddleware &&
                                          captureSkipRemoteLoad &&
@@ -2274,6 +2279,8 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private void InvalidateCaptureSelectionCache()
     {
+        lastPreviewMonitorExperimentId = string.Empty;
+        lastPreviewCaptureUsedActiveGamaSelection = false;
         staticPreviewPrecisionJsonPath = string.Empty;
         staticPreviewPropertiesJsonPath = string.Empty;
         staticPreviewWorldJsonPath = string.Empty;
@@ -2773,6 +2780,8 @@ public sealed class GamaPanelWindow : EditorWindow
             return;
         }
 
+        lastPreviewMonitorExperimentId = NormalizeMonitorExperimentId(result.ExperimentId);
+
         staticPreviewPrecisionJsonPath = result.PrecisionJsonPath;
         staticPreviewPropertiesJsonPath = result.PropertiesJsonPath;
         RefreshAvailableWorldTicks();
@@ -2885,6 +2894,8 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private void ClearStaticPreviewBeforeNewPreview()
     {
+        lastPreviewMonitorExperimentId = string.Empty;
+        lastPreviewCaptureUsedActiveGamaSelection = false;
         GamaSpeciesAppearanceEditorCoordinator.ClearActiveContext(true);
         GamaPreviewSession previewSession =
             GamaSpeciesAppearanceEditorCoordinator.FindCurrentPreviewSession();
@@ -4408,7 +4419,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private void GenerateStaticPreviewInternal()
     {
-        ClearStaticPreview(false, false);
+        ClearStaticPreview(false, false, false);
 
         int undoGroup = Undo.GetCurrentGroup();
         Undo.SetCurrentGroupName("GAMA Static Experiment Preview");
@@ -4588,7 +4599,12 @@ public sealed class GamaPanelWindow : EditorWindow
         string experiment = analysis != null && !string.IsNullOrWhiteSpace(analysis.Name)
             ? analysis.Name
             : (!string.IsNullOrWhiteSpace(gamaHeadlessBatchName) ? gamaHeadlessBatchName : "unknown");
-        bool activeGamaSelection = string.Equals(model, "GAMA_ACTIVE_SELECTION", StringComparison.Ordinal);
+        bool activeGamaSelection = lastPreviewCaptureUsedActiveGamaSelection ||
+            string.Equals(model, "GAMA_ACTIVE_SELECTION", StringComparison.Ordinal);
+        if (activeGamaSelection)
+        {
+            model = "GAMA_ACTIVE_SELECTION";
+        }
 
         session.modelPath = model;
         session.experimentName = experiment ?? string.Empty;
@@ -4605,6 +4621,17 @@ public sealed class GamaPanelWindow : EditorWindow
         session.playerId = ResolvePreviewSessionPlayerId();
         session.selectionMode = activeGamaSelection ? "ActiveGamaSelection" : "UnitySelection";
         session.activeGamaSelection = activeGamaSelection;
+        session.monitorExperimentId = NormalizeMonitorExperimentId(lastPreviewMonitorExperimentId);
+        if (!GamaPreviewReuseIdentity.TryBuildStableExperimentKey(
+                session.modelPath,
+                session.experimentName,
+                session.activeGamaSelection,
+                session.monitorExperimentId,
+                out string stableExperimentKey))
+        {
+            stableExperimentKey = string.Empty;
+        }
+        session.stableExperimentKey = stableExperimentKey;
         session.stale = false;
         session.useThisPreviewForPlay = false;
         session.experimentSignature = BuildPreviewSignature(session);
@@ -4661,6 +4688,19 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         return StaticInformation.getId();
+    }
+
+    private static string NormalizeMonitorExperimentId(string experimentId)
+    {
+        if (string.IsNullOrWhiteSpace(experimentId))
+        {
+            return string.Empty;
+        }
+
+        string normalized = experimentId.Trim();
+        return string.Equals(normalized, "0", StringComparison.Ordinal)
+            ? string.Empty
+            : normalized;
     }
 
     private string ResolvePreviewSessionModelPath()
@@ -4834,10 +4874,18 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         previewObject.previewOnly = true;
+        previewObject.canBeReusedAtRuntime = false;
         previewObject.speciesName = agent.Name;
         previewObject.agentId = instance.name;
         previewObject.geometryHash = string.Empty;
         previewObject.sourceTick = staticPreviewWorldTickIndex;
+        previewObject.stableAgentKey = string.Empty;
+        previewObject.sourcePropertyId = string.Empty;
+        previewObject.sourcePrefabSignature = string.Empty;
+        previewObject.representationKind = resolvedPrefab
+            ? GamaPreviewRepresentationKind.Prefab
+            : GamaPreviewRepresentationKind.Unknown;
+        previewObject.provenance = GamaPreviewProvenance.Sample;
 
         instance.transform.localScale = Vector3.one;
 
@@ -5166,8 +5214,15 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private void ClearStaticPreview(
         bool removePersistedAppearance = true,
-        bool clearUiState = true)
+        bool clearUiState = true,
+        bool clearCaptureExperimentIdentity = true)
     {
+        if (clearCaptureExperimentIdentity)
+        {
+            lastPreviewMonitorExperimentId = string.Empty;
+            lastPreviewCaptureUsedActiveGamaSelection = false;
+        }
+
         GamaSpeciesAppearanceEditorCoordinator.ClearActiveContext(removePersistedAppearance);
         GamaPreviewSession previewSession =
             GamaSpeciesAppearanceEditorCoordinator.FindCurrentPreviewSession();

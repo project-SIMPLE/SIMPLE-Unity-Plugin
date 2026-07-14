@@ -91,6 +91,7 @@ internal sealed class GamaEditorPreviewWorldAccumulator
         result.ChunkAgentCount = agentCount;
         result.ChunkGeometryCount = pointsGeom != null ? pointsGeom.Count : 0;
         HashSet<string> dynamicSpeciesReplacedThisChunk = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, int> keyOccurrenceCounts = new Dictionary<string, int>(StringComparer.Ordinal);
 
         for (int i = 0; i < agentCount; i++)
         {
@@ -132,7 +133,14 @@ internal sealed class GamaEditorPreviewWorldAccumulator
             string keepName = ReadString(keepNames, i);
             JToken attr = ReadClone(attributes, i) ?? new JObject();
             JToken rank = ReadClone(ranking, i) ?? new JValue(0);
-            string key = BuildStableKey(speciesKey, name, attr, pointLoc, pointGeom, i, usesPrefab);
+            string baseKey = BuildStableKey(speciesKey, name, attr, pointLoc, pointGeom, i, usesPrefab);
+            int occurrence = keyOccurrenceCounts.TryGetValue(baseKey, out int previousOccurrences)
+                ? previousOccurrences
+                : 0;
+            keyOccurrenceCounts[baseKey] = occurrence + 1;
+            string key = occurrence == 0
+                ? baseKey
+                : baseKey + "|duplicate|" + occurrence;
 
             Increment(result.ChunkSpeciesCounts, speciesKey);
 
@@ -412,10 +420,15 @@ internal sealed class GamaEditorPreviewWorldAccumulator
         bool usesPrefab)
     {
         string species = string.IsNullOrWhiteSpace(speciesKey) ? "unknown" : speciesKey;
-        string attrId = TryReadAttributeString(attributes, "id", "gama_id", "agent_id", "uid", "uuid");
-        if (!string.IsNullOrWhiteSpace(attrId))
+        Attributes parsedAttributes = Attributes.FromToken(attributes);
+        if (GamaPreviewReuseIdentity.TryBuildStableAgentKey(
+                species,
+                name,
+                parsedAttributes,
+                out string stableAgentKey,
+                out _))
         {
-            return species + "|id|" + attrId.Trim();
+            return "identity|" + stableAgentKey;
         }
 
         if (!string.IsNullOrWhiteSpace(name))
@@ -434,43 +447,6 @@ internal sealed class GamaEditorPreviewWorldAccumulator
         }
 
         return species + "|index|" + localIndex;
-    }
-
-    private static string TryReadAttributeString(JToken attributes, params string[] keys)
-    {
-        JObject obj = attributes as JObject;
-        if (obj == null)
-        {
-            return string.Empty;
-        }
-
-        for (int i = 0; i < keys.Length; i++)
-        {
-            JToken token = null;
-            foreach (JProperty property in obj.Properties())
-            {
-                if (property.Name.Equals(keys[i], StringComparison.OrdinalIgnoreCase))
-                {
-                    token = property.Value;
-                    break;
-                }
-            }
-
-            if (token == null || token.Type == JTokenType.Null)
-            {
-                continue;
-            }
-
-            string value = token.Type == JTokenType.String
-                ? token.Value<string>()
-                : token.ToString(Formatting.None);
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                return value;
-            }
-        }
-
-        return string.Empty;
     }
 
     private static PropertiesGAMA TryGetProperty(string propertyId, Dictionary<string, PropertiesGAMA> propertyMap)

@@ -199,7 +199,8 @@ internal static class GamaEditorStaticPreviewFromJson
         {
             try
             {
-                string name = world.names[i] ?? string.Empty;
+                string sourceAgentName = world.names[i] ?? string.Empty;
+                string name = sourceAgentName;
                 if (string.IsNullOrWhiteSpace(name))
                 {
                     name = "unknown_agent_" + i;
@@ -301,6 +302,9 @@ internal static class GamaEditorStaticPreviewFromJson
                         continue;
                     }
 
+                    GameObject sourcePrefabAsset = prop.prefabObj != null
+                        ? prop.prefabObj
+                        : GamaVisualUtility.ResolvePrefab(prop.prefab);
                     GameObject obj = GamaVisualUtility.InstantiateVisual(name, prop, precision);
                     if (obj == null)
                     {
@@ -321,7 +325,17 @@ internal static class GamaEditorStaticPreviewFromJson
                     obj.transform.SetPositionAndRotation(pos, rotation);
 
                     ApplyPrefabVisualState(obj, prop, visualState, precision);
-                    GamaPreviewObject marker = AddPreviewObjectIdentity(obj, speciesKey, name, BuildIntListHash(pt));
+                    GamaPreviewObject marker = AddPreviewObjectIdentity(
+                        obj,
+                        speciesKey,
+                        name,
+                        sourceAgentName,
+                        BuildIntListHash(pt),
+                        propId,
+                        prop,
+                        attributes,
+                        sourcePrefabAsset,
+                        GamaPreviewRepresentationKind.Prefab);
                     if (marker != null)
                     {
                         marker.SetVisualAnchorLocal(Vector3.zero);
@@ -396,7 +410,19 @@ internal static class GamaEditorStaticPreviewFromJson
 
                     ApplyPolygonVisualState(obj, prop, visualState, polygonBasePosition);
                     GetSpreadProbe(spreadProbes, speciesKey).AddExpected(polygonBasePosition + visualState.PositionOffset);
-                    GamaPreviewObject marker = AddPreviewObjectIdentity(obj, speciesKey, name, BuildIntListHash(rawGeom));
+                    GamaPreviewObject marker = AddPreviewObjectIdentity(
+                        obj,
+                        speciesKey,
+                        name,
+                        sourceAgentName,
+                        BuildIntListHash(rawGeom),
+                        propId,
+                        prop,
+                        attributes,
+                        null,
+                        polygonInputValid
+                            ? GamaPreviewRepresentationKind.Geometry
+                            : GamaPreviewRepresentationKind.Unknown);
                     if (marker != null)
                     {
                         marker.SetVisualAnchorLocal(ResolvePreviewAnchorLocal(obj, rawGeom, converter, yOffsetGeom));
@@ -522,6 +548,8 @@ internal static class GamaEditorStaticPreviewFromJson
                 GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] PlayerSpawn marker failed: " + ex.Message);
             }
         }
+
+        DisableDuplicateReuseCandidates(parent);
 
         prefabCount = builtAgents;
         geometryCount = builtGeometries;
@@ -998,7 +1026,17 @@ internal static class GamaEditorStaticPreviewFromJson
                   " scale=" + (entry != null ? entry.GetEffectiveScaleMultiplier() : 1f));
     }
 
-    private static GamaPreviewObject AddPreviewObjectIdentity(GameObject obj, string speciesKey, string agentId, string geometryHash)
+    private static GamaPreviewObject AddPreviewObjectIdentity(
+        GameObject obj,
+        string speciesKey,
+        string agentId,
+        string sourceAgentName,
+        string geometryHash,
+        string sourcePropertyId,
+        PropertiesGAMA sourceProperty,
+        Attributes attributes,
+        GameObject sourcePrefabAsset,
+        GamaPreviewRepresentationKind representationKind)
     {
         if (obj == null)
         {
@@ -1012,12 +1050,102 @@ internal static class GamaEditorStaticPreviewFromJson
         }
 
         marker.previewOnly = true;
-        marker.canBeReusedAtRuntime = false;
         marker.speciesName = speciesKey ?? string.Empty;
         marker.agentId = agentId ?? string.Empty;
         marker.geometryHash = geometryHash ?? string.Empty;
         marker.sourceTick = -1;
+        marker.sourcePropertyId = sourcePropertyId ?? string.Empty;
+        marker.representationKind = representationKind;
+        marker.provenance = GamaPreviewProvenance.CapturedJson;
+        marker.sourcePrefabSignature = BuildSourcePrefabSignature(
+            sourcePropertyId,
+            sourceProperty,
+            representationKind);
+        marker.sourcePrefabAsset = representationKind == GamaPreviewRepresentationKind.Prefab
+            ? sourcePrefabAsset
+            : null;
+
+        bool hasStableIdentity = GamaPreviewReuseIdentity.TryBuildStableAgentKey(
+            speciesKey,
+            sourceAgentName,
+            attributes,
+            out string stableAgentKey,
+            out _);
+        marker.stableAgentKey = hasStableIdentity ? stableAgentKey : string.Empty;
+
+        bool hasCompatibleRepresentation = representationKind == GamaPreviewRepresentationKind.Prefab
+            ? marker.sourcePrefabAsset != null
+            : representationKind == GamaPreviewRepresentationKind.Geometry &&
+              !string.IsNullOrWhiteSpace(marker.sourcePrefabSignature);
+        marker.canBeReusedAtRuntime = hasStableIdentity && hasCompatibleRepresentation;
         return marker;
+    }
+
+    private static string BuildSourcePrefabSignature(
+        string sourcePropertyId,
+        PropertiesGAMA sourceProperty,
+        GamaPreviewRepresentationKind representationKind)
+    {
+        string normalizedPropertyId = SimulationManager.NormalizeKey(sourcePropertyId);
+        if (representationKind == GamaPreviewRepresentationKind.Geometry)
+        {
+            return "geometry:" + normalizedPropertyId;
+        }
+
+        if (representationKind != GamaPreviewRepresentationKind.Prefab)
+        {
+            return string.Empty;
+        }
+
+        return "prefab:" + normalizedPropertyId + ":" + SimulationManager.NormalizeKey(
+            sourceProperty != null ? sourceProperty.prefab : string.Empty);
+    }
+
+    private static void DisableDuplicateReuseCandidates(Transform previewRoot)
+    {
+        if (previewRoot == null)
+        {
+            return;
+        }
+
+        Dictionary<string, List<GamaPreviewObject>> markersByStableKey =
+            new Dictionary<string, List<GamaPreviewObject>>(StringComparer.Ordinal);
+        GamaPreviewObject[] markers = previewRoot.GetComponentsInChildren<GamaPreviewObject>(true);
+        for (int i = 0; i < markers.Length; i++)
+        {
+            GamaPreviewObject marker = markers[i];
+            if (marker == null ||
+                marker.provenance != GamaPreviewProvenance.CapturedJson ||
+                string.IsNullOrWhiteSpace(marker.stableAgentKey))
+            {
+                continue;
+            }
+
+            if (!markersByStableKey.TryGetValue(marker.stableAgentKey, out List<GamaPreviewObject> matches))
+            {
+                matches = new List<GamaPreviewObject>();
+                markersByStableKey.Add(marker.stableAgentKey, matches);
+            }
+
+            matches.Add(marker);
+        }
+
+        foreach (KeyValuePair<string, List<GamaPreviewObject>> pair in markersByStableKey)
+        {
+            if (pair.Value.Count < 2)
+            {
+                continue;
+            }
+
+            for (int i = 0; i < pair.Value.Count; i++)
+            {
+                pair.Value[i].canBeReusedAtRuntime = false;
+            }
+
+            Debug.LogWarning(
+                "[GAMA][PREVIEW][REUSE] Duplicate stable agent identity '" + pair.Key +
+                "' found " + pair.Value.Count + " times. All matching preview objects are ineligible for runtime reuse.");
+        }
     }
 
     private static Vector3 ResolvePreviewAnchorLocal(

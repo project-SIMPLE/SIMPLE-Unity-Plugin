@@ -124,7 +124,37 @@ internal static class GamaEditorPlayTargetResolver
 
     private static GamaPreviewSession FindPreviewSession()
     {
-        GameObject root = GameObject.Find("[GAMA] Static Experiment Preview");
-        return root != null ? root.GetComponent<GamaPreviewSession>() : null;
+        GamaPreviewSession[] sessions = UnityEngine.Object.FindObjectsByType<GamaPreviewSession>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+        GamaPreviewSession fallback = null;
+        for (int i = 0; i < sessions.Length; i++)
+        {
+            GamaPreviewSession session = sessions[i];
+            if (session == null || session.gameObject == null)
+            {
+                continue;
+            }
+
+            if (!session.stale && session.useThisPreviewForPlay)
+            {
+                return session;
+            }
+
+            if (!session.stale &&
+                string.Equals(
+                    session.gameObject.name,
+                    "[GAMA] Static Experiment Preview",
+                    StringComparison.Ordinal))
+            {
+                fallback = session;
+            }
+            else if (fallback == null)
+            {
+                fallback = session;
+            }
+        }
+
+        return fallback;
     }
 }
