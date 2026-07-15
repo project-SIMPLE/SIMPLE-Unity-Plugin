@@ -11,23 +11,23 @@ using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 /// <summary>
-/// Capture un état d'aperçu GAMA stabilisé via le middleware websocket
-/// (simple.webplatform, ws://host:port/), comme <see cref="ConnectionManager"/> en Play :
-/// handshake <c>connection</c>, attente <c>json_state</c> (authentifié), puis <c>send_init_data</c>
-/// et <c>player_ready_to_receive_geometries</c>, puis collecte multi-ticks jusqu'à apparition
-/// d'agents dynamiques ou fin de la fenêtre d'aperçu.
-/// L'éditeur reste asynchrone : <see cref="CaptureAsync"/> renvoie une Task.
+/// Captures a stabilized GAMA preview state through the middleware WebSocket
+/// (simple.webplatform, ws://host:port/), following the same route as <see cref="ConnectionManager"/> in Play Mode:
+/// sends the <c>connection</c> handshake, waits for authenticated <c>json_state</c>, then sends
+/// <c>send_init_data</c> and <c>player_ready_to_receive_geometries</c>. It collects multiple ticks
+/// until dynamic agents appear or the preview window ends.
+/// The editor remains asynchronous: <see cref="CaptureAsync"/> returns a Task.
 /// </summary>
 internal static class GamaEditorFirstTickCapture
 {
-    /// <summary>Même cible que <see cref="ConnectionManager"/> (champ privé AgentToSendInfo).</summary>
+    /// <summary>Uses the same target as <see cref="ConnectionManager"/> (private AgentToSendInfo field).</summary>
     private const string UnityLinkerAgent = "simulation[0].unity_linker[0]";
 
     private static readonly bool VerboseCaptureDebug = true;
 
     /// <summary>
-    /// Preview « Piloté par Unity » : dès json_state in_game=true, envoi immédiat send_init_data + player_ready
-    /// (sans attendre create_player GAMA ni port 1000).
+    /// Unity-managed preview: as soon as json_state reports in_game=true, immediately send send_init_data + player_ready
+    /// (without waiting for GAMA create_player or port 1000).
     /// </summary>
     private const bool EDITOR_PREVIEW_IMMEDIATE_INIT_BURST = true;
 
@@ -39,7 +39,7 @@ internal static class GamaEditorFirstTickCapture
         return Interlocked.Increment(ref s_captureSessionCounter);
     }
 
-    /// <summary>Journalisation toujours visible (console Unity + trail capture).</summary>
+    /// <summary>Logging that is always visible (Unity Console + capture trail).</summary>
     private static void CapLog(Action<string> append, int sessionId, string channel, string message)
     {
         string line = "[GAMA][CAPTURE][#" + sessionId + "][" + channel + "] " + message;
@@ -106,12 +106,12 @@ internal static class GamaEditorFirstTickCapture
         CancellationToken ct)
     {
         CapLog(append, sessionId, "pre",
-            "Purge préventive middleware ws://" + (string.IsNullOrWhiteSpace(host) ? "localhost" : host.Trim()) + ":" +
-            (string.IsNullOrWhiteSpace(port) ? "8080" : port.Trim()) + "/ avant capture id=\"" + capturePlayerId + "\"");
+            "Preventive middleware purge ws://" + (string.IsNullOrWhiteSpace(host) ? "localhost" : host.Trim()) + ":" +
+            (string.IsNullOrWhiteSpace(port) ? "8080" : port.Trim()) + "/ before capture id=\"" + capturePlayerId + "\"");
 
         foreach (string ghostId in CollectGhostPlayerIdsToPurge(capturePlayerId))
         {
-            CapLog(append, sessionId, "pre", "→ fermeture propre id=\"" + ghostId + "\"…");
+            CapLog(append, sessionId, "pre", "-> clean shutdown id=\"" + ghostId + "\"...");
             string outcome;
             try
             {
@@ -119,7 +119,7 @@ internal static class GamaEditorFirstTickCapture
             }
             catch (Exception ex)
             {
-                outcome = "Exception purge \"" + ghostId + "\" : " + ex.Message;
+                outcome = "Purge exception for \"" + ghostId + "\": " + ex.Message;
             }
 
             CapLog(append, sessionId, "pre", outcome);
@@ -133,7 +133,7 @@ internal static class GamaEditorFirstTickCapture
             }
         }
 
-        CapLog(append, sessionId, "pre", "Purge préventive terminée.");
+        CapLog(append, sessionId, "pre", "Preventive purge completed.");
     }
 
     private static void DbgRaw(Action<string> append, int sessionId, string channel, string text)
@@ -197,6 +197,7 @@ internal static class GamaEditorFirstTickCapture
         public int BestWorldTickIndex;
         public string BestWorldJsonPath;
         public bool DynamicAgentsFound;
+        public string ExperimentId = string.Empty;
         public string PreviewWarning;
         public string LogTrail;
     }
@@ -355,7 +356,7 @@ internal static class GamaEditorFirstTickCapture
         string effectiveIdEarly = ResolveMiddlewarePlayerId(connectionId);
 
         CapLog(append, sessionId, "capture",
-            "DEBUT uri=ws://" + hostNorm + ":" + portNorm + "/" +
+            "START uri=ws://" + hostNorm + ":" + portNorm + "/" +
             " direct=" + directGamaServer +
             " playerId=" + effectiveIdEarly +
             " runtimeId=" + StaticInformation.getId() +
@@ -403,7 +404,7 @@ internal static class GamaEditorFirstTickCapture
             return result;
         }
 
-        append(directGamaServer ? "[GAMA] Connexion directe au serveur GAMA " + uri : "[GAMA] Connexion au middleware " + uri);
+        append(directGamaServer ? "[GAMA] Connecting directly to the GAMA server " + uri : "[GAMA] Connecting to the middleware " + uri);
 
         using (CancellationTokenSource captureCts = CancellationTokenSource.CreateLinkedTokenSource(externalToken))
         {
@@ -416,8 +417,8 @@ internal static class GamaEditorFirstTickCapture
                     return result;
                 }
 
-                append("[GAMA] Mode piloté par Unity : orchestration monitor ws://" + hostNorm + ":" + monitorPort +
-                       "/ puis capture joueur " + uri + ". Cible forcée: model=\"" + directModelPath +
+                append("[GAMA] Unity-managed mode: monitor orchestration ws://" + hostNorm + ":" + monitorPort +
+                       "/ followed by player capture " + uri + ". Forced target: model=\"" + directModelPath +
                        "\" experiment=\"" + directExperimentName + "\".");
                 GamaEditorMiddlewareOrchestrator.ManagedExperimentResult orch =
                     await GamaEditorMiddlewareOrchestrator.StartMiddlewareManagedExperimentAsync(
@@ -434,11 +435,16 @@ internal static class GamaEditorFirstTickCapture
                     result.LogTrail = logBuilder + orch.LogTrail;
                     return result;
                 }
+                if (!string.IsNullOrWhiteSpace(orch.ExperimentId) &&
+                    !string.Equals(orch.ExperimentId.Trim(), "0", StringComparison.Ordinal))
+                {
+                    result.ExperimentId = orch.ExperimentId.Trim();
+                }
             }
             else if (managedFromUnity && !directGamaServer)
             {
                 CapLog8080(append, "INFO", "EXTERNAL MIDDLEWARE MODE — no kill, no restart");
-                append("[GAMA] Mode piloté par Unity : middleware externe déjà lancé, aucune orchestration monitor/catalogue.");
+                append("[GAMA] Unity-managed mode: external middleware is already running; no monitor/catalog orchestration.");
             }
 
             if (!directGamaServer && !skipRemoteLoad && !managedFromUnity)
@@ -489,11 +495,11 @@ internal static class GamaEditorFirstTickCapture
 
                 if (directGamaServer)
                 {
-                    append("[GAMA] Connecté au serveur GAMA. Pas d'envoi du message middleware 'connection'.");
+                    append("[GAMA] Connected to the GAMA server. The middleware 'connection' message is not sent.");
                 }
                 else
                 {
-                    append("[GAMA] Connecté. Handshake connection (id=" + effectiveId + ", comme au Play).");
+                    append("[GAMA] Connected. Sending connection handshake (id=" + effectiveId + ", as in Play Mode).");
 
                     string handshake = JsonConvert.SerializeObject(new
                     {
@@ -539,7 +545,7 @@ internal static class GamaEditorFirstTickCapture
                 };
 
                 Dbg(append, sessionId, "capture",
-                    "Connecté effectiveId=" + effectiveId + " deadlineUtc=" + state.CaptureDeadlineUtc.ToString("O"));
+                    "Connected effectiveId=" + effectiveId + " deadlineUtc=" + state.CaptureDeadlineUtc.ToString("O"));
                 if (directGamaServer)
                 {
                     state.DirectGamaMode = true;
@@ -558,11 +564,11 @@ internal static class GamaEditorFirstTickCapture
                     state.SkipRemoteLoad = skipRemoteLoad;
 
                     append(skipRemoteLoad
-                        ? "[GAMA] Expérience déjà ouverte : WebSocket GAMA direct (port " + portNorm +
-                          "), pas de load/play — create_player puis send_init_data."
+                        ? "[GAMA] Experiment already open: direct GAMA WebSocket (port " + portNorm +
+                          "), no load/play; create_player followed by send_init_data."
                         : state.DirectLoadRequested
-                        ? "[GAMA] En attente de ConnectionSuccessful avant load: " + directExperimentName + " (" + directModelPath + ")."
-                        : "[GAMA] Aucun modèle/expérience fourni pour load direct; utilisation de l'expérience courante.");
+                        ? "[GAMA] Waiting for ConnectionSuccessful before loading: " + directExperimentName + " (" + directModelPath + ")."
+                        : "[GAMA] No model/experiment supplied for direct loading; using the current experiment.");
                 }
 
                 bool gamaPortLockHeld = false;
@@ -570,10 +576,10 @@ internal static class GamaEditorFirstTickCapture
                 {
                     try
                     {
-                        Dbg(append, sessionId, "direct", "Attente verrou port 1000 (une seule capture/load GAMA à la fois)…");
+                        Dbg(append, sessionId, "direct", "Waiting for port 1000 lock (only one GAMA capture/load at a time)...");
                         await GamaPort1000Lock.WaitAsync(captureCts.Token).ConfigureAwait(false);
                         gamaPortLockHeld = true;
-                        Dbg(append, sessionId, "direct", "Verrou port 1000 acquis.");
+                        Dbg(append, sessionId, "direct", "Port 1000 lock acquired.");
                     }
                     catch (Exception ex)
                     {
@@ -595,24 +601,24 @@ internal static class GamaEditorFirstTickCapture
                         state.GamaBootstrapPhase = 2;
                         state.ManagedFromUnity = true;
                         state.HybridGamaCommandChannel = false;
-                        append("[GAMA] Mode piloté par Unity : socket joueur 8080 uniquement (expérience lancée via monitor).");
-                        Dbg(append, sessionId, "capture", "managedFromUnity → pump Play-like sur " + uri);
+                        append("[GAMA] Unity-managed mode: player socket 8080 only (experiment launched through the monitor).");
+                        Dbg(append, sessionId, "capture", "managedFromUnity -> Play-like pump on " + uri);
                     }
                     else if (skipRemoteLoad && !directGamaServer)
                     {
                         state.GamaBootstrapPhase = 2;
                         state.HybridGamaCommandChannel = false;
-                        append("[GAMA] Mode expérience ouverte : middleware pur 8080, aucun port 1000 (diagnostic Play-like).");
+                        append("[GAMA] Open-experiment mode: middleware-only 8080, no port 1000 (Play-like diagnostic).");
                         Dbg(append, sessionId, "capture",
-                            "skipRemoteLoad → middleware pur " + uri + ", pas de HybridGamaCommandChannel");
+                            "skipRemoteLoad -> middleware-only " + uri + ", no HybridGamaCommandChannel");
                     }
                     else if (shouldBootstrapMiddleware)
                     {
                         string bootstrapPort = IsGamaNativeWebSocketPort(port) ? port.Trim() : "1000";
                         state.GamaBootstrapPhase = 1;
                         Dbg(append, sessionId, "bootstrap",
-                            "Lancement parallèle load/play/create_player sur port " + bootstrapPort +
-                            " (middleware sur " + port + ")");
+                            "Starting load/play/create_player in parallel on port " + bootstrapPort +
+                            " (middleware on " + port + ")");
                         bootstrapTask = RunGamaSimulationBootstrapAsync(
                             sessionId,
                             string.IsNullOrWhiteSpace(host) ? "localhost" : host.Trim(),
@@ -628,7 +634,7 @@ internal static class GamaEditorFirstTickCapture
                     else if (!directGamaServer)
                     {
                         state.GamaBootstrapPhase = 2;
-                        Dbg(append, sessionId, "bootstrap", "Pas de bootstrap (modèle ou expérience manquant).");
+                        Dbg(append, sessionId, "bootstrap", "No bootstrap (model or experiment missing).");
                     }
 
                     Task pumpTask = RunMiddlewarePumpAsync(
@@ -646,7 +652,7 @@ internal static class GamaEditorFirstTickCapture
                         {
                             if (DateTime.UtcNow >= state.CaptureDeadlineUtc)
                             {
-                                append("[GAMA] Fin de fenêtre de capture (timeout).");
+                                append("[GAMA] Capture window ended (timeout).");
                                 Dbg(append, sessionId, "capture",
                                     "TIMEOUT " + FormatCaptureStateSnapshot(state, effectiveId, ws.State));
                                 break;
@@ -675,8 +681,8 @@ internal static class GamaEditorFirstTickCapture
                                     if (state.DebugReceiveIdleTicks % 15 == 0)
                                     {
                                         Dbg(append, sessionId, "direct",
-                                            "Toujours en attente Load confirmé (" + state.DebugReceiveIdleTicks +
-                                            " s) — dialogue GAMA « fermer simulation » ? Cliquez Yes. " +
+                                            "Still waiting for Load confirmation (" + state.DebugReceiveIdleTicks +
+                                            " s). Is GAMA showing a close-simulation dialog? Click Yes. " +
                                             FormatCaptureStateSnapshot(state, effectiveId, ws.State));
                                     }
                                 }
@@ -688,17 +694,17 @@ internal static class GamaEditorFirstTickCapture
                             {
                                 string closeInfo = "WebSocket Close (status=" + rr.CloseStatus + " desc=" +
                                                    (rr.CloseStatusDescription ?? "") + ")";
-                                append("[GAMA] Le serveur a fermé la connexion. " + closeInfo);
+                                append("[GAMA] The server closed the connection. " + closeInfo);
                                 Dbg(append, sessionId, "capture", closeInfo);
                                 if (state.DirectGamaMode && state.DirectLoadSent && !state.DirectLoadCompleted)
                                 {
                                     result.Error =
-                                        "GAMA a fermé la connexion juste après le load (sans Load confirmé). " +
-                                        "Fermez/stoppez la simulation dans GAMA GUI, ou cochez « Expérience déjà ouverte dans GAMA (sans load) ».";
+                                        "GAMA closed the connection immediately after load (without confirming Load). " +
+                                        "Close/stop the simulation in the GAMA GUI, or select 'Experiment already open in GAMA (no load)'.";
                                 }
                                 else if (state.SkipRemoteLoad && !state.HybridGamaCommandChannel && !state.IsCaptureComplete)
                                 {
-                                    append("[GAMA] Middleware fermé sans JSON (mode 8080 pur — pas de repli GAMA:1000).");
+                                    append("[GAMA] Middleware closed without JSON (middleware-only 8080 mode; no GAMA:1000 fallback).");
                                 }
 
                                 break;
@@ -724,14 +730,14 @@ internal static class GamaEditorFirstTickCapture
 
                             if (!string.IsNullOrWhiteSpace(result.Error))
                             {
-                                Dbg(append, sessionId, "capture", "Arrêt sur erreur : " + result.Error);
+                                Dbg(append, sessionId, "capture", "Stopping because of error: " + result.Error);
                                 break;
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        append("[GAMA] Erreur de réception : " + ex.Message);
+                        append("[GAMA] Receive error: " + ex.Message);
                     }
 
                     try
@@ -742,11 +748,11 @@ internal static class GamaEditorFirstTickCapture
                         }
                         catch (OperationCanceledException)
                         {
-                            // normal à l’arrêt
+                            // Expected while stopping.
                         }
                         catch (Exception ex)
                         {
-                            append("[GAMA] Pompe middleware : " + ex.Message);
+                            append("[GAMA] Middleware pump: " + ex.Message);
                         }
 
                         try
@@ -755,11 +761,11 @@ internal static class GamaEditorFirstTickCapture
                         }
                         catch (OperationCanceledException)
                         {
-                            // normal à l’arrêt
+                            // Expected while stopping.
                         }
                         catch (Exception ex)
                         {
-                            append("[GAMA] Bootstrap GAMA : " + ex.Message);
+                            append("[GAMA] GAMA bootstrap: " + ex.Message);
                         }
 
                     }
@@ -769,14 +775,14 @@ internal static class GamaEditorFirstTickCapture
                         {
                             GamaPort1000Lock.Release();
                             gamaPortLockHeld = false;
-                            Dbg(append, sessionId, "direct", "Verrou port 1000 libéré.");
+                            Dbg(append, sessionId, "direct", "Port 1000 lock released.");
                         }
                     }
                 }
 
                 if (!directGamaServer && IsEditorPreviewCaptureId(effectiveId))
                 {
-                    append("[GAMA] Preview editor : disconnect_properly id=\"" + effectiveId + "\" avant fermeture.");
+                    append("[GAMA] Editor preview: disconnect_properly id=\"" + effectiveId + "\" before closing.");
                     try
                     {
                         using (CancellationTokenSource disconnectCts =
@@ -788,17 +794,17 @@ internal static class GamaEditorFirstTickCapture
                     }
                     catch (Exception ex)
                     {
-                        append("[GAMA] disconnect_properly preview : " + ex.Message);
+                        append("[GAMA] Preview disconnect_properly failed: " + ex.Message);
                     }
                 }
                 else if (!directGamaServer && !state.SkipRemoteLoad)
                 {
-                    append("[GAMA] Fermeture propre de la connexion preview sans disconnect_properly pour éviter de purger le socket middleware actif.");
+                    append("[GAMA] Closing the preview connection cleanly without disconnect_properly to avoid purging the active middleware socket.");
                 }
                 else if (!directGamaServer && state.SkipRemoteLoad)
                 {
-                    append("[GAMA] Expérience déjà ouverte : pas de disconnect_properly (le joueur « " + effectiveId +
-                           " » reste dans GAMA).");
+                    append("[GAMA] Experiment already open: disconnect_properly is not sent (player '" + effectiveId +
+                           "' remains in GAMA).");
                 }
 
                 try
@@ -813,7 +819,7 @@ internal static class GamaEditorFirstTickCapture
                 }
                 catch (Exception ex)
                 {
-                    append("[GAMA] CloseAsync : " + ex.Message);
+                    append("[GAMA] CloseAsync failed: " + ex.Message);
                 }
 
                 if (!state.GotPrecision || !state.GotProperties || state.WorldFrameCount <= 0)
@@ -823,13 +829,13 @@ internal static class GamaEditorFirstTickCapture
                         result.Error = BuildMissingError(state);
                         if (directGamaServer)
                         {
-                            result.Error += " En direct, si le modèle ne pousse pas de SimulationOutput : décochez « Capture directe », lancez simple.webplatform (8080), puis « Capturer comme au Play ».";
+                        result.Error += " In direct mode, if the model does not emit SimulationOutput, clear 'Direct Capture', start simple.webplatform (8080), then use 'Capture as in Play Mode'.";
                         }
                     }
 
-                    Dbg(append, sessionId, "capture", "ECHEC " + result.Error);
+                    Dbg(append, sessionId, "capture", "FAILED " + result.Error);
                     Dbg(append, sessionId, "capture",
-                        "Etat final " + FormatCaptureStateSnapshot(state, effectiveId, ws.State));
+                        "Final state " + FormatCaptureStateSnapshot(state, effectiveId, ws.State));
                     result.LogTrail = logBuilder.ToString();
                     return result;
                 }
@@ -837,13 +843,18 @@ internal static class GamaEditorFirstTickCapture
                 FinalizePreviewBestFrame(state, outputDirectory, result, append);
 
                 Dbg(append, sessionId, "capture",
-                    "SUCCÈS frames=" + state.WorldFrameCount + " bestTick=" + state.WorldBestFrameIndex +
+                    "SUCCESS frames=" + state.WorldFrameCount + " bestTick=" + state.WorldBestFrameIndex +
                     " dynamic=" + state.PreviewDynamicAgentsFound);
 
                 result.WorldFrameCount = state.WorldFrameCount;
                 result.BestWorldTickIndex = state.WorldBestFrameIndex;
                 result.BestWorldJsonPath = state.WorldBestJsonPath;
                 result.DynamicAgentsFound = state.PreviewDynamicAgentsFound;
+                if (!string.IsNullOrWhiteSpace(state.DirectExperimentId) &&
+                    !string.Equals(state.DirectExperimentId.Trim(), "0", StringComparison.Ordinal))
+                {
+                    result.ExperimentId = state.DirectExperimentId.Trim();
+                }
 
                 if (state.GeometryExportErrorDetected && string.IsNullOrWhiteSpace(result.PreviewWarning))
                 {
@@ -853,22 +864,22 @@ internal static class GamaEditorFirstTickCapture
                 if (!state.PreviewDynamicAgentsFound)
                 {
                     string dynamicWarning =
-                        "Aucun agent correspondant à la regex dynamique (« " + state.DynamicSpeciesRegex +
-                        " ») reçu dans les json_output. L'aperçu reste construit depuis le cache cumulatif.";
+                        "No agents matching the dynamic regex ('" + state.DynamicSpeciesRegex +
+                        "') were received in json_output. The preview is still built from the cumulative cache.";
                     result.PreviewWarning = string.IsNullOrWhiteSpace(result.PreviewWarning)
                         ? dynamicWarning
                         : result.PreviewWarning + " " + dynamicWarning;
-                    append("[GAMA][PREVIEW] AVERTISSEMENT : " + dynamicWarning);
+                    append("[GAMA][PREVIEW] WARNING: " + dynamicWarning);
                 }
                 else
                 {
-                    append("[GAMA][PREVIEW] Agents dynamiques présents dans le cache cumulatif au tick " +
+                    append("[GAMA][PREVIEW] Dynamic agents are present in the cumulative cache at tick " +
                            state.WorldBestFrameIndex + ".");
                 }
 
                 if (!state.WorldHasAgents)
                 {
-                    append("[GAMA] Capture terminée sans agents dans le monde — parcourez les ticks (world_tick_*.json) dans l’aperçu statique.");
+                    append("[GAMA] Capture completed with no agents in the world. Browse the ticks (world_tick_*.json) in the static preview.");
                 }
 
                 if (!directGamaServer)
@@ -880,16 +891,16 @@ internal static class GamaEditorFirstTickCapture
                                 monitorPort,
                                 captureCts.Token,
                                 append,
-                                "preview réussie")
+                                "successful preview")
                             .ConfigureAwait(false);
                         if (!paused)
                         {
-                            append("[GAMA][PREVIEW] pause_experiment non confirmé (monitor " + monitorPort + ").");
+                            append("[GAMA][PREVIEW] pause_experiment was not confirmed (monitor " + monitorPort + ").");
                         }
                     }
                     catch (Exception ex)
                     {
-                        append("[GAMA][PREVIEW] Échec pause_experiment : " + ex.Message);
+                        append("[GAMA][PREVIEW] pause_experiment failed: " + ex.Message);
                     }
                 }
             }
@@ -905,7 +916,7 @@ internal static class GamaEditorFirstTickCapture
         public volatile bool MiddlewareAuthenticated;
         public volatile bool MiddlewareConnected;
         public bool LoggedMiddlewareInGameHint;
-        /// <summary>0 = aucun, 1 = en cours, 2 = terminé (create_player OK ou sans bootstrap), 3 = échec.</summary>
+        /// <summary>0 = none, 1 = in progress, 2 = complete (create_player succeeded or no bootstrap), 3 = failed.</summary>
         public volatile int GamaBootstrapPhase;
         public string MiddlewareOccupiedPlayerId;
         public bool LoggedPlayerSlotConflict;
@@ -934,8 +945,8 @@ internal static class GamaEditorFirstTickCapture
         public bool PauseExperimentAfterPreview = true;
         public bool PreviewDynamicAgentsFound;
         /// <summary>
-        /// Après le warmup, ne pas terminer sur « cache stable » tant qu'aucun agent dynamique
-        /// (ex. espèce <c>people</c>) n'a été vu — évite d'arrêter quand seuls murs/routes sont en cache.
+        /// After warmup, do not stop on a stable cache until a dynamic agent
+        /// (for example, species <c>people</c>) has been seen. This avoids stopping when only walls/roads are cached.
         /// </summary>
         public float DynamicSpeciesGraceSeconds = 40f;
         public DateTime? LastPreviewCacheGrowthUtc;
@@ -967,12 +978,12 @@ internal static class GamaEditorFirstTickCapture
         public int ImmediateInitBurstSendCount;
         public DateTime ImmediateInitBurstNextSendUtc = DateTime.MinValue;
         public DateTime ImmediateInitBurstEndUtc = DateTime.MinValue;
-        /// <summary>Expérience déjà ouverte : commandes sur GAMA:1000, JSON sur middleware.</summary>
+        /// <summary>Experiment already open: commands on GAMA:1000, JSON on the middleware.</summary>
         public volatile bool HybridGamaCommandChannel;
 
-        /// <summary>Preview Editor pilotée par Unity sur le socket joueur 8080.</summary>
+        /// <summary>Unity-managed editor preview on player socket 8080.</summary>
         public volatile bool ManagedFromUnity;
-        /// <summary>Ancien flux catalogue : l'expérience a été lancée via le monitor 8001.</summary>
+        /// <summary>Legacy catalog flow: the experiment was launched through monitor 8001.</summary>
         public volatile bool LaunchExperimentViaMonitor;
         public volatile bool HybridGamaCommandsStarted;
         public volatile bool HybridGamaCommandsDone;
@@ -1028,7 +1039,7 @@ internal static class GamaEditorFirstTickCapture
             if (VerboseCaptureDebug && append != null && CaptureDeadlineUtc > before)
             {
                 append("[GAMA][DBG][#" + DebugSessionId + "][deadline] +" + extraSeconds + "s (" + reason +
-                       ") → fin " + CaptureDeadlineUtc.ToString("HH:mm:ss"));
+                    ") -> end " + CaptureDeadlineUtc.ToString("HH:mm:ss"));
             }
         }
 
@@ -1042,8 +1053,8 @@ internal static class GamaEditorFirstTickCapture
             CaptureDeadlineUtc = latestUtc;
             if (append != null)
             {
-                append("[GAMA] Fin de capture anticipée (~" +
-                       Math.Max(0, (int)(latestUtc - DateTime.UtcNow).TotalSeconds) + " s) : " + reason + ".");
+                append("[GAMA] Capture scheduled to end early (~" +
+                       Math.Max(0, (int)(latestUtc - DateTime.UtcNow).TotalSeconds) + " s): " + reason + ".");
             }
         }
 
@@ -1135,8 +1146,8 @@ internal static class GamaEditorFirstTickCapture
     }
 
     /// <summary>
-    /// Expression GAMA via le middleware (type <c>expression</c>, comme PlayerManager).
-    /// Utile pour <c>create_player</c> / <c>remove_player</c> quand l'expérience tourne déjà dans GAMA.
+    /// GAMA expression through the middleware (<c>expression</c> type, like PlayerManager).
+    /// Useful for <c>create_player</c> / <c>remove_player</c> when the experiment is already running in GAMA.
     /// </summary>
     private static async Task SendMiddlewareExpressionAsync(
         ClientWebSocket ws,
@@ -1183,7 +1194,7 @@ internal static class GamaEditorFirstTickCapture
     }
 
     /// <summary>
-    /// Se connecte au middleware comme le joueur donné, envoie <c>disconnect_properly</c>, puis ferme la connexion.
+    /// Connects to the middleware as the specified player, sends <c>disconnect_properly</c>, then closes the connection.
     /// </summary>
     public static async Task<string> PurgeGhostPlayerAsync(
         string host,
@@ -1194,7 +1205,7 @@ internal static class GamaEditorFirstTickCapture
     {
         if (string.IsNullOrWhiteSpace(ghostId))
         {
-            return "Aucun id de joueur fantôme à purger.";
+            return "No ghost player ID to purge.";
         }
 
         Uri uri;
@@ -1206,7 +1217,7 @@ internal static class GamaEditorFirstTickCapture
         }
         catch (Exception ex)
         {
-            return "URL middleware invalide : " + ex.Message;
+            return "Invalid middleware URL: " + ex.Message;
         }
 
         using (ClientWebSocket ws = new ClientWebSocket())
@@ -1220,7 +1231,7 @@ internal static class GamaEditorFirstTickCapture
             }
             catch (Exception ex)
             {
-                return "Connexion impossible au middleware : " + ex.Message;
+                return "Could not connect to the middleware: " + ex.Message;
             }
 
             try
@@ -1246,11 +1257,11 @@ internal static class GamaEditorFirstTickCapture
             }
             catch (Exception ex)
             {
-                return "Purge interrompue : " + ex.Message;
+                return "Purge interrupted: " + ex.Message;
             }
         }
 
-        return "Connexion fantôme \"" + ghostId + "\" fermée proprement côté middleware.";
+        return "Ghost connection \"" + ghostId + "\" was closed cleanly on the middleware.";
     }
 
     private static async Task SendExecutableExpressionAsync(ClientWebSocket ws, string expression, CancellationToken ct)
@@ -1259,8 +1270,8 @@ internal static class GamaEditorFirstTickCapture
     }
 
     /// <summary>
-    /// Expression GAMA serveur (comme simple.webplatform <see cref="GamaConnector.jsonTogglePlayer"/>).
-    /// Le champ <c>exp_id</c> est obligatoire pour create_player / remove_player.
+    /// GAMA server expression (like simple.webplatform <see cref="GamaConnector.jsonTogglePlayer"/>).
+    /// The <c>exp_id</c> field is required for create_player / remove_player.
     /// </summary>
     private static async Task SendDirectGamaExpressionAsync(
         ClientWebSocket ws,
@@ -1293,7 +1304,7 @@ internal static class GamaEditorFirstTickCapture
         {
             if (append != null)
             {
-                Dbg(append, sessionId, "send", "load IGNORÉ ws=" + (ws == null ? "null" : ws.State.ToString()));
+                Dbg(append, sessionId, "send", "load SKIPPED ws=" + (ws == null ? "null" : ws.State.ToString()));
             }
 
             return;
@@ -1314,7 +1325,7 @@ internal static class GamaEditorFirstTickCapture
         await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Ports du serveur WebSocket GAMA intégré (pas simple.webplatform).</summary>
+    /// <summary>Ports used by the integrated GAMA WebSocket server (not simple.webplatform).</summary>
     public static bool IsGamaNativeWebSocketPort(string port)
     {
         if (string.IsNullOrWhiteSpace(port))
@@ -1347,12 +1358,12 @@ internal static class GamaEditorFirstTickCapture
         }
         catch (Exception ex)
         {
-            append("[GAMA] Fermeture socket phase 1 : " + ex.Message);
+            append("[GAMA] Closing phase 1 socket: " + ex.Message);
         }
     }
 
     /// <summary>
-    /// Phase 2 : écoute middleware (socket phase 1 réutilisé si possible) + commandes GAMA:1000 en parallèle.
+    /// Phase 2: listen to the middleware (reusing the phase 1 socket when possible) while sending GAMA:1000 commands in parallel.
     /// </summary>
     private static async Task RunHybridPhase2MiddlewareListenAndGamaCommandsAsync(
         string middlewareHost,
@@ -1370,11 +1381,11 @@ internal static class GamaEditorFirstTickCapture
         string hostNorm = string.IsNullOrWhiteSpace(middlewareHost) ? "localhost" : middlewareHost.Trim();
         string portNorm = string.IsNullOrWhiteSpace(middlewarePort) ? "8080" : middlewarePort.Trim();
         DateTime phaseDeadline = DateTime.UtcNow.AddSeconds(90);
-        state.TightenCaptureDeadline(phaseDeadline, null, "phase 2 hybride (max ~90 s)");
+        state.TightenCaptureDeadline(phaseDeadline, null, "hybrid phase 2 (max ~90 s)");
 
-        append("[GAMA] Phase 2 : écoute middleware + commandes GAMA:1000 (parallèle).");
+        append("[GAMA] Phase 2: listening to middleware while sending GAMA:1000 commands in parallel.");
         Dbg(append, sessionId, "phase2", "listen∥gama (socket phase1=" +
-            (phase1WebSocket != null && phase1WebSocket.State == WebSocketState.Open ? "oui" : "non") + ")");
+            (phase1WebSocket != null && phase1WebSocket.State == WebSocketState.Open ? "yes" : "no") + ")");
 
         using (CancellationTokenSource listenCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
         {
@@ -1418,11 +1429,11 @@ internal static class GamaEditorFirstTickCapture
 
             if (!state.MiddlewareAuthenticated)
             {
-                append("[GAMA] Phase 2 : pas encore in_game sur le middleware — commandes GAMA:1000 quand même.");
+                append("[GAMA] Phase 2: middleware is not in_game yet; sending GAMA:1000 commands anyway.");
             }
             else
             {
-                append("[GAMA] Phase 2 : middleware in_game — envoi create_init_player + send_init_data sur GAMA:1000.");
+                append("[GAMA] Phase 2: middleware is in_game; sending create_init_player + send_init_data on GAMA:1000.");
                 if (reusePhase1Socket)
                 {
                     try
@@ -1430,11 +1441,11 @@ internal static class GamaEditorFirstTickCapture
                         await SendExecutableAskAsync(
                                 phase1WebSocket, "send_init_data", connectionId, listenCts.Token, sessionId, append)
                             .ConfigureAwait(false);
-                        append("[GAMA] Phase 2 : send_init_data aussi envoyé sur le middleware (8080).");
+                        append("[GAMA] Phase 2: send_init_data was also sent on the middleware (8080).");
                     }
                     catch (Exception ex)
                     {
-                        append("[GAMA] Phase 2 : send_init_data middleware — " + ex.Message);
+                        append("[GAMA] Phase 2 middleware send_init_data: " + ex.Message);
                     }
                 }
             }
@@ -1447,13 +1458,13 @@ internal static class GamaEditorFirstTickCapture
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                append("[GAMA] Phase 2 GAMA:1000 annulée (nouvelle capture ou fermeture du panneau).");
+                append("[GAMA] Phase 2 GAMA:1000 cancelled (new capture or panel closed).");
             }
 
             state.TightenCaptureDeadline(
                 DateTime.UtcNow.AddSeconds(state.IsCaptureComplete ? 2 : 30),
                 append,
-                state.IsCaptureComplete ? "JSON reçus" : "fin phase 2 sans json_output");
+                state.IsCaptureComplete ? "JSON received" : "phase 2 ended without json_output");
 
             DateTime listenUntil = DateTime.UtcNow.AddSeconds(state.IsCaptureComplete ? 1 : 30);
             if (phaseDeadline < listenUntil)
@@ -1461,7 +1472,7 @@ internal static class GamaEditorFirstTickCapture
                 listenUntil = phaseDeadline;
             }
 
-            append("[GAMA] Phase 2 : attente json_output middleware jusqu’à " +
+            append("[GAMA] Phase 2: waiting for middleware json_output for up to " +
                    Math.Max(0, (int)(listenUntil - DateTime.UtcNow).TotalSeconds) + " s…");
             while (!state.IsCaptureComplete && DateTime.UtcNow < listenUntil && !listenCts.IsCancellationRequested)
             {
@@ -1511,12 +1522,12 @@ internal static class GamaEditorFirstTickCapture
                     await ws.ConnectAsync(mwUri, ct).ConfigureAwait(false);
                     if (reconnectAttempt > 0)
                     {
-                        append("[GAMA] Phase 2 : middleware reconnecté (" + reconnectAttempt + ").");
+                        append("[GAMA] Phase 2: middleware reconnected (" + reconnectAttempt + ").");
                     }
                 }
                 catch (Exception ex)
                 {
-                    append("[GAMA] Phase 2 : connexion middleware — " + ex.Message);
+                    append("[GAMA] Phase 2 middleware connection: " + ex.Message);
                     reconnectAttempt++;
                     await Task.Delay(400, ct).ConfigureAwait(false);
                     continue;
@@ -1540,7 +1551,7 @@ internal static class GamaEditorFirstTickCapture
                 }
                 catch (Exception ex)
                 {
-                    append("[GAMA] Phase 2 : handshake — " + ex.Message);
+                    append("[GAMA] Phase 2 handshake: " + ex.Message);
                 }
 
                 if (reconnectAttempt == 0)
@@ -1561,7 +1572,7 @@ internal static class GamaEditorFirstTickCapture
 
             reconnectAttempt++;
             Dbg(append, sessionId, "phase2-listen",
-                "reconnexion middleware #" + reconnectAttempt + " (socket fermé trop tôt)");
+                "middleware reconnection #" + reconnectAttempt + " (socket closed too early)");
             await Task.Delay(350, ct).ConfigureAwait(false);
         }
     }
@@ -1629,12 +1640,12 @@ internal static class GamaEditorFirstTickCapture
         }
         catch (Exception ex)
         {
-            append("[GAMA] Phase 2 écoute middleware : " + ex.Message);
+            append("[GAMA] Phase 2 middleware listener: " + ex.Message);
         }
     }
 
     /// <summary>
-    /// Commandes GAMA:1000 : create_init_player + send_init_data (SimulationOutput relayé par le middleware vers 8080).
+    /// GAMA:1000 commands: create_init_player + send_init_data (SimulationOutput is relayed by the middleware to 8080).
     /// </summary>
     private static async Task RunHybridGamaCommandChannelAsync(
         string gamaHost,
@@ -1661,7 +1672,7 @@ internal static class GamaEditorFirstTickCapture
         }
         catch (Exception ex)
         {
-            append("[GAMA] Phase 2 GAMA:1000 : verrou port 1000 indisponible — " + ex.Message);
+            append("[GAMA] Phase 2 GAMA:1000: port 1000 lock unavailable: " + ex.Message);
             state.HybridGamaCommandsDone = true;
             return;
         }
@@ -1678,7 +1689,7 @@ internal static class GamaEditorFirstTickCapture
                 using (ClientWebSocket gamaWs = new ClientWebSocket())
                 {
                     Uri gamaUri = new Uri("ws://" + gamaHost + ":1000/");
-                    append("[GAMA] Phase 2 GAMA:1000 : connexion " + gamaUri);
+                    append("[GAMA] Phase 2 GAMA:1000: connecting to " + gamaUri);
                     await gamaWs.ConnectAsync(gamaUri, channelCts.Token).ConfigureAwait(false);
 
                     Task receiveTask = ReceiveGamaDirectJsonLoopAsync(
@@ -1690,7 +1701,7 @@ internal static class GamaEditorFirstTickCapture
                     await SendDirectGamaExpressionAsync(
                             gamaWs, "do create_init_player(\"" + escapedId + "\");", expId, channelCts.Token)
                         .ConfigureAwait(false);
-                    append("[GAMA] Phase 2 GAMA:1000 : create_init_player(\"" + connectionId + "\").");
+                    append("[GAMA] Phase 2 GAMA:1000: create_init_player(\"" + connectionId + "\").");
                     await Task.Delay(2000, channelCts.Token).ConfigureAwait(false);
 
                     for (int i = 0; i < 3 && !state.IsCaptureComplete && !channelCts.IsCancellationRequested; i++)
@@ -1700,7 +1711,7 @@ internal static class GamaEditorFirstTickCapture
                             .ConfigureAwait(false);
                         initSent++;
                         state.HybridGamaInitSentCount = initSent;
-                        append("[GAMA] Phase 2 GAMA:1000 : send_init_data (" + initSent + "/3).");
+                        append("[GAMA] Phase 2 GAMA:1000: send_init_data (" + initSent + "/3).");
                         if (i < 2)
                         {
                             await Task.Delay(2000, channelCts.Token).ConfigureAwait(false);
@@ -1714,7 +1725,7 @@ internal static class GamaEditorFirstTickCapture
                                 gamaWs, "player_ready_to_receive_geometries", connectionId, channelCts.Token, sessionId, append)
                             .ConfigureAwait(false);
                         state.HybridGamaGeomReadySent = true;
-                        append("[GAMA] Phase 2 GAMA:1000 : player_ready_to_receive_geometries.");
+                        append("[GAMA] Phase 2 GAMA:1000: player_ready_to_receive_geometries.");
                     }
 
                     if (lockTaken)
@@ -1760,7 +1771,7 @@ internal static class GamaEditorFirstTickCapture
 
             if (initSent > 0)
             {
-                append("[GAMA] Phase 2 GAMA:1000 terminée (" + initSent + " send_init_data, create_init_player envoyé).");
+                append("[GAMA] Phase 2 GAMA:1000 completed (" + initSent + " send_init_data, create_init_player sent).");
             }
         }
         catch (OperationCanceledException)
@@ -1769,7 +1780,7 @@ internal static class GamaEditorFirstTickCapture
         }
         catch (Exception ex)
         {
-            append("[GAMA] Phase 2 GAMA:1000 : " + ex.Message);
+            append("[GAMA] Phase 2 GAMA:1000: " + ex.Message);
         }
         finally
         {
@@ -1865,7 +1876,7 @@ internal static class GamaEditorFirstTickCapture
                     : contentToken?.ToString(Formatting.None);
                 if (!string.IsNullOrWhiteSpace(content))
                 {
-                    CapLog(append, sessionId, "phase2-1000", "SimulationOutput reçu.");
+                    CapLog(append, sessionId, "phase2-1000", "SimulationOutput received.");
                     try
                     {
                         TryProcessGamaOutputPayload(JToken.Parse(content), outputDirectory, result, append, state);
@@ -1913,25 +1924,25 @@ internal static class GamaEditorFirstTickCapture
         int sid = state.DebugSessionId;
         if (!state.DirectGamaMode)
         {
-            Dbg(append, sid, "create_player", "SKIP pas en mode direct");
+            Dbg(append, sid, "create_player", "SKIP not in direct mode");
             return;
         }
 
         if (state.DirectCreatePlayerSent)
         {
-            Dbg(append, sid, "create_player", "SKIP déjà marqué envoyé/confirmé");
+            Dbg(append, sid, "create_player", "SKIP already marked sent/confirmed");
             return;
         }
 
         if (!state.DirectLoadCompleted)
         {
-            Dbg(append, sid, "create_player", "SKIP load pas terminé");
+            Dbg(append, sid, "create_player", "SKIP load not complete");
             return;
         }
 
         if (!state.DirectPlayCompleted)
         {
-            Dbg(append, sid, "create_player", "SKIP play/sim pas prête status=" + state.LastSimulationStatus);
+            Dbg(append, sid, "create_player", "SKIP play/simulation not ready status=" + state.LastSimulationStatus);
             return;
         }
 
@@ -1945,7 +1956,7 @@ internal static class GamaEditorFirstTickCapture
             if (!state.DirectCreatePlayerSent)
             {
                 state.DirectCreatePlayerSent = true;
-                append("[GAMA] create_player abandonné après 20 tentatives.");
+                append("[GAMA] create_player abandoned after 20 attempts.");
             }
 
             return;
@@ -1958,12 +1969,12 @@ internal static class GamaEditorFirstTickCapture
         {
             string expr = "do create_player(\"" + connectionId + "\");";
             await SendDirectGamaExpressionAsync(ws, expr, state.DirectExperimentId, ct).ConfigureAwait(false);
-            append("[GAMA] create_player tentative " + state.DirectCreatePlayerAttempts +
+            append("[GAMA] create_player attempt " + state.DirectCreatePlayerAttempts +
                    " (exp_id=" + state.DirectExperimentId + ").");
         }
         catch (Exception ex)
         {
-            append("[GAMA] create_player : " + ex.Message);
+            append("[GAMA] create_player failed: " + ex.Message);
         }
     }
 
@@ -1977,7 +1988,7 @@ internal static class GamaEditorFirstTickCapture
         {
             if (append != null)
             {
-                Dbg(append, sessionId, "send", "play IGNORÉ ws=" + (ws == null ? "null" : ws.State.ToString()));
+                Dbg(append, sessionId, "send", "play SKIPPED ws=" + (ws == null ? "null" : ws.State.ToString()));
             }
 
             return;
@@ -1997,7 +2008,7 @@ internal static class GamaEditorFirstTickCapture
     }
 
     /// <summary>
-    /// Démarre load/play/create_player sur le serveur GAMA (port 1000) pendant qu'une capture middleware écoute sur 8080.
+    /// Starts load/play/create_player on the GAMA server (port 1000) while a middleware capture listens on 8080.
     /// </summary>
     private static async Task RunGamaSimulationBootstrapAsync(
         int sessionId,
@@ -2014,17 +2025,17 @@ internal static class GamaEditorFirstTickCapture
         append(skipRemoteLoad
             ? "[GAMA] Bootstrap create_player GAMA ws://" + host + ":" + port + "/ id=\"" + connectionId + "\""
             : "[GAMA] Bootstrap simulation GAMA ws://" + host + ":" + port + "/ → " + experimentName);
-        Dbg(append, sessionId, "bootstrap", "Attente verrou port GAMA (évite 2 load WebSocket en parallèle)…");
+        Dbg(append, sessionId, "bootstrap", "Waiting for GAMA port lock (prevents two parallel WebSocket loads)...");
         bool lockTaken = false;
         try
         {
             await GamaPort1000Lock.WaitAsync(TimeSpan.FromSeconds(90), ct).ConfigureAwait(false);
             lockTaken = true;
-            Dbg(append, sessionId, "bootstrap", "Verrou port GAMA acquis.");
+            Dbg(append, sessionId, "bootstrap", "GAMA port lock acquired.");
         }
         catch (Exception ex)
         {
-            append("[GAMA] Bootstrap : impossible d'obtenir le verrou GAMA — " + ex.Message);
+            append("[GAMA] Bootstrap: could not acquire the GAMA lock: " + ex.Message);
             return;
         }
 
@@ -2039,7 +2050,7 @@ internal static class GamaEditorFirstTickCapture
             if (lockTaken)
             {
                 GamaPort1000Lock.Release();
-                Dbg(append, sessionId, "bootstrap", "Verrou port GAMA libéré.");
+                Dbg(append, sessionId, "bootstrap", "GAMA port lock released.");
             }
 
             if (mainCaptureState != null && mainCaptureState.GamaBootstrapPhase == 1)
@@ -2061,7 +2072,7 @@ internal static class GamaEditorFirstTickCapture
         CancellationToken ct,
         Action<string> append)
     {
-        Dbg(append, sessionId, "bootstrap", "Core démarré model=" + modelPath + " exp=" + experimentName);
+        Dbg(append, sessionId, "bootstrap", "Core started model=" + modelPath + " exp=" + experimentName);
 
         Uri uri;
         try
@@ -2070,7 +2081,7 @@ internal static class GamaEditorFirstTickCapture
         }
         catch (Exception ex)
         {
-            append("[GAMA] Bootstrap : URL invalide — " + ex.Message);
+            append("[GAMA] Bootstrap: invalid URL: " + ex.Message);
             return;
         }
 
@@ -2084,12 +2095,12 @@ internal static class GamaEditorFirstTickCapture
             }
             catch (Exception ex)
             {
-                append("[GAMA] Bootstrap : connexion impossible — " + ex.Message + " (GAMA est-il ouvert ?)");
-                Dbg(append, sessionId, "bootstrap", "ConnectAsync échec : " + ex);
+                append("[GAMA] Bootstrap: could not connect: " + ex.Message + " (is GAMA open?)");
+                Dbg(append, sessionId, "bootstrap", "ConnectAsync failed: " + ex);
                 return;
             }
 
-            Dbg(append, sessionId, "bootstrap", "WebSocket ouvert state=" + ws.State);
+            Dbg(append, sessionId, "bootstrap", "WebSocket opened state=" + ws.State);
 
             CaptureState boot = new CaptureState
             {
@@ -2108,7 +2119,7 @@ internal static class GamaEditorFirstTickCapture
 
             if (skipRemoteLoad)
             {
-                Dbg(append, sessionId, "bootstrap", "skipRemoteLoad=true → create_player sans load/play");
+                Dbg(append, sessionId, "bootstrap", "skipRemoteLoad=true -> create_player without load/play");
             }
 
             byte[] buffer = new byte[64 * 1024];
@@ -2121,7 +2132,7 @@ internal static class GamaEditorFirstTickCapture
             {
                 if (boot.DirectCreatePlayerConfirmedUtc.HasValue)
                 {
-                    append("[GAMA] Bootstrap terminé (create_player confirmé).");
+                    append("[GAMA] Bootstrap completed (create_player confirmed).");
                     Dbg(append, sessionId, "bootstrap", "OK " + FormatCaptureStateSnapshot(boot, connectionId, ws.State));
                     if (mainCaptureState != null)
                     {
@@ -2153,12 +2164,12 @@ internal static class GamaEditorFirstTickCapture
 
                     if (boot.DirectLoadSent && !boot.DirectLoadCompleted && idleSlices % 20 == 0)
                     {
-                        append("[GAMA] Bootstrap : toujours pas de Load confirmé — cliquez Yes dans GAMA si une boîte de dialogue est ouverte.");
+                        append("[GAMA] Bootstrap: Load is still not confirmed. Click Yes in GAMA if a dialog is open.");
                     }
 
                     if (!boot.DirectPlaySent && boot.DirectLoadCompleted && !boot.DirectPlayCompleted)
                     {
-                        Dbg(append, sessionId, "bootstrap", "Relance play (load OK, play pas encore envoyé).");
+                        Dbg(append, sessionId, "bootstrap", "Retrying play (load OK, play not sent yet).");
                         try
                         {
                             await SendPlayAsync(ws, linked.Token, sessionId).ConfigureAwait(false);
@@ -2166,7 +2177,7 @@ internal static class GamaEditorFirstTickCapture
                         }
                         catch (Exception ex)
                         {
-                            Dbg(append, sessionId, "bootstrap", "play échec : " + ex.Message);
+                            Dbg(append, sessionId, "bootstrap", "play failed: " + ex.Message);
                         }
                     }
 
@@ -2181,16 +2192,16 @@ internal static class GamaEditorFirstTickCapture
                 if (rr.MessageType == WebSocketMessageType.Close)
                 {
                     CapLog(append, sessionId, "bootstrap",
-                        "WebSocket FERMÉ status=" + rr.CloseStatus + " desc=" + (rr.CloseStatusDescription ?? "") +
+                        "WebSocket CLOSED status=" + rr.CloseStatus + " desc=" + (rr.CloseStatusDescription ?? "") +
                         " | loadSent=" + boot.DirectLoadSent + " loadOK=" + boot.DirectLoadCompleted +
                         " playSent=" + boot.DirectPlaySent + " createOK=" + boot.DirectCreatePlayerConfirmedUtc.HasValue);
                     if (boot.DirectLoadSent && !boot.DirectLoadCompleted)
                     {
-                        append("[GAMA] Bootstrap : GAMA a fermé la connexion après load — dialogue « fermer simulation » ? Cochez « Expérience déjà ouverte » si la sim tourne déjà.");
+                        append("[GAMA] Bootstrap: GAMA closed the connection after load. Is a close-simulation dialog open? Select 'Experiment already open' if the simulation is already running.");
                     }
                     else if (!boot.DirectLoadSent && !boot.SkipRemoteLoad)
                     {
-                        append("[GAMA] Bootstrap : connexion fermée avant load — GAMA occupé (autre client/port 1000) ? Purgez Player_* et réessayez.");
+                        append("[GAMA] Bootstrap: connection closed before load. Is GAMA busy with another client on port 1000? Purge Player_* and try again.");
                     }
 
                     break;
@@ -2199,7 +2210,7 @@ internal static class GamaEditorFirstTickCapture
                 pending.Append(Encoding.UTF8.GetString(buffer, 0, rr.Count));
                 if (!rr.EndOfMessage)
                 {
-                    Dbg(append, sessionId, "bootstrap", "Fragment partiel (" + rr.Count + " bytes), attente fin message…");
+                    Dbg(append, sessionId, "bootstrap", "Partial fragment (" + rr.Count + " bytes), waiting for end of message...");
                     continue;
                 }
 
@@ -2214,7 +2225,7 @@ internal static class GamaEditorFirstTickCapture
                 }
                 catch (Exception ex)
                 {
-                    Dbg(append, sessionId, "bootstrap", "JSON non parseable : " + ex.Message);
+                    Dbg(append, sessionId, "bootstrap", "Could not parse JSON: " + ex.Message);
                     continue;
                 }
 
@@ -2229,24 +2240,24 @@ internal static class GamaEditorFirstTickCapture
                         boot.DirectPlayCompleted = true;
                         boot.DirectRunningSinceUtc = DateTime.UtcNow;
                         boot.LastSimulationStatus = "ASSUMED_OPEN";
-                        CapLog(append, sessionId, "bootstrap", "ConnectionSuccessful → create_player (sans load)");
+                        CapLog(append, sessionId, "bootstrap", "ConnectionSuccessful -> create_player (without load)");
                         await TryDirectCreatePlayerAsync(ws, boot, append, linked.Token, force: true).ConfigureAwait(false);
                     }
                     else
                     {
                         boot.DirectLoadSent = true;
                         CapLog(append, sessionId, "bootstrap",
-                            "ConnectionSuccessful → envoi load IMMÉDIAT " + experimentName + " | ws=" + ws.State);
-                        append("[GAMA] Bootstrap : envoi load " + experimentName);
+                            "ConnectionSuccessful -> sending load IMMEDIATELY " + experimentName + " | ws=" + ws.State);
+                        append("[GAMA] Bootstrap: sending load " + experimentName);
                         try
                         {
                             await SendLoadAsync(ws, modelPath, experimentName, linked.Token, sessionId, append)
                                 .ConfigureAwait(false);
-                            CapLog(append, sessionId, "bootstrap", "load envoyé, attente CommandExecutedSuccessfully…");
+                            CapLog(append, sessionId, "bootstrap", "load sent, waiting for CommandExecutedSuccessfully...");
                         }
                         catch (Exception ex)
                         {
-                            CapLog(append, sessionId, "bootstrap", "ÉCHEC envoi load : " + ex.Message);
+                            CapLog(append, sessionId, "bootstrap", "FAILED to send load: " + ex.Message);
                         }
                     }
 
@@ -2257,8 +2268,8 @@ internal static class GamaEditorFirstTickCapture
                 {
                     boot.DirectLoadPending = false;
                     boot.DirectLoadSent = true;
-                    CapLog(append, sessionId, "bootstrap", "load pending (filet) → envoi load");
-                    append("[GAMA] Bootstrap : envoi load " + experimentName);
+                    CapLog(append, sessionId, "bootstrap", "load pending (safety net) -> sending load");
+                    append("[GAMA] Bootstrap: sending load " + experimentName);
                     try
                     {
                         await SendLoadAsync(ws, modelPath, experimentName, linked.Token, sessionId, append).ConfigureAwait(false);
@@ -2284,7 +2295,7 @@ internal static class GamaEditorFirstTickCapture
                         {
                             await SendPlayAsync(ws, linked.Token, sessionId).ConfigureAwait(false);
                             boot.DirectPlaySent = true;
-                            append("[GAMA] Bootstrap : play envoyé.");
+                            append("[GAMA] Bootstrap: play sent.");
                         }
                     }
                     else if (commandType == "play")
@@ -2296,7 +2307,7 @@ internal static class GamaEditorFirstTickCapture
                     {
                         boot.DirectCreatePlayerSent = true;
                         boot.DirectCreatePlayerConfirmedUtc = DateTime.UtcNow;
-                        append("[GAMA] Bootstrap : create_player confirmé.");
+                        append("[GAMA] Bootstrap: create_player confirmed.");
                         if (mainCaptureState != null)
                         {
                             mainCaptureState.GamaBootstrapPhase = 2;
@@ -2310,7 +2321,7 @@ internal static class GamaEditorFirstTickCapture
 
                 if (type == "UnableToExecuteRequest" || type == "GamaServerError" || type == "RuntimeError")
                 {
-                    append("[GAMA] Bootstrap : " + type + " → " + (json["content"]?.ToString(Formatting.None) ?? ""));
+                    append("[GAMA] Bootstrap: " + type + " -> " + (json["content"]?.ToString(Formatting.None) ?? ""));
                 }
                 else if (type == "SimulationStatus")
                 {
@@ -2336,23 +2347,23 @@ internal static class GamaEditorFirstTickCapture
                 }
                 else
                 {
-                    Dbg(append, sessionId, "bootstrap", "Type non géré en bootstrap : " + type);
+                    Dbg(append, sessionId, "bootstrap", "Unhandled bootstrap type: " + type);
                 }
             }
 
             double elapsed = (DateTime.UtcNow - startedUtc).TotalSeconds;
             if (!boot.DirectCreatePlayerConfirmedUtc.HasValue)
             {
-                append("[GAMA] Bootstrap : create_player non confirmé (simulation ou dialogue GAMA bloquant).");
+                append("[GAMA] Bootstrap: create_player was not confirmed (simulation or blocking GAMA dialog).");
                 Dbg(append, sessionId, "bootstrap",
-                    "FIN après " + elapsed.ToString("0") + "s | " + FormatCaptureStateSnapshot(boot, connectionId, ws.State));
+                    "END after " + elapsed.ToString("0") + "s | " + FormatCaptureStateSnapshot(boot, connectionId, ws.State));
             }
         }
     }
 
     /// <summary>
-    /// Répète <c>send_init_data</c> comme <see cref="SimulationManager"/> en LOADING_DATA, puis envoie
-    /// <c>player_ready_to_receive_geometries</c> une fois precision+properties reçus (comme passage en GAME).
+    /// Repeats <c>send_init_data</c> like <see cref="SimulationManager"/> in LOADING_DATA, then sends
+    /// <c>player_ready_to_receive_geometries</c> once precision+properties are received (like entering GAME).
     /// </summary>
     private static async Task RunMiddlewarePumpAsync(
         ClientWebSocket ws,
@@ -2386,7 +2397,7 @@ internal static class GamaEditorFirstTickCapture
                     {
                         state.AutoPurgeAttemptCount++;
                         CapLog(append, sid, "auto-purge",
-                            "Tentative " + state.AutoPurgeAttemptCount + "/4 : remove_player GAMA « " + ghost + " » (sans 2e WebSocket)…");
+                            "Attempt " + state.AutoPurgeAttemptCount + "/4: remove_player GAMA '" + ghost + "' (without a second WebSocket)...");
                         if (ws.State == WebSocketState.Open)
                         {
                             try
@@ -2395,11 +2406,11 @@ internal static class GamaEditorFirstTickCapture
                                 await SendMiddlewareExpressionAsync(
                                         ws, "do remove_player(\"" + escapedGhost + "\");", ct, sid, append)
                                     .ConfigureAwait(false);
-                                CapLog(append, sid, "auto-purge", "remove_player(\"" + ghost + "\") envoyé.");
+                                CapLog(append, sid, "auto-purge", "remove_player(\"" + ghost + "\") sent.");
                             }
                             catch (Exception ex)
                             {
-                                CapLog(append, sid, "auto-purge", "remove_player : " + ex.Message);
+                                CapLog(append, sid, "auto-purge", "remove_player failed: " + ex.Message);
                             }
                         }
 
@@ -2421,7 +2432,7 @@ internal static class GamaEditorFirstTickCapture
                         state.MiddlewareOccupiedPlayerId = null;
                         state.MiddlewareAuthenticated = true;
                         CapLog(append, sid, "auto-purge",
-                            "json_state in_game=\"" + ghost + "\" = id de capture (même IP middleware) → OK.");
+                            "json_state in_game=\"" + ghost + "\" = capture ID (same middleware IP) -> OK.");
                     }
                 }
 
@@ -2431,7 +2442,7 @@ internal static class GamaEditorFirstTickCapture
                 {
                     result.Error = BuildMissingError(state);
                     state.CaptureAbortRequested = true;
-                    CapLog(append, sid, "pump", "ABORT slot joueur toujours occupé après purges.");
+                    CapLog(append, sid, "pump", "ABORT player slot still occupied after purges.");
                     break;
                 }
                 if (VerboseCaptureDebug &&
@@ -2446,7 +2457,7 @@ internal static class GamaEditorFirstTickCapture
 
                 if (ws.State != WebSocketState.Open)
                 {
-                    Dbg(append, state.DebugSessionId, "pump", "STOP ws fermé");
+                    Dbg(append, state.DebugSessionId, "pump", "STOP WebSocket closed");
                     break;
                 }
 
@@ -2492,7 +2503,7 @@ internal static class GamaEditorFirstTickCapture
                         }
                         catch (Exception ex)
                         {
-                            append("[GAMA][CAPTURE][8080] burst : " + ex.Message);
+                            append("[GAMA][CAPTURE][8080] burst failed: " + ex.Message);
                         }
 
                         continue;
@@ -2503,11 +2514,11 @@ internal static class GamaEditorFirstTickCapture
                     !state.LoggedPlayerSlotConflict)
                 {
                     state.LoggedPlayerSlotConflict = true;
-                    append("[GAMA] Slot joueur occupé par « " + state.MiddlewareOccupiedPlayerId +
-                           " » — arrêtez Unity Play, purguez ce joueur, puis relancez la capture (id « " + connectionId + " »).");
+                    append("[GAMA] Player slot occupied by '" + state.MiddlewareOccupiedPlayerId +
+                           "'. Stop Unity Play Mode, purge this player, then start capture again (id '" + connectionId + "').");
                     if (state.SkipRemoteLoad)
                     {
-                        append("[GAMA] Astuce : avec l’expérience lancée dans GAMA (bouton Yes), gardez « Expérience déjà ouverte » coché.");
+                        append("[GAMA] Tip: when the experiment was launched in GAMA (Yes button), keep 'Experiment already open' selected.");
                     }
                 }
 
@@ -2515,8 +2526,8 @@ internal static class GamaEditorFirstTickCapture
                     state.DebugPumpTicks % 25 == 0 && !state.IsCaptureComplete)
                 {
                     Dbg(append, state.DebugSessionId, "hybrid",
-                        "pump Play-like middleware (init=" + state.HybridGamaInitSentCount +
-                        ", secours1000=" + (state.HybridGamaCommandsDone ? "fini" : "en cours") + ")…");
+                        "Play-like middleware pump (init=" + state.HybridGamaInitSentCount +
+                        ", fallback1000=" + (state.HybridGamaCommandsDone ? "complete" : "in progress") + ")...");
                 }
 
                 if (state.SkipRemoteLoad &&
@@ -2530,7 +2541,7 @@ internal static class GamaEditorFirstTickCapture
                     state.MiddlewareCreatePlayerSent = true;
                     state.MiddlewareInitDataAllowedUtc = DateTime.UtcNow.AddSeconds(1.5);
                     string escapedId = connectionId.Replace("\\", "\\\\").Replace("\"", "\\\"");
-                    append("[GAMA] create_player via middleware (expérience déjà ouverte) id=\"" + connectionId + "\".");
+                    append("[GAMA] create_player through middleware (experiment already open) id=\"" + connectionId + "\".");
                     try
                     {
                         await SendMiddlewareExpressionAsync(
@@ -2539,7 +2550,7 @@ internal static class GamaEditorFirstTickCapture
                     }
                     catch (Exception ex)
                     {
-                        append("[GAMA] create_player middleware : " + ex.Message);
+                        append("[GAMA] Middleware create_player failed: " + ex.Message);
                     }
                 }
 
@@ -2553,14 +2564,14 @@ internal static class GamaEditorFirstTickCapture
                     {
                         if (state.DebugPumpTicks % 20 == 0)
                         {
-                            Dbg(append, state.DebugSessionId, "pump", "attente bootstrap GAMA (create_player/load)…");
+                            Dbg(append, state.DebugSessionId, "pump", "waiting for GAMA bootstrap (create_player/load)...");
                         }
 
                         continue;
                     }
                     else
                     {
-                        append("[GAMA] Bootstrap GAMA trop long — envoi send_init_data quand même.");
+                        append("[GAMA] GAMA bootstrap is taking too long; sending send_init_data anyway.");
                         state.GamaBootstrapPhase = 3;
                     }
                 }
@@ -2584,13 +2595,13 @@ internal static class GamaEditorFirstTickCapture
                             loggedAuthFallback = true;
                             if (state.SkipRemoteLoad)
                             {
-                                append("[GAMA] Slot middleware libre — envoi de send_init_data (expérience GAMA déjà ouverte).");
+                                append("[GAMA] Middleware slot is free; sending send_init_data (GAMA experiment already open).");
                             }
                             else
                             {
                                 append(waitConnected
-                                    ? "[GAMA] Middleware connecté (in_game peut être false) — envoi de send_init_data."
-                                    : "[GAMA] Pas de json_state utile après 15 s — envoi de send_init_data quand même.");
+                                    ? "[GAMA] Middleware connected (in_game may be false); sending send_init_data."
+                                    : "[GAMA] No useful json_state after 15 s; sending send_init_data anyway.");
                             }
                         }
                     }
@@ -2600,18 +2611,18 @@ internal static class GamaEditorFirstTickCapture
                 {
                     state.DirectLoadPending = false;
                     state.DirectLoadSent = true;
-                    state.ExtendCaptureDeadline(240f, append, "load (depuis pump)");
-                    append("[GAMA] Envoi du load depuis la pompe (évite conflit send/receive). Si GAMA demande de fermer la sim → Yes.");
+                    state.ExtendCaptureDeadline(240f, append, "load (from pump)");
+                    append("[GAMA] Sending load from the pump (avoids a send/receive conflict). If GAMA asks to close the simulation, click Yes.");
                     try
                     {
                         await SendLoadAsync(ws, state.DirectModelPath, state.DirectExperimentName, ct, state.DebugSessionId, append)
                             .ConfigureAwait(false);
-                        append("[GAMA] Demande load envoyée: " + state.DirectExperimentName);
+                        append("[GAMA] Load request sent: " + state.DirectExperimentName);
                     }
                     catch (Exception ex)
                     {
-                        append("[GAMA] load : " + ex.Message);
-                        Dbg(append, state.DebugSessionId, "direct", "échec envoi load : " + ex.Message);
+                        append("[GAMA] load failed: " + ex.Message);
+                        Dbg(append, state.DebugSessionId, "direct", "failed to send load: " + ex.Message);
                     }
                 }
 
@@ -2621,11 +2632,11 @@ internal static class GamaEditorFirstTickCapture
                     {
                         await SendPlayAsync(ws, ct, state.DebugSessionId, append).ConfigureAwait(false);
                         state.DirectPlaySent = true;
-                        append("[GAMA] Commande play envoyée après load.");
+                        append("[GAMA] play command sent after load.");
                     }
                     catch (Exception ex)
                     {
-                        append("[GAMA] play : " + ex.Message);
+                        append("[GAMA] play failed: " + ex.Message);
                     }
                 }
 
@@ -2635,7 +2646,7 @@ internal static class GamaEditorFirstTickCapture
                     {
                         if (state.DebugPumpTicks % 30 == 0)
                         {
-                            Dbg(append, state.DebugSessionId, "create_player", "pump attend DirectPlayCompleted…");
+                            Dbg(append, state.DebugSessionId, "create_player", "pump waiting for DirectPlayCompleted...");
                         }
 
                         continue;
@@ -2649,7 +2660,7 @@ internal static class GamaEditorFirstTickCapture
                         if (state.DebugPumpTicks % 30 == 0)
                         {
                             Dbg(append, state.DebugSessionId, "create_player",
-                                "pump attend RUNNING/PAUSED (status=" + state.LastSimulationStatus + ")");
+                            "pump waiting for RUNNING/PAUSED (status=" + state.LastSimulationStatus + ")");
                         }
 
                         continue;
@@ -2669,7 +2680,7 @@ internal static class GamaEditorFirstTickCapture
                     if (!loggedDirectInitStrategy)
                     {
                         loggedDirectInitStrategy = true;
-                        append("[GAMA] Mode direct : attente SimulationOutput après create_player (play si PAUSED, puis send_init_data espacé).");
+                        append("[GAMA] Direct mode: waiting for SimulationOutput after create_player (play if PAUSED, then spaced send_init_data calls).");
                     }
 
                     if (string.Equals(state.LastSimulationStatus, "PAUSED", StringComparison.OrdinalIgnoreCase) &&
@@ -2679,11 +2690,11 @@ internal static class GamaEditorFirstTickCapture
                         try
                         {
                             await SendPlayAsync(ws, ct).ConfigureAwait(false);
-                            append("[GAMA] Reprise play (simulation en pause après create_player).");
+                            append("[GAMA] Resuming play (simulation paused after create_player).");
                         }
                         catch (Exception ex)
                         {
-                            append("[GAMA] play (reprise) : " + ex.Message);
+                            append("[GAMA] play (resume): " + ex.Message);
                         }
                     }
 
@@ -2705,7 +2716,7 @@ internal static class GamaEditorFirstTickCapture
                         }
                         catch (Exception ex)
                         {
-                            append("[GAMA] send_init_data : " + ex.Message);
+                            append("[GAMA] send_init_data failed: " + ex.Message);
                         }
                     }
                 }
@@ -2759,7 +2770,7 @@ internal static class GamaEditorFirstTickCapture
                         if (state.DebugPumpTicks % 25 == 0)
                         {
                             Dbg(append, state.DebugSessionId, "middleware",
-                                "attente create_player GAMA avant send_init_data (mode piloté par Unity)…");
+                            "waiting for GAMA create_player before send_init_data (Unity-managed mode)...");
                         }
 
                         continue;
@@ -2780,8 +2791,8 @@ internal static class GamaEditorFirstTickCapture
                     }
                     catch (Exception ex)
                     {
-                        append("[GAMA] send_init_data : " + ex.Message);
-                        Dbg(append, state.DebugSessionId, "middleware", "send_init_data exception : " + ex.Message);
+                        append("[GAMA] send_init_data failed: " + ex.Message);
+                        Dbg(append, state.DebugSessionId, "middleware", "send_init_data exception: " + ex.Message);
                     }
                 }
 
@@ -2797,11 +2808,11 @@ internal static class GamaEditorFirstTickCapture
                         await SendExecutableAskAsync(
                                 ws, "player_ready_to_receive_geometries", connectionId, ct, state.DebugSessionId, append)
                             .ConfigureAwait(false);
-                        append("[GAMA] player_ready_to_receive_geometries (mode expérience déjà ouverte, comme au Play).");
+                        append("[GAMA] player_ready_to_receive_geometries (experiment-already-open mode, as in Play Mode).");
                     }
                     catch (Exception ex)
                     {
-                        append("[GAMA] player_ready_to_receive_geometries : " + ex.Message);
+                        append("[GAMA] player_ready_to_receive_geometries failed: " + ex.Message);
                     }
                 }
 
@@ -2815,19 +2826,19 @@ internal static class GamaEditorFirstTickCapture
                             .ConfigureAwait(false);
                         if (state.WorldFrameCount == 0)
                         {
-                            append("[GAMA] Demande player_ready_to_receive_geometries (comme au Play).");
+                            append("[GAMA] Requesting player_ready_to_receive_geometries (as in Play Mode).");
                         }
                     }
                     catch (Exception ex)
                     {
-                        append("[GAMA] player_ready_to_receive_geometries : " + ex.Message);
+                        append("[GAMA] player_ready_to_receive_geometries failed: " + ex.Message);
                     }
                 }
             }
         }
         catch (OperationCanceledException)
         {
-            // fin normale (timeout ou annulation)
+                // Normal end (timeout or cancellation).
         }
     }
 
@@ -2870,7 +2881,7 @@ internal static class GamaEditorFirstTickCapture
         string type = (string)json["type"];
         if (string.IsNullOrEmpty(type))
         {
-            Dbg(append, state.DebugSessionId, "in", "message sans champ type");
+            Dbg(append, state.DebugSessionId, "in", "message has no type field");
             return;
         }
 
@@ -2878,7 +2889,7 @@ internal static class GamaEditorFirstTickCapture
 
         if (type == "ConnectionSuccessful")
         {
-            append("[GAMA] ConnectionSuccessful reçu.");
+            append("[GAMA] ConnectionSuccessful received.");
             if (state.DirectGamaMode && state.DirectLoadRequested && !state.DirectLoadSent)
             {
             if (state.SkipRemoteLoad)
@@ -2895,13 +2906,13 @@ internal static class GamaEditorFirstTickCapture
                     state.LastSimulationStatus = "ASSUMED_OPEN";
                 }
 
-                append("[GAMA] Mode sans load : expérience supposée déjà ouverte dans GAMA — pas d'envoi play, tentative create_player.");
-                Dbg(append, state.DebugSessionId, "direct", "SkipRemoteLoad=true → pas de commande load/play");
+                append("[GAMA] No-load mode: experiment assumed to be open in GAMA; play is not sent, attempting create_player.");
+                Dbg(append, state.DebugSessionId, "direct", "SkipRemoteLoad=true -> no load/play command");
             }
             else
             {
                     state.DirectLoadPending = true;
-                    append("[GAMA] Load programmé (envoi depuis la pompe, pas pendant la réception). Validez Yes si GAMA le demande.");
+                    append("[GAMA] Load scheduled (sent from the pump, not while receiving). Click Yes if GAMA prompts you.");
                     Dbg(append, state.DebugSessionId, "direct", "DirectLoadPending=true");
                 }
             }
@@ -2932,7 +2943,7 @@ internal static class GamaEditorFirstTickCapture
             if (invalidMiddlewareOnGamaPort)
             {
                 append("[GAMA] Port " + (state.DirectGamaMode ? "?" : "1000") +
-                       " = serveur GAMA, pas le middleware Node. Cochez « Capture directe » ou lancez simple.webplatform sur le port 8080.");
+                       " is the GAMA server, not the Node middleware. Select 'Direct Capture' or start simple.webplatform on port 8080.");
                 result.Error = "Incorrect protocol: target port is GAMA Server ('connection' command refused). Use port 8080 with simple.webplatform, or check 'Direct GAMA GUI Capture' for port 1000.";
                 return;
             }
@@ -2948,7 +2959,7 @@ internal static class GamaEditorFirstTickCapture
 
             if (isRemovePlayer || (isCreatePlayer && simUnavailable))
             {
-                append("[GAMA] Commande ignorée (simulation absente) : " + content);
+                append("[GAMA] Command ignored (simulation missing): " + content);
                 return;
             }
 
@@ -2961,14 +2972,14 @@ internal static class GamaEditorFirstTickCapture
                 }
 
                 state.LastSimulationStatus = "ASSUMED_OPEN";
-                append("[GAMA] Play ignoré : GAMA indique « Controller is full ». On continue sur l'expérience déjà ouverte.");
+                append("[GAMA] play ignored: GAMA reports 'Controller is full'. Continuing with the already-open experiment.");
                 await TryDirectCreatePlayerAsync(ws, state, append, ct, force: true).ConfigureAwait(false);
                 return;
             }
 
             if (simUnavailable && state.DirectGamaMode)
             {
-                append("[GAMA] Simulation introuvable côté GAMA — validez « Yes » si GAMA demande de fermer l’expérience, puis relancez la capture.");
+                append("[GAMA] Simulation not found in GAMA. Click 'Yes' if GAMA asks to close the experiment, then start capture again.");
                 state.ExtendCaptureDeadline(60f);
                 return;
             }
@@ -2985,9 +2996,9 @@ internal static class GamaEditorFirstTickCapture
                     if (!state.LoggedUnityLinkerMissingHint)
                     {
                         state.LoggedUnityLinkerMissingHint = true;
-                        append("[GAMA] send_init_data refusé : l'agent simulation[0].unity_linker[0] n'existe pas encore. " +
-                               "Attente create_player / démarrage de l'expérience Unity (type: unity). " +
-                               "Si le modèle n'est pas *-VR.gaml, la capture Unity n'est pas supportée.");
+                        append("[GAMA] send_init_data refused: agent simulation[0].unity_linker[0] does not exist yet. " +
+                               "Waiting for create_player / Unity experiment startup (type: unity). " +
+                               "If the model is not *-VR.gaml, Unity capture is not supported.");
                     }
 
                     return;
@@ -2995,18 +3006,18 @@ internal static class GamaEditorFirstTickCapture
 
                 if (state.SendInitDataFailureCount <= 2)
                 {
-                    append("[GAMA] send_init_data refusé (" + content + ") — attente RUNNING ou sortie SimulationOutput.");
+                    append("[GAMA] send_init_data refused (" + content + "); waiting for RUNNING or SimulationOutput.");
                 }
                 else if (!state.LoggedDirectInitHint && state.DirectGamaMode)
                 {
                     state.LoggedDirectInitHint = true;
-                    append("[GAMA] send_init_data échoue en direct : lancez simple.webplatform (8080), décochez « Capture directe », ou arrêtez la sim dans GAMA puis réessayez.");
+                    append("[GAMA] send_init_data failed in direct mode: start simple.webplatform (8080), clear 'Direct Capture', or stop the simulation in GAMA and try again.");
                 }
 
                 return;
             }
 
-            append("[GAMA] " + type + ": " + content + (isCreatePlayer ? " (nouvelle tentative create_player plus tard)" : string.Empty));
+            append("[GAMA] " + type + ": " + content + (isCreatePlayer ? " (another create_player attempt will follow)" : string.Empty));
             if (!isCreatePlayer && type != "UnableToExecuteRequest")
             {
                 result.Error = type + ": " + content;
@@ -3054,10 +3065,10 @@ internal static class GamaEditorFirstTickCapture
                 {
                     state.LoggedPlayerSlotConflict = true;
                     CapLog(append, state.DebugSessionId, "slot",
-                        "Conflit : in_game=\"" + reportedId + "\" ≠ capture=\"" + state.ConnectionId +
-                        "\" (max_num_players=1). remove_player GAMA en cours…");
-                    append("[GAMA] Slot GAMA occupé par « " + reportedId + " » — libération via remove_player. " +
-                           "Astuce : laissez l’ID connexion vide pour utiliser " + StaticInformation.getId() + " (comme au Play).");
+                    "Conflict: in_game=\"" + reportedId + "\" != capture=\"" + state.ConnectionId +
+                    "\" (max_num_players=1). GAMA remove_player in progress...");
+                append("[GAMA] GAMA player slot occupied by '" + reportedId + "'; releasing it through remove_player. " +
+                       "Tip: leave the connection ID empty to use " + StaticInformation.getId() + " (as in Play Mode).");
                 }
             }
 
@@ -3093,14 +3104,14 @@ internal static class GamaEditorFirstTickCapture
                     }
                 }
 
-                append("[GAMA] Client authentifié côté middleware (in_game=true, id=" + state.ConnectionId + ")." +
-                       (state.ManagedFromUnity && EDITOR_PREVIEW_IMMEDIATE_INIT_BURST
-                           ? " Burst send_init_data immédiat sur 8080 (pas d'attente create_player)."
-                           : state.ManagedFromUnity
-                               ? " Attente create_player GAMA avant send_init_data."
-                               : state.SkipRemoteLoad
-                                   ? " Pompe middleware : send_init_data + player_ready (comme au Play, 8080 seul)."
-                                   : " Envoi de send_init_data."));
+                append("[GAMA] Client authenticated on the middleware (in_game=true, id=" + state.ConnectionId + ")." +
+                    (state.ManagedFromUnity && EDITOR_PREVIEW_IMMEDIATE_INIT_BURST
+                        ? " Immediate send_init_data burst on 8080 (does not wait for create_player)."
+                        : state.ManagedFromUnity
+                            ? " Waiting for GAMA create_player before send_init_data."
+                            : state.SkipRemoteLoad
+                                ? " Middleware pump: send_init_data + player_ready (as in Play Mode, 8080 only)."
+                                : " Sending send_init_data."));
                 if (state.SkipRemoteLoad && state.MiddlewarePlayPhaseStartedUtc == DateTime.MinValue)
                 {
                     state.MiddlewarePlayPhaseStartedUtc = DateTime.UtcNow;
@@ -3111,13 +3122,13 @@ internal static class GamaEditorFirstTickCapture
                 state.LoggedMiddlewareInGameHint = true;
                 if (state.ManagedFromUnity && !state.LaunchExperimentViaMonitor)
                 {
-                    append("[GAMA] Middleware connecté mais in_game=false — séquence Play-like maintenue, init 8080 si la session ne passe pas in_game rapidement.");
+                    append("[GAMA] Middleware connected but in_game=false; keeping the Play-like sequence and initializing on 8080 if the session does not enter in_game quickly.");
                 }
                 else
                 {
                     append(state.SkipRemoteLoad
-                        ? "[GAMA] Middleware connecté (in_game=false) — attente create_player / send_init_data."
-                        : "[GAMA] Middleware connecté mais in_game=false — démarrage auto de la sim GAMA (port 1000) si l’expérience est importée.");
+                        ? "[GAMA] Middleware connected (in_game=false); waiting for create_player / send_init_data."
+                        : "[GAMA] Middleware connected but in_game=false; automatically starting the GAMA simulation (port 1000) if the experiment is imported.");
                 }
             }
 
@@ -3133,12 +3144,12 @@ internal static class GamaEditorFirstTickCapture
             {
                 state.DirectLoadCompleted = true;
                 state.ExtendCaptureDeadline(120f);
-                append("[GAMA] Load confirmé par GAMA.");
+                append("[GAMA] Load confirmed by GAMA.");
             }
             else if (commandType == "play")
             {
                 state.DirectPlayCompleted = true;
-                append("[GAMA] Play confirmé par GAMA.");
+                append("[GAMA] Play confirmed by GAMA.");
                 await TryDirectCreatePlayerAsync(ws, state, append, ct, force: true).ConfigureAwait(false);
             }
             else if (commandType == "expression")
@@ -3157,7 +3168,7 @@ internal static class GamaEditorFirstTickCapture
                     }
 
                     state.ExtendCaptureDeadline(Math.Max(90f, state.WorldPhaseExtraSeconds + 45f));
-                    append("[GAMA] create_player confirmé par GAMA. Fenêtre de capture prolongée pour réception des JSON.");
+                    append("[GAMA] create_player confirmed by GAMA. Capture window extended to receive JSON.");
                 }
             }
             else if (commandType == "ask" &&
@@ -3166,11 +3177,11 @@ internal static class GamaEditorFirstTickCapture
                 state.SendInitDataSuccessCount++;
                 if (state.SendInitDataSuccessCount == 1)
                 {
-                    append("[GAMA] send_init_data confirmé par GAMA, mais aucune donnée JSON n'est encore arrivée.");
+                    append("[GAMA] send_init_data confirmed by GAMA, but no JSON data has arrived yet.");
                 }
                 else if (state.SendInitDataSuccessCount == 3 && state.DirectGamaMode && state.OtherOutputCount == 0)
                 {
-                    append("[GAMA] send_init_data confirmé plusieurs fois sans SimulationOutput/json_output. Le serveur GAMA exécute l'action mais ne publie pas les données Unity sur ce WebSocket.");
+                    append("[GAMA] send_init_data confirmed multiple times without SimulationOutput/json_output. The GAMA server executes the action but does not publish Unity data on this WebSocket.");
                 }
             }
 
@@ -3227,7 +3238,7 @@ internal static class GamaEditorFirstTickCapture
 
         if (type != "json_output")
         {
-            Dbg(append, state.DebugSessionId, "in", "fin handler pour type=" + type + " (pas json_output)");
+            Dbg(append, state.DebugSessionId, "in", "handler complete for type=" + type + " (not json_output)");
             return;
         }
 
@@ -3240,7 +3251,7 @@ internal static class GamaEditorFirstTickCapture
             }
         }
 
-        Dbg(append, state.DebugSessionId, "json", "json_output reçu");
+        Dbg(append, state.DebugSessionId, "json", "json_output received");
         ProcessJsonOutputContents(json["contents"], outputDirectory, result, append, state);
     }
 
@@ -3424,7 +3435,7 @@ internal static class GamaEditorFirstTickCapture
                     {
                         result.PrecisionJsonPath = written;
                         state.GotPrecision = true;
-                        append("[GAMA] precision.json capturé.");
+                        append("[GAMA] precision.json captured.");
                         Dbg(append, state.DebugSessionId, "json", "precision OK → " + written);
                     }
                 }
@@ -3448,7 +3459,7 @@ internal static class GamaEditorFirstTickCapture
                             state.PropertyMapById = new Dictionary<string, PropertiesGAMA>(StringComparer.OrdinalIgnoreCase);
                         }
 
-                        append("[GAMA] properties.json capturé.");
+                        append("[GAMA] properties.json captured.");
                         Dbg(append, state.DebugSessionId, "json", "properties OK → " + written);
                     }
                 }
@@ -3496,8 +3507,8 @@ internal static class GamaEditorFirstTickCapture
         if (!state.WorldPhaseStartedUtc.HasValue)
         {
             state.WorldPhaseStartedUtc = DateTime.UtcNow;
-            append("[GAMA][PREVIEW] Fenêtre d'aperçu cumulatif : warmup " +
-                   state.WorldPhaseExtraSeconds.ToString("0") + " s, stabilité " +
+            append("[GAMA][PREVIEW] Cumulative preview window: warmup " +
+                   state.WorldPhaseExtraSeconds.ToString("0") + " s, stability " +
                    state.PreviewStableSeconds.ToString("0") + " s, max " + state.MaxWorldFrames + " ticks.");
         }
 
@@ -3516,7 +3527,7 @@ internal static class GamaEditorFirstTickCapture
 
         if (merge.ExplicitReset)
         {
-            append("[GAMA][PREVIEW] reset explicite reçu : cache d'aperçu vidé avant fusion.");
+            append("[GAMA][PREVIEW] Explicit reset received: preview cache cleared before merging.");
         }
 
         append(GamaEditorPreviewCapture.FormatChunkSpeciesCountsLine(frameIndex, merge.ChunkSpeciesCounts));
@@ -3525,11 +3536,11 @@ internal static class GamaEditorFirstTickCapture
         if (merge.DynamicCacheAgentCount > 0)
         {
             state.PreviewDynamicAgentsFound = true;
-            append("[GAMA][PREVIEW] cache agents dynamiques (regex) : " + merge.DynamicCacheAgentCount);
+            append("[GAMA][PREVIEW] Dynamic-agent cache (regex): " + merge.DynamicCacheAgentCount);
         }
         if (merge.ReplacedDynamicAgentCount > 0)
         {
-            append("[GAMA][PREVIEW] positions dynamiques remplacées : " + merge.ReplacedDynamicAgentCount);
+            append("[GAMA][PREVIEW] Dynamic positions replaced: " + merge.ReplacedDynamicAgentCount);
         }
 
         if (merge.CacheGrew || !state.LastPreviewCacheGrowthUtc.HasValue)
@@ -3565,10 +3576,10 @@ internal static class GamaEditorFirstTickCapture
             state.WorldHasAgents = true;
         }
 
-        append("[GAMA] " + tickFileName + " cumulatif (chunk " + merge.ChunkAgentCount +
-               " agent(s), " + merge.ChunkGeometryCount + " géométrie(s); cache " +
+        append("[GAMA] " + tickFileName + " cumulative (chunk " + merge.ChunkAgentCount +
+               " agent(s), " + merge.ChunkGeometryCount + " geometry item(s); cache " +
                merge.CacheAgentCount + " agent(s), +" + merge.NewAgentCount +
-               " nouveau(x), " + merge.UpdatedAgentCount + " maj). Chunk brut : " + chunkFileName + ".");
+               " new, " + merge.UpdatedAgentCount + " updated). Raw chunk: " + chunkFileName + ".");
     }
 
     private static void FinalizePreviewBestFrame(
@@ -3601,12 +3612,12 @@ internal static class GamaEditorFirstTickCapture
             {
                 state.WorldBestJsonPath = bestPath;
                 result.WorldJsonPath = bestPath;
-                append("[GAMA][PREVIEW] Aucun agent : aperçu cumulé = dernier tick reçu (tick " + state.LastWorldFrameIndex + ").");
+                append("[GAMA][PREVIEW] No agents: cumulative preview uses the last received tick (tick " + state.LastWorldFrameIndex + ").");
             }
         }
         catch (Exception ex)
         {
-            append("[GAMA][PREVIEW] Impossible de finaliser le dernier tick : " + ex.Message);
+            append("[GAMA][PREVIEW] Could not finalize the last tick: " + ex.Message);
         }
     }
 
@@ -3629,7 +3640,7 @@ internal static class GamaEditorFirstTickCapture
         }
         catch (Exception ex)
         {
-            GamaLog.Warning("[GAMA] Impossible d'écrire " + fileName + " : " + ex.Message);
+            GamaLog.Warning("[GAMA] Could not write " + fileName + ": " + ex.Message);
             return null;
         }
     }
@@ -3702,13 +3713,13 @@ internal static class GamaEditorFirstTickCapture
 
         state.GeometryExportErrorDetected = true;
         state.GeometryExportErrorMessage =
-            "GAMA a levé une erreur pendant l'export des géométries. L'aperçu peut être incomplet.";
+            "GAMA raised an error while exporting geometries. The preview may be incomplete.";
         if (result != null && string.IsNullOrWhiteSpace(result.PreviewWarning))
         {
             result.PreviewWarning = state.GeometryExportErrorMessage;
         }
 
-        append("[GAMA][PREVIEW] AVERTISSEMENT : " + state.GeometryExportErrorMessage);
+        append("[GAMA][PREVIEW] WARNING: " + state.GeometryExportErrorMessage);
     }
 
     private static string BuildMissingError(CaptureState state)
@@ -3739,8 +3750,8 @@ internal static class GamaEditorFirstTickCapture
         {
             if (!state.LaunchExperimentViaMonitor)
             {
-                return "Impossible de générer la preview : aucune expérience sélectionnée ou prête côté GAMA. " +
-                       "Sélectionnez l'expérience dans GAMA, puis réessayez.";
+                return "Could not generate the preview: no experiment is selected or ready in GAMA. " +
+                       "Select the experiment in GAMA, then try again.";
             }
 
             return "Unity-managed capture: experiment launched via monitor but no json_output on 8080. " +

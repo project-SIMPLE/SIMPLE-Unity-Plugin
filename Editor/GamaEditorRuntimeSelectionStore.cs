@@ -4,7 +4,7 @@ using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 
-/// <summary>Mémorise la dernière sélection Unity (modelPath + experiment) pour capture et Play.</summary>
+/// <summary>Stores the latest Unity selection (modelPath + experiment) for capture and Play.</summary>
 internal static class GamaEditorRuntimeSelectionStore
 {
     private const string ModelPathKey = "ProjectSimple.GamaUnity.Panel.LastRuntimeModelPath";
@@ -26,7 +26,7 @@ internal static class GamaEditorRuntimeSelectionStore
         }
         catch (Exception ex)
         {
-            GamaLog.Warning("[GAMA][SYNC] Impossible d'enregistrer la sélection : " + ex.Message);
+            GamaLog.Warning("[GAMA][SYNC] Could not save the selection: " + ex.Message);
         }
     }
 

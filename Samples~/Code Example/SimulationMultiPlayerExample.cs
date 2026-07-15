@@ -55,7 +55,7 @@ public class SimulationMultiPlayerExample : SimulationManager
      
     protected override void HoverEnterInteraction(HoverEnterEventArgs ev)
     {
-        Debug.Log("HoverEnterInteraction");
+        GamaLog.Dev("HoverEnterInteraction");
 
         GameObject obj = ev.interactableObject.transform.gameObject;
         if (obj.tag.Equals("selectable"))
@@ -65,7 +65,7 @@ public class SimulationMultiPlayerExample : SimulationManager
     protected override void HoverExitInteraction(HoverExitEventArgs ev)
     {
 
-        Debug.Log("HoverExitInteraction");
+        GamaLog.Dev("HoverExitInteraction");
         GameObject obj = ev.interactableObject.transform.gameObject;
         if (obj.tag.Equals("selectable"))
         {
@@ -76,7 +76,7 @@ public class SimulationMultiPlayerExample : SimulationManager
     protected override void SelectInteraction(SelectEnterEventArgs ev)
     {
 
-        Debug.Log("SelectInteraction");
+        GamaLog.Dev("SelectInteraction");
         if (remainingTime <= 0.0)
         {
             GameObject obj = ev.interactableObject.transform.gameObject;

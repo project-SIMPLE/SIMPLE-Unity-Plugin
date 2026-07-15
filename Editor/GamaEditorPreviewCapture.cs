@@ -6,7 +6,7 @@ using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 /// <summary>
-/// Comptage d'espèces par tick et sélection du meilleur frame d'aperçu (agents dynamiques tardifs).
+/// Counts species per tick and selects the best preview frame, including late dynamic agents.
 /// </summary>
 internal static class GamaEditorPreviewCapture
 {

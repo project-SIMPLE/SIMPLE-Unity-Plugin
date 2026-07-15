@@ -1,6 +1,6 @@
-Key,English,French
-welcome,Welcome to the SIMPLE VR experience,Bienvenue sur l'expérience VR SIMPLE
-loading,Loading data...,Chargement des données...
-connected,Connected to server,Connecté au serveur
-disconnected,Disconnected,Déconnecté
-error,An error occurred,Une erreur est survenue
+Key,English
+welcome,Welcome to the SIMPLE VR experience
+loading,Loading data...
+connected,Connected to server
+disconnected,Disconnected
+error,An error occurred

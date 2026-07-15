@@ -148,11 +148,14 @@ public abstract class WebSocketConnector : MonoBehaviour
     {
         if (!IsSocketOpen)
         {
-            float now = Time.realtimeSinceStartup;
-            if (now >= nextSocketClosedWarningTime)
+            if (GamaLog.VerboseEnabled)
             {
-                GamaLog.DevWarning("[GAMA][CONNECTION][WARN] socket not open; skipping send state=" + GetSocketStateForLog());
-                nextSocketClosedWarningTime = now + SocketClosedWarningIntervalSeconds;
+                float now = Time.realtimeSinceStartup;
+                if (now >= nextSocketClosedWarningTime)
+                {
+                    GamaLog.DevWarning("[GAMA][CONNECTION][WARN] socket not open; skipping send state=" + GetSocketStateForLog());
+                    nextSocketClosedWarningTime = now + SocketClosedWarningIntervalSeconds;
+                }
             }
             return;
         }
@@ -176,6 +179,11 @@ public abstract class WebSocketConnector : MonoBehaviour
 
     private void LogReceivedMessage(string message)
     {
+        if (!GamaLog.VerboseEnabled)
+        {
+            return;
+        }
+
         receivedMessageLogCount++;
         if (receivedMessageLogCount > 20 && receivedMessageLogCount % 100 != 0)
         {
@@ -238,7 +246,7 @@ public abstract class WebSocketConnector : MonoBehaviour
         }
         catch (Exception exception)
         {
-            GamaLog.DevWarning("WebSocketConnector: error while closing socket: " + exception.Message);
+            GamaLog.Warning("WebSocketConnector: error while closing socket: " + exception.Message);
         }
     }
 

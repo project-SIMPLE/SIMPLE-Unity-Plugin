@@ -2,16 +2,13 @@ using UnityEngine;
 
 public static class GamaLog
 {
-    public static bool VerboseEnabled
+    private static volatile bool verboseEnabled = false;
+
+    public static bool VerboseEnabled => verboseEnabled;
+
+    public static void SetVerboseEnabled(bool enabled)
     {
-        get
-        {
-#if SIMPLE_GAMA_VERBOSE_LOGS
-            return true;
-#else
-            return false;
-#endif
-        }
+        verboseEnabled = enabled;
     }
 
     public static void Info(string message)

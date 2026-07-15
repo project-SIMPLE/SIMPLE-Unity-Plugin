@@ -60,7 +60,7 @@ internal static class GamaEditorStaticPreviewFromJson
         }
         catch (Exception ex)
         {
-            error = "Exception pendant la construction de la preview statique : " + ex.Message;
+            error = "Exception while building the static preview: " + ex.Message;
             GamaLog.Error("[GAMA][PREVIEW][BUILD] Exception: " + ex);
             return false;
         }
@@ -86,39 +86,39 @@ internal static class GamaEditorStaticPreviewFromJson
 
         if (parent == null)
         {
-            error = "Parent de preview null : impossible de construire la hiérarchie.";
+            error = "The preview parent is null; the hierarchy cannot be built.";
             return false;
         }
 
         if (string.IsNullOrWhiteSpace(precisionJson))
         {
-            error = "precisionJson vide : impossible de construire la preview.";
+            error = "precisionJson is empty; the preview cannot be built.";
             return false;
         }
 
         if (string.IsNullOrWhiteSpace(propertiesJson))
         {
-            error = "propertiesJson vide : impossible de construire la preview.";
+            error = "propertiesJson is empty; the preview cannot be built.";
             return false;
         }
 
         if (string.IsNullOrWhiteSpace(worldJson))
         {
-            error = "worldJson vide : impossible de construire la preview.";
+            error = "worldJson is empty; the preview cannot be built.";
             return false;
         }
 
         ConnectionParameter parameters = ConnectionParameter.CreateFromJSON(precisionJson);
         if (parameters == null || parameters.precision <= 0)
         {
-            error = "JSON « precision » invalide ou precision <= 0.";
+            error = "The precision JSON is invalid or precision is less than or equal to zero.";
             return false;
         }
 
         AllProperties allProperties = AllProperties.CreateFromJSON(propertiesJson);
         if (allProperties == null || allProperties.properties == null || allProperties.properties.Count == 0)
         {
-            error = "JSON « properties » invalide ou liste vide.";
+            error = "The properties JSON is invalid or its list is empty.";
             return false;
         }
 
@@ -129,13 +129,13 @@ internal static class GamaEditorStaticPreviewFromJson
                   " geometries=" + (world != null && world.pointsGeom != null ? world.pointsGeom.Count : 0));
         if (world == null || (!hasAgents && !hasGeometries))
         {
-            error = "JSON « monde » (pointsLoc / world) invalide ou vide (pas d’agents ni de géométries). Essayez un tick plus tard via le curseur.";
+            error = "The world JSON (pointsLoc/world) is invalid or empty (no agents or geometries). Try a later tick with the slider.";
             return false;
         }
 
         if (!hasAgents)
         {
-            GamaLog.DevWarning("[GAMA] Aperçu statique : aucun agent à ce tick — seules les géométries seront affichées.");
+            GamaLog.DevWarning("[GAMA] Static preview: this tick contains no agents; only geometries will be displayed.");
         }
 
         Dictionary<string, PropertiesGAMA> propertyMap = new Dictionary<string, PropertiesGAMA>();
@@ -161,7 +161,7 @@ internal static class GamaEditorStaticPreviewFromJson
         }
         else
         {
-            GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Aucun SimulationManager trouvé : CRS par défaut et overrides runtime ignorés.");
+            GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] No SimulationManager found; using the default CRS and ignoring runtime overrides.");
         }
 
         CoordinateConverter converter = new CoordinateConverter(
@@ -199,7 +199,8 @@ internal static class GamaEditorStaticPreviewFromJson
         {
             try
             {
-                string name = world.names[i] ?? string.Empty;
+                string sourceAgentName = world.names[i] ?? string.Empty;
+                string name = sourceAgentName;
                 if (string.IsNullOrWhiteSpace(name))
                 {
                     name = "unknown_agent_" + i;
@@ -301,6 +302,9 @@ internal static class GamaEditorStaticPreviewFromJson
                         continue;
                     }
 
+                    GameObject sourcePrefabAsset = prop.prefabObj != null
+                        ? prop.prefabObj
+                        : GamaVisualUtility.ResolvePrefab(prop.prefab);
                     GameObject obj = GamaVisualUtility.InstantiateVisual(name, prop, precision);
                     if (obj == null)
                     {
@@ -321,7 +325,17 @@ internal static class GamaEditorStaticPreviewFromJson
                     obj.transform.SetPositionAndRotation(pos, rotation);
 
                     ApplyPrefabVisualState(obj, prop, visualState, precision);
-                    GamaPreviewObject marker = AddPreviewObjectIdentity(obj, speciesKey, name, BuildIntListHash(pt));
+                    GamaPreviewObject marker = AddPreviewObjectIdentity(
+                        obj,
+                        speciesKey,
+                        name,
+                        sourceAgentName,
+                        BuildIntListHash(pt),
+                        propId,
+                        prop,
+                        attributes,
+                        sourcePrefabAsset,
+                        GamaPreviewRepresentationKind.Prefab);
                     if (marker != null)
                     {
                         marker.SetVisualAnchorLocal(Vector3.zero);
@@ -396,7 +410,19 @@ internal static class GamaEditorStaticPreviewFromJson
 
                     ApplyPolygonVisualState(obj, prop, visualState, polygonBasePosition);
                     GetSpreadProbe(spreadProbes, speciesKey).AddExpected(polygonBasePosition + visualState.PositionOffset);
-                    GamaPreviewObject marker = AddPreviewObjectIdentity(obj, speciesKey, name, BuildIntListHash(rawGeom));
+                    GamaPreviewObject marker = AddPreviewObjectIdentity(
+                        obj,
+                        speciesKey,
+                        name,
+                        sourceAgentName,
+                        BuildIntListHash(rawGeom),
+                        propId,
+                        prop,
+                        attributes,
+                        null,
+                        polygonInputValid
+                            ? GamaPreviewRepresentationKind.Geometry
+                            : GamaPreviewRepresentationKind.Unknown);
                     if (marker != null)
                     {
                         marker.SetVisualAnchorLocal(ResolvePreviewAnchorLocal(obj, rawGeom, converter, yOffsetGeom));
@@ -523,6 +549,8 @@ internal static class GamaEditorStaticPreviewFromJson
             }
         }
 
+        DisableDuplicateReuseCandidates(parent);
+
         prefabCount = builtAgents;
         geometryCount = builtGeometries;
 
@@ -532,14 +560,9 @@ internal static class GamaEditorStaticPreviewFromJson
             " builtGeometries=" + builtGeometries +
             " skippedGeometries=" + skippedGeometries);
 
-        if (builtAgents > 0 || builtGeometries > 0)
-        {
-            RunPreviewSpreadDiagnostics(parent, spreadProbes);
-        }
-
         if (builtAgents == 0 && builtGeometries == 0)
         {
-            error = "Aucun objet preview construit. skippedAgents=" + skippedAgents + ", skippedGeometries=" + skippedGeometries;
+            error = "No preview objects were built. skippedAgents=" + skippedAgents + ", skippedGeometries=" + skippedGeometries;
             return false;
         }
 
@@ -881,7 +904,7 @@ internal static class GamaEditorStaticPreviewFromJson
         }
         catch (Exception ex)
         {
-            GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Lecture CRS SimulationManager impossible, valeurs par défaut utilisées : " + ex.Message);
+            GamaLog.DevWarning("[GAMA][PREVIEW][BUILD] Could not read the SimulationManager CRS; using default values: " + ex.Message);
         }
     }
 
@@ -979,7 +1002,6 @@ internal static class GamaEditorStaticPreviewFromJson
         if (speciesOverrides.TryGetOverride(modelPath, experimentName, speciesKey, out GamaSpeciesRenderOverrideEntry entry, true) && entry != null)
         {
             LogPreviewOverridePickOnce(speciesKey, modelPath, experimentName, entry);
-            marker.NormalizePivotToVisualAnchorForStableScale();
             marker.ApplySpeciesOverride(entry);
         }
     }
@@ -990,7 +1012,7 @@ internal static class GamaEditorStaticPreviewFromJson
         string experimentName,
         GamaSpeciesRenderOverrideEntry entry)
     {
-        string logKey = GamaSpeciesRenderOverrides.NormalizeKey(modelPath) + "|" +
+        string logKey = GamaSpeciesRenderOverrides.NormalizeModelPath(modelPath) + "|" +
             GamaSpeciesRenderOverrides.NormalizeKey(experimentName) + "|" +
             GamaSpeciesRenderOverrides.NormalizeKey(speciesKey);
         if (!OverridePickLogKeys.Add(logKey))
@@ -1004,7 +1026,17 @@ internal static class GamaEditorStaticPreviewFromJson
                   " scale=" + (entry != null ? entry.GetEffectiveScaleMultiplier() : 1f));
     }
 
-    private static GamaPreviewObject AddPreviewObjectIdentity(GameObject obj, string speciesKey, string agentId, string geometryHash)
+    private static GamaPreviewObject AddPreviewObjectIdentity(
+        GameObject obj,
+        string speciesKey,
+        string agentId,
+        string sourceAgentName,
+        string geometryHash,
+        string sourcePropertyId,
+        PropertiesGAMA sourceProperty,
+        Attributes attributes,
+        GameObject sourcePrefabAsset,
+        GamaPreviewRepresentationKind representationKind)
     {
         if (obj == null)
         {
@@ -1018,12 +1050,102 @@ internal static class GamaEditorStaticPreviewFromJson
         }
 
         marker.previewOnly = true;
-        marker.canBeReusedAtRuntime = false;
         marker.speciesName = speciesKey ?? string.Empty;
         marker.agentId = agentId ?? string.Empty;
         marker.geometryHash = geometryHash ?? string.Empty;
         marker.sourceTick = -1;
+        marker.sourcePropertyId = sourcePropertyId ?? string.Empty;
+        marker.representationKind = representationKind;
+        marker.provenance = GamaPreviewProvenance.CapturedJson;
+        marker.sourcePrefabSignature = BuildSourcePrefabSignature(
+            sourcePropertyId,
+            sourceProperty,
+            representationKind);
+        marker.sourcePrefabAsset = representationKind == GamaPreviewRepresentationKind.Prefab
+            ? sourcePrefabAsset
+            : null;
+
+        bool hasStableIdentity = GamaPreviewReuseIdentity.TryBuildStableAgentKey(
+            speciesKey,
+            sourceAgentName,
+            attributes,
+            out string stableAgentKey,
+            out _);
+        marker.stableAgentKey = hasStableIdentity ? stableAgentKey : string.Empty;
+
+        bool hasCompatibleRepresentation = representationKind == GamaPreviewRepresentationKind.Prefab
+            ? marker.sourcePrefabAsset != null
+            : representationKind == GamaPreviewRepresentationKind.Geometry &&
+              !string.IsNullOrWhiteSpace(marker.sourcePrefabSignature);
+        marker.canBeReusedAtRuntime = hasStableIdentity && hasCompatibleRepresentation;
         return marker;
+    }
+
+    private static string BuildSourcePrefabSignature(
+        string sourcePropertyId,
+        PropertiesGAMA sourceProperty,
+        GamaPreviewRepresentationKind representationKind)
+    {
+        string normalizedPropertyId = SimulationManager.NormalizeKey(sourcePropertyId);
+        if (representationKind == GamaPreviewRepresentationKind.Geometry)
+        {
+            return "geometry:" + normalizedPropertyId;
+        }
+
+        if (representationKind != GamaPreviewRepresentationKind.Prefab)
+        {
+            return string.Empty;
+        }
+
+        return "prefab:" + normalizedPropertyId + ":" + SimulationManager.NormalizeKey(
+            sourceProperty != null ? sourceProperty.prefab : string.Empty);
+    }
+
+    private static void DisableDuplicateReuseCandidates(Transform previewRoot)
+    {
+        if (previewRoot == null)
+        {
+            return;
+        }
+
+        Dictionary<string, List<GamaPreviewObject>> markersByStableKey =
+            new Dictionary<string, List<GamaPreviewObject>>(StringComparer.Ordinal);
+        GamaPreviewObject[] markers = previewRoot.GetComponentsInChildren<GamaPreviewObject>(true);
+        for (int i = 0; i < markers.Length; i++)
+        {
+            GamaPreviewObject marker = markers[i];
+            if (marker == null ||
+                marker.provenance != GamaPreviewProvenance.CapturedJson ||
+                string.IsNullOrWhiteSpace(marker.stableAgentKey))
+            {
+                continue;
+            }
+
+            if (!markersByStableKey.TryGetValue(marker.stableAgentKey, out List<GamaPreviewObject> matches))
+            {
+                matches = new List<GamaPreviewObject>();
+                markersByStableKey.Add(marker.stableAgentKey, matches);
+            }
+
+            matches.Add(marker);
+        }
+
+        foreach (KeyValuePair<string, List<GamaPreviewObject>> pair in markersByStableKey)
+        {
+            if (pair.Value.Count < 2)
+            {
+                continue;
+            }
+
+            for (int i = 0; i < pair.Value.Count; i++)
+            {
+                pair.Value[i].canBeReusedAtRuntime = false;
+            }
+
+            Debug.LogWarning(
+                "[GAMA][PREVIEW][REUSE] Duplicate stable agent identity '" + pair.Key +
+                "' found " + pair.Value.Count + " times. All matching preview objects are ineligible for runtime reuse.");
+        }
     }
 
     private static Vector3 ResolvePreviewAnchorLocal(
@@ -1452,14 +1574,14 @@ internal static class GamaEditorStaticPreviewFromJson
         readError = null;
         if (string.IsNullOrWhiteSpace(path))
         {
-            readError = "Chemin vide.";
+            readError = "Path is empty.";
             return false;
         }
 
         string full = path.Trim().Trim('"');
         if (!File.Exists(full))
         {
-            readError = "Fichier introuvable: " + full;
+            readError = "File not found: " + full;
             return false;
         }
 

@@ -82,6 +82,16 @@ The numbered close-up below shows the important controls:
 
 ![Dynamic food color settings legend](../images/tutorial/05-dynamic-color-food-settings-legend.png)
 
+In this example, the `vegetation_cell` species receives a numeric `food` attribute. The goal is:
+
+```text
+low food  -> lighter/darker green
+high food -> stronger green
+```
+
+> [!NOTE]
+> Unity can only use attributes that were explicitly sent by GAMA. If `food` is not included in `add_geometries_to_send`, it will not be available in the Unity dynamic color settings.
+
 1. Open the **Dynamic Color** foldout.
 2. Enable the override.
 3. Choose **Continuous** mode.

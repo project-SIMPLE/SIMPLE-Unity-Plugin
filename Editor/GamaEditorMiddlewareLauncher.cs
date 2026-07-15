@@ -4,8 +4,8 @@ using System.Text;
 using UnityEngine;
 
 /// <summary>
-/// Génère un script de démarrage Node pour simple.webplatform avec LEARNING_PACKAGE_PATH
-/// pointant vers le package Unity (sans modifier le dépôt middleware).
+/// Generates a Node startup script for simple.webplatform with LEARNING_PACKAGE_PATH
+/// pointing to the Unity package, without modifying the middleware repository.
 /// </summary>
 internal static class GamaEditorMiddlewareLauncher
 {
@@ -43,13 +43,13 @@ internal static class GamaEditorMiddlewareLauncher
 
         if (string.IsNullOrWhiteSpace(learningPackageRoot) || !Directory.Exists(learningPackageRoot))
         {
-            error = "Dossier learning package introuvable : " + learningPackageRoot;
+            error = "Learning package folder not found: " + learningPackageRoot;
             return false;
         }
 
         if (!TryResolveWebplatformRoot(out string webplatformRoot))
         {
-            error = "Dépôt simple.webplatform introuvable (attendu sur le Bureau ou à côté du projet Unity).";
+            error = "simple.webplatform repository not found (expected on the Desktop or next to the Unity project).";
             return false;
         }
 
@@ -77,7 +77,7 @@ internal static class GamaEditorMiddlewareLauncher
         }
         catch (Exception ex)
         {
-            error = "Impossible d'écrire le script de lancement : " + ex.Message;
+            error = "Could not write the startup script: " + ex.Message;
             return false;
         }
     }
@@ -86,16 +86,16 @@ internal static class GamaEditorMiddlewareLauncher
     {
         if (!TryResolveWebplatformRoot(out string webplatformRoot))
         {
-            return "Fermez le middleware actuel, puis relancez Node avec LEARNING_PACKAGE_PATH=\"" +
+            return "Close the current middleware, then restart Node with LEARNING_PACKAGE_PATH=\"" +
                    (learningPackageRoot ?? "?") + "\".";
         }
 
-        return "1) Fermez le terminal/processus Node qui écoute sur le port 8001.\n" +
-               "2) Ouvrez PowerShell dans : " + webplatformRoot + "\n" +
-               "3) Exécutez :\n" +
+        return "1) Close the terminal or Node process listening on port 8001.\n" +
+               "2) Open PowerShell in: " + webplatformRoot + "\n" +
+               "3) Run:\n" +
                "   $env:LEARNING_PACKAGE_PATH=\"" + Path.GetFullPath(learningPackageRoot ?? string.Empty) + "\"\n" +
                "   $env:EXTRA_LEARNING_PACKAGE_PATH=\"\"\n" +
                "   npx tsx src/api/index.ts\n" +
-               "4) Dans Unity, « Diagnostiquer catalogue middleware » doit afficher le .gaml et l'expérience sélectionnés.";
+               "4) In Unity, 'Diagnose Middleware Catalog' should display the selected .gaml file and experiment.";
     }
 }

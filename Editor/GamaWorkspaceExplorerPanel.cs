@@ -61,7 +61,7 @@ internal sealed class GamaWorkspaceExplorerPanel
     }
 
     /// <summary>
-    /// Chemin, scan, statut et liste — utilisé aussi depuis <see cref="GamaPanelWindow"/> au-dessus du repliable global.
+    /// Path, scan, status, and list; also used from <see cref="GamaPanelWindow"/> above the global foldout.
     /// </summary>
     public void DrawCompactWorkspaceUi()
     {
@@ -73,7 +73,7 @@ internal sealed class GamaWorkspaceExplorerPanel
     }
 
     /// <summary>
-    /// Options secondaires du scan (sans repliable). Le repliable est géré par l’hôte ou par <see cref="DrawAdvancedFoldout"/>.
+    /// Secondary scan options without a foldout. The host or <see cref="DrawAdvancedFoldout"/> owns the foldout.
     /// </summary>
     public void DrawAdvancedScannerOptions()
     {

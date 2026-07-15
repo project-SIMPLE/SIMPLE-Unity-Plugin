@@ -7,8 +7,6 @@ public class GamaSpeciesWizardEditor : Editor
 {
     public override void OnInspectorGUI()
     {
-        NormalizeSelectedWizardContainerScales();
-
         EditorGUI.BeginChangeCheck();
         
         serializedObject.Update();
@@ -44,23 +42,4 @@ public class GamaSpeciesWizardEditor : Editor
         }
     }
 
-    private void NormalizeSelectedWizardContainerScales()
-    {
-        foreach (var t in targets)
-        {
-            GamaSpeciesWizard wizard = t as GamaSpeciesWizard;
-            if (wizard == null || wizard.transform == null)
-            {
-                continue;
-            }
-
-            if ((wizard.transform.localScale - Vector3.one).sqrMagnitude <= 0.000001f)
-            {
-                continue;
-            }
-
-            Undo.RecordObject(wizard.transform, "Reset GAMA species parent scale");
-            wizard.NormalizeSpeciesContainerScale();
-        }
-    }
 }

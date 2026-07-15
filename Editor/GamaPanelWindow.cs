@@ -55,12 +55,14 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         "Setup Scene",
         "GAMA Preview",
+        "Troubleshooting",
         "Workspace Explorer (alpha)"
     };
 
     private const int TabSetupScene = 0;
     private const int TabImportExperiment = 1;
-    private const int TabWorkspace = 2;
+    private const int TabTroubleshooting = 2;
+    private const int TabWorkspace = 3;
 
     private int selectedTab;
     private readonly GamaWorkspaceExplorerPanel workspaceExplorerPanel = new GamaWorkspaceExplorerPanel();
@@ -125,6 +127,8 @@ public sealed class GamaPanelWindow : EditorWindow
     private bool captureFlowActive;
     private string pendingPreviewPlayerCleanupId = string.Empty;
     private string lastPreviewCapturePlayerId = string.Empty;
+    private string lastPreviewMonitorExperimentId = string.Empty;
+    private bool lastPreviewCaptureUsedActiveGamaSelection;
     private System.Threading.CancellationTokenSource captureCts;
     private GamaEditorBackgroundProcess captureGamaProcess;
     private GamaEditorBackgroundProcess captureMiddlewareProcess;
@@ -133,6 +137,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private string experimentStatus = "Enter a .gaml experiment file or a workspace folder, then click Explore.";
     private Vector2 experimentScroll;
     private Vector2 agentsScroll;
+    private Vector2 troubleshootingScroll;
     private Vector2 workspaceScroll;
     private Vector2 workspaceExperimentListScroll;
     private Vector2 setupSceneScroll;
@@ -390,10 +395,60 @@ public sealed class GamaPanelWindow : EditorWindow
             case TabImportExperiment:
                 DrawExperimentImportTab();
                 break;
+            case TabTroubleshooting:
+                DrawTroubleshootingTab();
+                break;
             default:
                 DrawWorkspaceTab();
                 break;
         }
+    }
+
+    private void DrawTroubleshootingTab()
+    {
+        troubleshootingScroll = EditorGUILayout.BeginScrollView(troubleshootingScroll);
+
+        EditorGUILayout.LabelField("Troubleshooting", EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox(
+            "Verbose mode adds detailed diagnostic messages to the Unity Console. It is disabled by default because frequent logging can affect Editor and Play Mode performance. Essential warnings, errors, and actionable UI messages remain enabled in both modes.",
+            MessageType.Info);
+
+        EditorGUI.BeginChangeCheck();
+        bool verboseEnabled = EditorGUILayout.ToggleLeft(
+            "Enable verbose mode",
+            GamaLogPreferences.VerboseEnabled,
+            EditorStyles.boldLabel);
+        if (EditorGUI.EndChangeCheck())
+        {
+            GamaLogPreferences.VerboseEnabled = verboseEnabled;
+        }
+
+        if (verboseEnabled)
+        {
+            EditorGUILayout.HelpBox(
+                "Verbose mode is enabled. The Unity Console may receive a large number of messages and performance may be reduced. Disable it after collecting the diagnostics you need.",
+                MessageType.Warning);
+        }
+
+        EditorGUILayout.Space(12f);
+        EditorGUILayout.LabelField("Common Issues", EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox(
+            "No preview is generated: make sure GAMA and simple.webplatform are running, open the target experiment in GAMA, then try Generate Preview from GAMA again.",
+            MessageType.Info);
+        EditorGUILayout.HelpBox(
+            "Preview generation is unavailable during Play Mode. Stop Play Mode before starting a new editor preview capture.",
+            MessageType.Info);
+        EditorGUILayout.HelpBox(
+            "Repeated 'Reconnecting player of id ...' messages usually mean that a cancelled preview player is still registered in GAMA. Open GAMA Preview > Advanced Preview Settings and use Purge Ghost Player.",
+            MessageType.Info);
+
+        EditorGUILayout.Space(8f);
+        if (GUILayout.Button("Open Unity Console", GUILayout.Height(28f), GUILayout.Width(180f)))
+        {
+            EditorApplication.ExecuteMenuItem("Window/General/Console");
+        }
+
+        EditorGUILayout.EndScrollView();
     }
 
     private void EnsureWorkspaceExplorerHostReady()
@@ -1018,11 +1073,34 @@ public sealed class GamaPanelWindow : EditorWindow
         applyPreviewSettingsToPlay = EditorGUILayout.Toggle(
             "Apply Preview Settings to Play",
             applyPreviewSettingsToPlay);
-        speciesRenderOverridesAsset = (GamaSpeciesRenderOverrides)EditorGUILayout.ObjectField(
+        GamaSpeciesRenderOverrides previousOverridesAsset = speciesRenderOverridesAsset;
+        GamaSpeciesRenderOverrides selectedOverridesAsset =
+            (GamaSpeciesRenderOverrides)EditorGUILayout.ObjectField(
             "Species Render Overrides",
             speciesRenderOverridesAsset,
             typeof(GamaSpeciesRenderOverrides),
             false);
+        if (selectedOverridesAsset != previousOverridesAsset && selectedOverridesAsset != null)
+        {
+            string currentModelPath = string.Empty;
+            string currentExperimentName = string.Empty;
+            if (GamaSpeciesAppearanceEditorCoordinator.TryResolveActiveContext(
+                    out GamaSpeciesAppearanceContext currentContext))
+            {
+                currentModelPath = currentContext.ModelPath;
+                currentExperimentName = currentContext.ExperimentName;
+            }
+            speciesRenderOverridesAsset = selectedOverridesAsset;
+            GamaSpeciesAppearanceEditorCoordinator.SetActiveContext(
+                new GamaSpeciesAppearanceContext(
+                    selectedOverridesAsset,
+                    currentModelPath,
+                    currentExperimentName));
+        }
+        else
+        {
+            speciesRenderOverridesAsset = selectedOverridesAsset;
+        }
         using (new EditorGUI.DisabledScope(speciesRenderOverridesAsset != null))
         {
             if (GUILayout.Button("Create GamaSpeciesRenderOverrides.asset", GUILayout.Height(22f)))
@@ -1719,6 +1797,8 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         pendingPreviewPlayerCleanupId = string.Empty;
         lastPreviewCapturePlayerId = string.Empty;
+        lastPreviewMonitorExperimentId = string.Empty;
+        lastPreviewCaptureUsedActiveGamaSelection = false;
         if (EditorApplication.isPlayingOrWillChangePlaymode)
         {
             captureRuntimeStatus = "Preview generation is disabled during Play mode. Stop Play mode before generating a new editor preview.";
@@ -1734,6 +1814,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         bool selectedGamaPreviewMode = managedFromUnity && captureUseExternalMiddleware;
+        lastPreviewCaptureUsedActiveGamaSelection = selectedGamaPreviewMode;
         bool directOpenGamaPreviewMode = !managedFromUnity &&
                                          captureUseLocalMiddleware &&
                                          captureSkipRemoteLoad &&
@@ -1922,7 +2003,7 @@ public sealed class GamaPanelWindow : EditorWindow
             {
                 AbortCaptureIfRunning("Catalog diagnosis failed", purgePlayer: false);
                 EditorUtility.DisplayDialog("Capture",
-                    "Monitor catalog diagnosis impossible: " + ex.Message,
+                    "Monitor catalog diagnosis failed: " + ex.Message,
                     "OK");
                 captureFlowActive = false;
                 return;
@@ -1947,8 +2028,8 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         else if (selectedGamaPreviewMode)
         {
-            GamaLog.Dev("[GAMA][PREVIEW][SELECTED] Preview de l'expérience sélectionnée dans GAMA");
-            GamaLog.Dev("[GAMA][PREVIEW][SELECTED] Aucun catalogue middleware");
+            GamaLog.Dev("[GAMA][PREVIEW][SELECTED] Preview of the experiment selected in GAMA");
+            GamaLog.Dev("[GAMA][PREVIEW][SELECTED] No middleware catalog");
             GamaLog.Dev("[GAMA][PREVIEW][SELECTED] No settings.json");
             GamaLog.Dev("[GAMA][PREVIEW][SELECTED] No middleware restart");
             GamaLog.Dev("[GAMA][PREVIEW][SELECTED] Play-like Runtime sequence");
@@ -2198,6 +2279,8 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private void InvalidateCaptureSelectionCache()
     {
+        lastPreviewMonitorExperimentId = string.Empty;
+        lastPreviewCaptureUsedActiveGamaSelection = false;
         staticPreviewPrecisionJsonPath = string.Empty;
         staticPreviewPropertiesJsonPath = string.Empty;
         staticPreviewWorldJsonPath = string.Empty;
@@ -2469,7 +2552,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         catch (Exception ex)
         {
-            error = "Middleware learning package generation impossible: " + ex.Message;
+            error = "Middleware learning package generation failed: " + ex.Message;
             return false;
         }
     }
@@ -2697,6 +2780,8 @@ public sealed class GamaPanelWindow : EditorWindow
             return;
         }
 
+        lastPreviewMonitorExperimentId = NormalizeMonitorExperimentId(result.ExperimentId);
+
         staticPreviewPrecisionJsonPath = result.PrecisionJsonPath;
         staticPreviewPropertiesJsonPath = result.PropertiesJsonPath;
         RefreshAvailableWorldTicks();
@@ -2809,7 +2894,14 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private void ClearStaticPreviewBeforeNewPreview()
     {
-        GameObject previewRoot = GameObject.Find(StaticPreviewRootName);
+        lastPreviewMonitorExperimentId = string.Empty;
+        lastPreviewCaptureUsedActiveGamaSelection = false;
+        GamaSpeciesAppearanceEditorCoordinator.ClearActiveContext(true);
+        GamaPreviewSession previewSession =
+            GamaSpeciesAppearanceEditorCoordinator.FindCurrentPreviewSession();
+        GameObject previewRoot = previewSession != null
+            ? previewSession.gameObject
+            : GameObject.Find(StaticPreviewRootName);
         if (previewRoot != null)
         {
             DestroyImmediate(previewRoot);
@@ -2876,7 +2968,6 @@ public sealed class GamaPanelWindow : EditorWindow
     private void PrepareCleanSceneBeforeGamaPreview()
     {
         ClearStaticPreviewBeforeNewPreview();
-        ResetPreviewTransformOffsetsBeforeNewPreview();
 
         try
         {
@@ -3060,7 +3151,22 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         ResolveCurrentPreviewOverrideContext(out string modelPath, out string experimentName);
-        GamaSpeciesRenderOverrideEntry entry = asset.GetOrCreateEntry(modelPath, experimentName, agent.Name);
+        GamaSpeciesAppearanceContext context = new GamaSpeciesAppearanceContext(asset, modelPath, experimentName);
+        GamaSpeciesAppearanceEditorCoordinator.SetActiveContext(context);
+        bool runtimeOnly = EditorApplication.isPlaying;
+        if (!runtimeOnly)
+        {
+            Undo.RecordObject(asset, "Edit GAMA species appearance");
+        }
+        GamaSpeciesRenderOverrideEntry entry =
+            GamaSpeciesAppearanceStateStore.GetOrCreateEditableEntry(
+                context,
+                agent.Name,
+                runtimeOnly);
+        if (entry == null)
+        {
+            return null;
+        }
         entry.modelPath = modelPath ?? string.Empty;
         entry.experimentName = experimentName ?? string.Empty;
         entry.speciesName = string.IsNullOrWhiteSpace(agent.Name) ? "unknown" : agent.Name.Trim();
@@ -3078,8 +3184,6 @@ public sealed class GamaPanelWindow : EditorWindow
             entry.visibleInPreview = agent.Visible;
             entry.overrideRuntimeVisibility = true;
             entry.visibleInRuntime = agent.Visible;
-            entry.overrideVisibility = true;
-            entry.visible = agent.Visible;
         }
         else
         {
@@ -3087,8 +3191,6 @@ public sealed class GamaPanelWindow : EditorWindow
             entry.visibleInPreview = true;
             entry.overrideRuntimeVisibility = false;
             entry.visibleInRuntime = true;
-            entry.overrideVisibility = false;
-            entry.visible = true;
         }
 
         entry.prefabOverride = agent.PrefabOverride;
@@ -3096,8 +3198,15 @@ public sealed class GamaPanelWindow : EditorWindow
             ? resourcesPath
             : string.Empty;
 
-        EditorUtility.SetDirty(asset);
-        AssetDatabase.SaveAssets();
+        GamaSpeciesAppearanceStateStore.NotifyEntryChanged(
+            context,
+            agent.Name,
+            runtimeOnly);
+        if (!runtimeOnly)
+        {
+            EditorUtility.SetDirty(asset);
+            AssetDatabase.SaveAssets();
+        }
         string prefabLog = !string.IsNullOrWhiteSpace(entry.prefabResourcePath)
             ? entry.prefabResourcePath
             : (entry.prefabOverride != null ? entry.prefabOverride.name : "none");
@@ -3111,6 +3220,13 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private GamaSpeciesRenderOverrides ResolveSpeciesRenderOverridesAsset()
     {
+        if (GamaSpeciesAppearanceEditorCoordinator.TryResolveActiveContext(
+                out GamaSpeciesAppearanceContext activeContext) &&
+            activeContext.Asset != null)
+        {
+            speciesRenderOverridesAsset = activeContext.Asset;
+        }
+
         if (speciesRenderOverridesAsset == null)
         {
             speciesRenderOverridesAsset = GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset();
@@ -3130,6 +3246,18 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private void ResolveCurrentPreviewOverrideContext(out string modelPath, out string experimentName)
     {
+        if (GamaSpeciesAppearanceEditorCoordinator.TryResolveActiveContext(
+                out GamaSpeciesAppearanceContext context))
+        {
+            if (context.Asset != null)
+            {
+                speciesRenderOverridesAsset = context.Asset;
+            }
+            modelPath = context.ModelPath;
+            experimentName = context.ExperimentName;
+            return;
+        }
+
         modelPath = string.Empty;
         experimentName = string.Empty;
 
@@ -3359,11 +3487,6 @@ public sealed class GamaPanelWindow : EditorWindow
             TryResolvePrefabHintToAsset(agent.PrefabHint, out previewPrefab))
         {
             agent.DefaultPrefabOverride = previewPrefab;
-
-            if (agent.PrefabOverride == null)
-            {
-                agent.PrefabOverride = previewPrefab;
-            }
         }
 
         if (!agent.DefaultsResolved)
@@ -3383,17 +3506,7 @@ public sealed class GamaPanelWindow : EditorWindow
                 agent.DefaultColor = agent.Color;
             }
         }
-        else if (!agent.OverrideColor && TryReadSpeciesPreviewColor(agent.Name, out Color updatedPreviewColor))
-        {
-            agent.DefaultColor = updatedPreviewColor;
-            agent.Color = updatedPreviewColor;
-        }
-
-        if (!agent.StoredOverrideLoaded)
-        {
-            agent.StoredOverrideLoaded = true;
-            ApplyStoredAgentOverrideToRow(agent);
-        }
+        ApplyStoredAgentOverrideToRow(agent);
     }
 
     private void ApplyStoredAgentOverrideToRow(GamaPanelAgentOverride agent)
@@ -3403,16 +3516,26 @@ public sealed class GamaPanelWindow : EditorWindow
             return;
         }
 
-        GamaSpeciesRenderOverrides asset = ResolveSpeciesRenderOverridesAsset();
-        if (asset == null)
+        if (!GamaSpeciesAppearanceEditorCoordinator.TryResolveActiveContext(
+                out GamaSpeciesAppearanceContext context))
         {
             return;
         }
 
-        ResolveCurrentPreviewOverrideContext(out string modelPath, out string experimentName);
-        if (!asset.TryGetOverride(modelPath, experimentName, agent.Name, out GamaSpeciesRenderOverrideEntry entry, true) ||
-            entry == null ||
-            !entry.HasAnyOverride)
+        agent.PrefabOverride = null;
+        agent.Color = agent.DefaultColor;
+        agent.OverrideColor = false;
+        agent.ScaleMultiplier = 1f;
+        agent.OverrideScale = false;
+        agent.Visible = true;
+        agent.OverrideVisibility = false;
+
+        if (!GamaSpeciesAppearanceStateStore.TryGetEntry(
+                context,
+                agent.Name,
+                EditorApplication.isPlaying,
+                out GamaSpeciesRenderOverrideEntry entry) ||
+            entry == null)
         {
             return;
         }
@@ -3433,13 +3556,13 @@ public sealed class GamaPanelWindow : EditorWindow
             agent.OverrideColor = true;
         }
 
-        if (entry.UsesScaleOverride())
+        if (entry.overrideScaleMultiplier)
         {
             agent.ScaleMultiplier = Mathf.Max(0.0001f, entry.GetEffectiveScaleMultiplier());
             agent.OverrideScale = Mathf.Abs(agent.ScaleMultiplier - 1f) > 0.0001f;
         }
 
-        if (entry.UsesPreviewVisibilityOverride() || entry.UsesRuntimeVisibilityOverride())
+        if (entry.overridePreviewVisibility || entry.overrideRuntimeVisibility)
         {
             agent.Visible = entry.UsesPreviewVisibilityOverride()
                 ? entry.GetEffectivePreviewVisible()
@@ -3459,7 +3582,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
         EnsureAgentUiDefaults(agent);
 
-        agent.PrefabOverride = agent.DefaultPrefabOverride;
+        agent.PrefabOverride = null;
         agent.Color = agent.DefaultColor;
         agent.OverrideColor = false;
         agent.ScaleMultiplier = 1f;
@@ -4027,10 +4150,8 @@ public sealed class GamaPanelWindow : EditorWindow
 
         GamaSpeciesRenderOverrides asset = ResolveSpeciesRenderOverridesAsset();
         ResolveCurrentPreviewOverrideContext(out string modelPath, out string experimentName);
-        if (manager.SetSpeciesRenderOverridesContext(asset, modelPath, experimentName))
-        {
-            EditorUtility.SetDirty(manager);
-        }
+        GamaSpeciesAppearanceEditorCoordinator.SetActiveContext(
+            new GamaSpeciesAppearanceContext(asset, modelPath, experimentName));
 
         SerializedObject serializedManager = new SerializedObject(manager);
         SerializedProperty rules = serializedManager.FindProperty("ruleSettings");
@@ -4298,8 +4419,7 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private void GenerateStaticPreviewInternal()
     {
-        ClearStaticPreview();
-        ResetPreviewTransformOffsetsBeforeNewPreview();
+        ClearStaticPreview(false, false, false);
 
         int undoGroup = Undo.GetCurrentGroup();
         Undo.SetCurrentGroupName("GAMA Static Experiment Preview");
@@ -4314,6 +4434,7 @@ public sealed class GamaPanelWindow : EditorWindow
             if (jsonOk)
             {
                 ConfigurePreviewSession(root);
+                GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
                 Selection.activeGameObject = root;
                 SceneView.FrameLastActiveSceneView();
                 Undo.CollapseUndoOperations(undoGroup);
@@ -4355,11 +4476,6 @@ public sealed class GamaPanelWindow : EditorWindow
         for (int i = 0; i < agentOverrides.Count; i++)
         {
             GamaPanelAgentOverride agent = agentOverrides[i];
-            if (IsPreviewHidden(agent))
-            {
-                continue;
-            }
-
             GameObject group = GamaSceneUtility.GetOrCreateChild(agentsRoot, SanitizeObjectName(agent.Name));
             int sampleCount = ResolvePreviewSampleCount(agent);
             AddPreviewLabel(group, agent.Name, i, visibleAgentTypes, previewExtent);
@@ -4390,6 +4506,7 @@ public sealed class GamaPanelWindow : EditorWindow
         Selection.activeGameObject = root;
         SceneView.FrameLastActiveSceneView();
         ConfigurePreviewSession(root);
+        GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
         Undo.CollapseUndoOperations(undoGroup);
         EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
         experimentStatus = "Static preview generated: " + resolvedPrefabCount + " prefab instance(s), " + fallbackCount + " fallback instance(s).";
@@ -4482,7 +4599,12 @@ public sealed class GamaPanelWindow : EditorWindow
         string experiment = analysis != null && !string.IsNullOrWhiteSpace(analysis.Name)
             ? analysis.Name
             : (!string.IsNullOrWhiteSpace(gamaHeadlessBatchName) ? gamaHeadlessBatchName : "unknown");
-        bool activeGamaSelection = string.Equals(model, "GAMA_ACTIVE_SELECTION", StringComparison.Ordinal);
+        bool activeGamaSelection = lastPreviewCaptureUsedActiveGamaSelection ||
+            string.Equals(model, "GAMA_ACTIVE_SELECTION", StringComparison.Ordinal);
+        if (activeGamaSelection)
+        {
+            model = "GAMA_ACTIVE_SELECTION";
+        }
 
         session.modelPath = model;
         session.experimentName = experiment ?? string.Empty;
@@ -4499,6 +4621,17 @@ public sealed class GamaPanelWindow : EditorWindow
         session.playerId = ResolvePreviewSessionPlayerId();
         session.selectionMode = activeGamaSelection ? "ActiveGamaSelection" : "UnitySelection";
         session.activeGamaSelection = activeGamaSelection;
+        session.monitorExperimentId = NormalizeMonitorExperimentId(lastPreviewMonitorExperimentId);
+        if (!GamaPreviewReuseIdentity.TryBuildStableExperimentKey(
+                session.modelPath,
+                session.experimentName,
+                session.activeGamaSelection,
+                session.monitorExperimentId,
+                out string stableExperimentKey))
+        {
+            stableExperimentKey = string.Empty;
+        }
+        session.stableExperimentKey = stableExperimentKey;
         session.stale = false;
         session.useThisPreviewForPlay = false;
         session.experimentSignature = BuildPreviewSignature(session);
@@ -4529,6 +4662,11 @@ public sealed class GamaPanelWindow : EditorWindow
         session.speciesOverrides = ResolveSpeciesRenderOverridesAsset();
         PropagateSessionToSpeciesWizards(root, session);
         EditorUtility.SetDirty(session);
+        GamaSpeciesAppearanceEditorCoordinator.SetActiveContext(
+            new GamaSpeciesAppearanceContext(
+                session.speciesOverrides,
+                session.modelPath,
+                session.experimentName));
 
         GamaLog.Dev(
             "[GAMA][PREVIEW] session model=" + session.modelPath +
@@ -4550,6 +4688,19 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         return StaticInformation.getId();
+    }
+
+    private static string NormalizeMonitorExperimentId(string experimentId)
+    {
+        if (string.IsNullOrWhiteSpace(experimentId))
+        {
+            return string.Empty;
+        }
+
+        string normalized = experimentId.Trim();
+        return string.Equals(normalized, "0", StringComparison.Ordinal)
+            ? string.Empty
+            : normalized;
     }
 
     private string ResolvePreviewSessionModelPath()
@@ -4723,25 +4874,29 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         previewObject.previewOnly = true;
+        previewObject.canBeReusedAtRuntime = false;
         previewObject.speciesName = agent.Name;
         previewObject.agentId = instance.name;
         previewObject.geometryHash = string.Empty;
         previewObject.sourceTick = staticPreviewWorldTickIndex;
+        previewObject.stableAgentKey = string.Empty;
+        previewObject.sourcePropertyId = string.Empty;
+        previewObject.sourcePrefabSignature = string.Empty;
+        previewObject.representationKind = resolvedPrefab
+            ? GamaPreviewRepresentationKind.Prefab
+            : GamaPreviewRepresentationKind.Unknown;
+        previewObject.provenance = GamaPreviewProvenance.Sample;
 
-        float scale = agent.OverrideScale ? agent.ScaleMultiplier : Mathf.Max(0.1f, agent.ScaleMultiplier);
-        instance.transform.localScale = Vector3.one * Mathf.Max(0.01f, scale);
+        instance.transform.localScale = Vector3.one;
 
-        if (agent.OverrideColor || !resolvedPrefab)
+        if (!resolvedPrefab)
         {
-            GamaVisualUtility.ApplyColor(instance, agent.OverrideColor ? agent.Color : GetDefaultAgentColor(agent.Name));
-        }
-
-        if (agent.OverrideVisibility)
-        {
-            instance.SetActive(agent.Visible);
+            GamaVisualUtility.ApplyColor(instance, agent.DefaultColor);
         }
 
         PlaceOnPreviewGround(instance);
+        previewObject.SetVisualAnchorLocal(Vector3.zero);
+        previewObject.CaptureBaseTransformIfNeeded();
         return instance;
     }
 
@@ -5057,14 +5212,33 @@ public sealed class GamaPanelWindow : EditorWindow
         return staticPreviewWorldJsonPath;
     }
 
-    private static void ClearStaticPreview()
+    private void ClearStaticPreview(
+        bool removePersistedAppearance = true,
+        bool clearUiState = true,
+        bool clearCaptureExperimentIdentity = true)
     {
-        GameObject existing = GameObject.Find(StaticPreviewRootName);
+        if (clearCaptureExperimentIdentity)
+        {
+            lastPreviewMonitorExperimentId = string.Empty;
+            lastPreviewCaptureUsedActiveGamaSelection = false;
+        }
+
+        GamaSpeciesAppearanceEditorCoordinator.ClearActiveContext(removePersistedAppearance);
+        GamaPreviewSession previewSession =
+            GamaSpeciesAppearanceEditorCoordinator.FindCurrentPreviewSession();
+        GameObject existing = previewSession != null
+            ? previewSession.gameObject
+            : GameObject.Find(StaticPreviewRootName);
         if (existing != null)
         {
             Undo.DestroyObjectImmediate(existing);
             EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
         }
+        if (clearUiState)
+        {
+            agentOverrides?.Clear();
+        }
+        Repaint();
     }
 
     private static void ImportPrefabsToResources(string sourceFolder)
@@ -5231,7 +5405,6 @@ internal sealed class GamaPanelAgentOverride
     public bool OverrideColor;
     public Color DefaultColor;
     public bool DefaultsResolved;
-    public bool StoredOverrideLoaded;
     public Color Color;
 
     public bool OverrideScale;

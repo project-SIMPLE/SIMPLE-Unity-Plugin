@@ -3,7 +3,7 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// Résout le chemin absolu du lanceur <see cref="GamaUnityHeadlessRunner.bat"/> livré dans le package.
+/// Resolves the absolute path of the <see cref="GamaUnityHeadlessRunner.bat"/> bundled with the package.
 /// </summary>
 internal static class GamaHeadlessPackagePaths
 {
@@ -17,7 +17,7 @@ internal static class GamaHeadlessPackagePaths
         string projectRoot = Directory.GetParent(Application.dataPath)?.FullName;
         if (string.IsNullOrEmpty(projectRoot))
         {
-            error = "Impossible de déterminer la racine du projet Unity.";
+            error = "Could not determine the Unity project root.";
             return false;
         }
 
@@ -59,7 +59,7 @@ internal static class GamaHeadlessPackagePaths
             }
         }
 
-        error = "Lanceur « " + RunnerFileName + " » introuvable dans le package. Réinstallez com.project-simple.unity-plugin.";
+        error = "Runner '" + RunnerFileName + "' was not found in the package. Reinstall com.project-simple.unity-plugin.";
         return false;
     }
 }

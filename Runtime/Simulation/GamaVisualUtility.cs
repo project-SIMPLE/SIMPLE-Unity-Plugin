@@ -140,8 +140,8 @@ public static class GamaVisualUtility
     }
 
     /// <summary>
-    /// Vrai si les properties GAMA contiennent une couleur utilisable (liste rgb / champs red,green,blue, etc.).
-    /// Les prefabs sans RGB dans le message retournent faux.
+    /// True when the GAMA properties contain a usable color (RGB list; red, green, and blue fields; etc.).
+    /// Prefabs whose message does not contain RGB data return false.
     /// </summary>
     public static bool PropertiesMessageIncludesExplicitTint(PropertiesGAMA prop)
     {

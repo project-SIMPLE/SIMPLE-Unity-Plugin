@@ -174,7 +174,8 @@ Check:
 - the monitor socket on `8001` is reachable;
 - the GAMA model sends geometries through the Unity linker.
 
-If the preview still fails, using the develop branch of the package, open the Unity Console and search for:
+If the preview still fails, enable **GAMA > GAMA Panel > Troubleshooting >
+Enable verbose mode**, open the Unity Console, and search for:
 
 ```text
 [GAMA][CAPTURE]
@@ -342,9 +343,9 @@ Possible causes:
 
 Fix:
 
-- use the `main` package branch for user testing because it has reduced default
-  logging;
-- use the `develop` branch only when detailed logs are needed;
+- keep **GAMA > GAMA Panel > Troubleshooting > Enable verbose mode** disabled
+  during normal use;
+- enable verbose mode only while collecting detailed diagnostics;
 - keep the Unity Console collapsed when testing large simulations;
 - restart `simple.webplatform` if old sockets remain open.
 
@@ -359,7 +360,7 @@ Workaround:
 
 - configure species appearance in Edit Mode preview when possible;
 - avoid repeatedly changing overrides while thousands of agents are active;
-- use reduced logging for user testing;
+- keep global verbose mode disabled during performance testing;
 - test large visual changes on a smaller model first.
 
 ## Editor Becomes Slow When Editing Game Manager Values
@@ -444,10 +445,16 @@ background visual data.
 Very frequent `Debug.Log` calls can slow down Unity, especially when thousands
 of agents are updated.
 
-For user testing, use the `main` branch of the Unity package, where default
-logging is reduced.
+Open **GAMA > GAMA Panel > Troubleshooting**. Keep **Enable verbose mode**
+disabled for normal use. Enable it temporarily when detailed preview,
+middleware, connection, or runtime diagnostics are needed, then disable it
+after collecting the relevant Console output.
 
-Use the `develop` branch only when collecting detailed logs for debugging.
+Verbose mode is a global package setting and is disabled by default. Disabling
+it does not hide essential warnings, errors, or actionable messages shown in
+the GAMA Panel and Unity dialogs.
 
-A future improvement would be a runtime **Developer/Debug mode** option instead
-of requiring a separate branch for verbose logs.
+The Simulation Manager Inspector also contains a per-scene **Advanced Debug**
+section. Those fields select specific diagnostics, such as streaming or agent
+update statistics. They are separate from the global setting and their verbose
+Console output is emitted only while **Enable verbose mode** is also enabled.

@@ -11,9 +11,9 @@ using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 /// <summary>
-/// Reproduit le rôle de l'UI web simple.webplatform (WebSocket monitor, port 8001 par défaut) :
-/// sélection VU, <c>launch_experiment</c>, <c>resume_experiment</c> si besoin.
-/// Sans modifier le dépôt middleware.
+/// Replicates the simple.webplatform web UI workflow (WebSocket monitor, default port 8001):
+/// VU selection, <c>launch_experiment</c>, and <c>resume_experiment</c> when needed.
+/// Does not modify the middleware repository.
 /// </summary>
 internal static class GamaEditorMiddlewareOrchestrator
 {
@@ -153,7 +153,7 @@ internal static class GamaEditorMiddlewareOrchestrator
         }
         catch (Exception ex)
         {
-            log?.Invoke("[GAMA][MW] netstat impossible : " + ex.Message);
+            log?.Invoke("[GAMA][MW] netstat failed: " + ex.Message);
         }
 
         return pids;
@@ -203,7 +203,7 @@ internal static class GamaEditorMiddlewareOrchestrator
         }
         catch (Exception ex)
         {
-            log?.Invoke("[GAMA][MW] taskkill PID=" + pid + " impossible : " + ex.Message);
+            log?.Invoke("[GAMA][MW] taskkill PID=" + pid + " failed: " + ex.Message);
             return false;
         }
     }
@@ -263,12 +263,12 @@ internal static class GamaEditorMiddlewareOrchestrator
         string hostNorm = string.IsNullOrWhiteSpace(host) ? "localhost" : host.Trim();
         int port = monitorPort > 0 ? monitorPort : DefaultMonitorPort;
         Uri monitorUri = new Uri("ws://" + hostNorm + ":" + port + "/");
-        Append("[GAMA][ORCH][DIAG] Connexion monitor " + monitorUri);
+        Append("[GAMA][ORCH][DIAG] Connecting to monitor " + monitorUri);
 
         if (!await IsTcpPortOpenAsync(hostNorm, port, 3000, ct).ConfigureAwait(false))
         {
             diagnosis.Status = CatalogMatchStatus.MiddlewareNotReachable;
-            diagnosis.Error = "Monitor middleware injoignable sur ws://" + hostNorm + ":" + port + "/.";
+            diagnosis.Error = "The middleware monitor is unreachable at ws://" + hostNorm + ":" + port + "/.";
             diagnosis.LogTrail = trail.ToString();
             return diagnosis;
         }
@@ -287,7 +287,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             catch (Exception ex)
             {
                 diagnosis.Status = CatalogMatchStatus.MiddlewareNotReachable;
-                diagnosis.Error = "Connexion monitor impossible : " + ex.Message;
+                diagnosis.Error = "Could not connect to the monitor: " + ex.Message;
                 diagnosis.LogTrail = trail.ToString();
                 return diagnosis;
             }
@@ -301,7 +301,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             if (catalog == null)
             {
                 diagnosis.Status = CatalogMatchStatus.CatalogEmpty;
-                diagnosis.Error = "Catalogue non reçu (timeout monitor).";
+                diagnosis.Error = "Catalog was not received (monitor timeout).";
                 diagnosis.LogTrail = trail.ToString();
                 session.Stop();
                 try { await receiveTask.ConfigureAwait(false); } catch { /* ignore */ }
@@ -348,7 +348,7 @@ internal static class GamaEditorMiddlewareOrchestrator
 
             diagnosis.Error = diagnosis.Success
                 ? string.Empty
-                : "Catalogue mismatch: " + (lookup.Details ?? "No matching json_settings.");
+                : "Catalog mismatch: " + (lookup.Details ?? "No matching json_settings.");
             diagnosis.LogTrail = trail.ToString();
 
             session.Stop();
@@ -373,7 +373,7 @@ internal static class GamaEditorMiddlewareOrchestrator
     }
 
     /// <summary>
-    /// Attend que le TCP du monitor (ex. 8001) réponde après un démarrage de process Node.
+    /// Waits for the monitor TCP port (for example, 8001) to respond after a Node process starts.
     /// </summary>
     public static async Task<bool> WaitForMonitorReachableAsync(
         string host,
@@ -398,7 +398,7 @@ internal static class GamaEditorMiddlewareOrchestrator
     }
 
   /// <summary>
-    /// Séquence monitor : get_simulation_informations → send_simulation → launch_experiment → resume si PAUSED.
+    /// Monitor sequence: get_simulation_informations → send_simulation → launch_experiment → resume when PAUSED.
     /// </summary>
     public static async Task<ManagedExperimentResult> StartMiddlewareManagedExperimentAsync(
         string host,
@@ -434,12 +434,12 @@ internal static class GamaEditorMiddlewareOrchestrator
         int port = monitorPort > 0 ? monitorPort : DefaultMonitorPort;
         Uri monitorUri = new Uri("ws://" + hostNorm + ":" + port + "/");
 
-        Append("[GAMA][ORCH] Mode piloté Unity : monitor " + monitorUri + " (comme l'UI web, sans navigateur).");
+        Append("[GAMA][ORCH] Unity-managed mode: monitor " + monitorUri + " (same workflow as the web UI, without a browser).");
 
         if (!await IsTcpPortOpenAsync(hostNorm, port, 3000, ct).ConfigureAwait(false))
         {
-            result.Error = "Monitor middleware injoignable sur ws://" + hostNorm + ":" + port +
-                           "/. Lancez simple.webplatform en arrière-plan.";
+            result.Error = "The middleware monitor is unreachable at ws://" + hostNorm + ":" + port +
+                           "/. Start simple.webplatform in the background.";
             result.LogTrail = trail.ToString();
             return result;
         }
@@ -457,12 +457,12 @@ internal static class GamaEditorMiddlewareOrchestrator
             }
             catch (Exception ex)
             {
-                result.Error = "Connexion monitor impossible : " + ex.Message;
+                result.Error = "Could not connect to the monitor: " + ex.Message;
                 result.LogTrail = trail.ToString();
                 return result;
             }
 
-            Append("[GAMA][ORCH] Connecté au monitor.");
+            Append("[GAMA][ORCH] Connected to the monitor.");
 
             MonitorSession session = new MonitorSession(ws, Append);
             Task receiveTask = session.RunReceiveLoopAsync(ct);
@@ -475,8 +475,8 @@ internal static class GamaEditorMiddlewareOrchestrator
             JArray catalog = await session.WaitForCatalogAsync(TimeSpan.FromSeconds(20), ct).ConfigureAwait(false);
             if (catalog == null)
             {
-                result.Error = "Catalogue VU non reçu du monitor (get_simulation_informations). " +
-                               "Le lancement strict par catalogue est impossible; Play tentera de s'attacher à l'expérience monitor courante.";
+                result.Error = "The VU catalog was not received from the monitor (get_simulation_informations). " +
+                               "A strict catalog launch is not possible; Play will try to attach to the monitor's current experiment.";
                 session.Stop();
                 try
                 {
@@ -497,13 +497,13 @@ internal static class GamaEditorMiddlewareOrchestrator
             LogCatalogDiagnostics(lookupCatalog, Append);
             if (!lookup.Found || lookup.Settings == null)
             {
-                string why = string.IsNullOrWhiteSpace(lookup.Details) ? "Aucun match strict experiment/model." : lookup.Details;
+                string why = string.IsNullOrWhiteSpace(lookup.Details) ? "No strict experiment/model match." : lookup.Details;
                 string fallback =
-                    "Le modèle est sélectionné dans Unity mais absent du catalogue middleware. " +
-                    "Le monitor 8001 ne peut pas lancer cette expérience par catalogue. " +
-                    "Play doit alors s'attacher à l'expérience GAMA/monitor déjà ouverte.";
-                result.Error = "Expérience Unity introuvable dans le catalogue middleware. " + why + " " +
-                               "Sélection Unity attendue: experiment=\"" + (experimentName ?? "?") + "\", modelPath=\"" +
+                    "The model is selected in Unity but is missing from the middleware catalog. " +
+                    "Monitor 8001 cannot launch this experiment from the catalog. " +
+                    "Play must instead attach to the GAMA experiment that is already open in the monitor.";
+                result.Error = "The Unity experiment was not found in the middleware catalog. " + why + " " +
+                               "Expected Unity selection: experiment=\"" + (experimentName ?? "?") + "\", modelPath=\"" +
                                (modelFilePathHint ?? "?") + "\". " + fallback;
                 session.Stop();
                 try
@@ -521,7 +521,7 @@ internal static class GamaEditorMiddlewareOrchestrator
 
             JObject simulationSettings = lookup.Settings;
             result.SelectedModelIndex = lookup.ModelIndex;
-            Append("[GAMA][ORCH] VU sélectionné (match strict Unity) : name=" + simulationSettings["name"] +
+            Append("[GAMA][ORCH] VU selected (strict Unity match): name=" + simulationSettings["name"] +
                    " exp=" + simulationSettings["experiment_name"] +
                    " model=" + simulationSettings["model_file_path"] +
                    " model_index=" + lookup.ModelIndex +
@@ -541,7 +541,7 @@ internal static class GamaEditorMiddlewareOrchestrator
 
             if (!session.LastGamaConnected)
             {
-                Append("[GAMA][ORCH] GAMA pas encore connecté côté middleware — lancez GAMA (Yes) puis réessayez.");
+                Append("[GAMA][ORCH] GAMA is not connected to the middleware yet. Start GAMA (choose Yes), then try again.");
             }
 
             Append("[GAMA][ORCH] → launch_experiment");
@@ -566,8 +566,8 @@ internal static class GamaEditorMiddlewareOrchestrator
                 string.Equals(expState, "NOTREADY", StringComparison.OrdinalIgnoreCase) ||
                 string.IsNullOrEmpty(expState))
             {
-                result.Error = "launch_experiment n'a pas fait sortir l'expérience de NONE/NOTREADY (état=" +
-                               (string.IsNullOrEmpty(expState) ? "?" : expState) + "). GAMA connecté au middleware ?";
+                result.Error = "launch_experiment did not move the experiment out of NONE/NOTREADY (state=" +
+                               (string.IsNullOrEmpty(expState) ? "?" : expState) + "). Is GAMA connected to the middleware?";
                 session.Stop();
                 try
                 {
@@ -584,7 +584,7 @@ internal static class GamaEditorMiddlewareOrchestrator
 
             if (string.Equals(expState, "PAUSED", StringComparison.OrdinalIgnoreCase))
             {
-                Append("[GAMA][ORCH] → resume_experiment (état PAUSED après load)");
+                Append("[GAMA][ORCH] → resume_experiment (state is PAUSED after load)");
                 await session.SendAsync(new JObject { ["type"] = "resume_experiment" }, ct).ConfigureAwait(false);
                 DateTime resumeDeadline = DateTime.UtcNow.AddSeconds(60);
                 while (DateTime.UtcNow < resumeDeadline && !ct.IsCancellationRequested)
@@ -602,7 +602,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             result.FinalExperimentState = session.LastExperimentState ?? expState;
             result.ExperimentId = session.LastExperimentId ?? string.Empty;
             result.Success = true;
-            Append("[GAMA][ORCH] Expérience prête : experiment_state=" + result.FinalExperimentState +
+            Append("[GAMA][ORCH] Experiment is ready: experiment_state=" + result.FinalExperimentState +
                    (string.IsNullOrEmpty(result.ExperimentId) ? string.Empty : " exp_id=" + result.ExperimentId));
 
             session.Stop();
@@ -678,8 +678,8 @@ internal static class GamaEditorMiddlewareOrchestrator
 
         if (!await IsTcpPortOpenAsync(hostNorm, port, 3000, ct).ConfigureAwait(false))
         {
-            result.Error = "Monitor middleware injoignable sur ws://" + hostNorm + ":" + port +
-                           "/. Lancez simple.webplatform en arrière-plan.";
+            result.Error = "The middleware monitor is unreachable at ws://" + hostNorm + ":" + port +
+                           "/. Start simple.webplatform in the background.";
             result.LogTrail = trail.ToString();
             return result;
         }
@@ -697,12 +697,12 @@ internal static class GamaEditorMiddlewareOrchestrator
             }
             catch (Exception ex)
             {
-                result.Error = "Connexion monitor impossible : " + ex.Message;
+                result.Error = "Could not connect to the monitor: " + ex.Message;
                 result.LogTrail = trail.ToString();
                 return result;
             }
 
-            Append("[GAMA][ORCH][PLAY] Connecté au monitor.");
+            Append("[GAMA][ORCH][PLAY] Connected to the monitor.");
 
             MonitorSession session = new MonitorSession(ws, Append);
             Task receiveTask = session.RunReceiveLoopAsync(ct);
@@ -750,7 +750,7 @@ internal static class GamaEditorMiddlewareOrchestrator
 
             if (string.Equals(expState, "PAUSED", StringComparison.OrdinalIgnoreCase))
             {
-                Append("[GAMA][ORCH][PLAY] → resume_experiment (état PAUSED)");
+                Append("[GAMA][ORCH][PLAY] → resume_experiment (state is PAUSED)");
                 await session.SendAsync(new JObject { ["type"] = "resume_experiment" }, ct).ConfigureAwait(false);
                 DateTime resumeDeadline = DateTime.UtcNow.AddSeconds(45);
                 while (DateTime.UtcNow < resumeDeadline && !ct.IsCancellationRequested)
@@ -772,13 +772,13 @@ internal static class GamaEditorMiddlewareOrchestrator
                              !string.Equals(result.FinalExperimentState, "NOTREADY", StringComparison.OrdinalIgnoreCase);
             if (!result.Success)
             {
-                result.Error = "Aucune expérience GAMA active détectée par le monitor (état=" +
-                                (string.IsNullOrEmpty(result.FinalExperimentState) ? "?" : result.FinalExperimentState) +
-                                ") après tentative de lancement de la sélection monitor courante.";
+                result.Error = "No active GAMA experiment was detected by the monitor (state=" +
+                                 (string.IsNullOrEmpty(result.FinalExperimentState) ? "?" : result.FinalExperimentState) +
+                                 ") after attempting to launch the monitor's current selection.";
             }
             else
             {
-                Append("[GAMA][ORCH][PLAY] Expérience active détectée : experiment_state=" + result.FinalExperimentState +
+                Append("[GAMA][ORCH][PLAY] Active experiment detected: experiment_state=" + result.FinalExperimentState +
                        (string.IsNullOrEmpty(result.ExperimentId) ? string.Empty : " exp_id=" + result.ExperimentId));
             }
 
@@ -836,7 +836,7 @@ internal static class GamaEditorMiddlewareOrchestrator
 
         if (string.IsNullOrEmpty(expWanted) || (string.IsNullOrEmpty(pathWanted) && string.IsNullOrEmpty(fileWanted)))
         {
-            result.Details = "Sélection Unity incomplète (experimentName/modelPath).";
+            result.Details = "The Unity selection is incomplete (experimentName/modelPath).";
             return result;
         }
 
@@ -913,14 +913,14 @@ internal static class GamaEditorMiddlewareOrchestrator
                 if (unityWantsPath && !string.IsNullOrWhiteSpace(solePath))
                 {
                     result.Details =
-                        "L'expérience \"" + experimentName +
-                        "\" existe dans le catalogue middleware, mais le .gaml catalogué ne correspond pas à la sélection Unity (" +
-                        (modelFilePathHint ?? "?") + "). Modèle dans le catalogue: " + solePath.Trim() +
-                        ". Le lancement strict par catalogue sera remplacé par un attach-to-current-monitor si une expérience GAMA est déjà active.";
+                        "Experiment \"" + experimentName +
+                        "\" exists in the middleware catalog, but its cataloged .gaml file does not match the Unity selection (" +
+                        (modelFilePathHint ?? "?") + "). Catalog model: " + solePath.Trim() +
+                        ". The strict catalog launch will fall back to attach-to-current-monitor if a GAMA experiment is already active.";
                     return result;
                 }
 
-                // Pas de chemin Unity à appliquer, ou pas de model_file_path côté entrée : comportement legacy.
+                // No Unity path to apply, or the entry has no model_file_path: preserve legacy behavior.
                 result.Settings = sole;
                 if (result.Settings["model_index"] != null && result.Settings["model_index"].Type == JTokenType.Integer)
                 {
@@ -929,27 +929,27 @@ internal static class GamaEditorMiddlewareOrchestrator
 
                 result.Found = true;
                 result.Details =
-                    "Match fallback: experiment exact, sans contrainte model_path Unity exploitable.";
+                    "Fallback match: exact experiment, with no usable Unity model_path constraint.";
                 return result;
             }
 
             if (experimentOnlyMatches.Count > 1)
             {
                 string listedModels = experimentModelPaths.Count == 0
-                    ? "(aucun model_file_path)"
+                    ? "(no model_file_path)"
                     : string.Join(" | ", experimentModelPaths);
                 result.Details =
-                    "Plusieurs json_settings pour experiment=\"" + experimentName +
-                    "\" mais aucun model_path compatible avec \"" + modelFilePathHint +
-                    "\". Modèles du catalogue: " + listedModels;
+                    "Multiple json_settings entries exist for experiment=\"" + experimentName +
+                    "\", but no model_path is compatible with \"" + modelFilePathHint +
+                    "\". Catalog models: " + listedModels;
                 return result;
             }
 
             string experimentsList = JoinOrNone(availableExperiments);
             string modelsList = JoinOrNone(availableModels);
-            result.Details = "Aucun json_settings avec experiment exact \"" + experimentName + "\". " +
-                             "Experiments disponibles: " + experimentsList + ". " +
-                             "Modèles disponibles: " + modelsList + ".";
+            result.Details = "No json_settings entry has the exact experiment \"" + experimentName + "\". " +
+                             "Available experiments: " + experimentsList + ". " +
+                             "Available models: " + modelsList + ".";
             return result;
         }
 
@@ -966,7 +966,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             candidates[1].pathScore == best.pathScore)
         {
             result.Ambiguous = true;
-            result.Details = "Correspondance ambiguë: plusieurs json_settings matchent experiment/model sélectionnés.";
+            result.Details = "Ambiguous match: multiple json_settings entries match the selected experiment/model.";
             return result;
         }
 
@@ -977,7 +977,7 @@ internal static class GamaEditorMiddlewareOrchestrator
         }
 
         result.Found = true;
-        result.Details = "Match strict experiment/model appliqué.";
+        result.Details = "Strict experiment/model match applied.";
         return result;
     }
 
@@ -1073,9 +1073,9 @@ internal static class GamaEditorMiddlewareOrchestrator
     }
 
     /// <summary>
-    /// Le monitor envoie un catalogue « light » (name, model_index) sans
-    /// <c>experiment_name</c> / <c>model_file_path</c>. On récupère le JSON complet via
-    /// <c>get_simulation_by_index</c> pour que le matching Unity soit correct.
+    /// The monitor sends a lightweight catalog (name, model_index) without
+    /// <c>experiment_name</c> / <c>model_file_path</c>. Fetches the full JSON through
+    /// <c>get_simulation_by_index</c> so Unity can match it correctly.
     /// </summary>
     private static async Task<JArray> BuildEnrichedFlatCatalogAsync(
         MonitorSession session,
@@ -1091,7 +1091,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             if (miTok == null || miTok.Type != JTokenType.Integer)
             {
                 flat.Add(entry);
-                append?.Invoke("[GAMA][ORCH][ENRICH] conserve entrée sans model_index (catalogue brut).");
+                append?.Invoke("[GAMA][ORCH][ENRICH] Keeping entry without model_index (raw catalog).");
                 continue;
             }
 
@@ -1115,7 +1115,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             else
             {
                 flat.Add(entry);
-                append?.Invoke("[GAMA][ORCH][ENRICH] échec enrichissement model_index=" + mi + " (fallback catalogue light).");
+                append?.Invoke("[GAMA][ORCH][ENRICH] Failed to enrich model_index=" + mi + " (falling back to the lightweight catalog).");
             }
         }
 
@@ -1175,7 +1175,7 @@ internal static class GamaEditorMiddlewareOrchestrator
         List<CatalogEntryDiagnostics> entries = BuildCatalogDiagnostics(catalogRoot);
         if (entries.Count == 0)
         {
-            append("[GAMA][ORCH][CATALOG] Aucune entrée json_settings détectée.");
+            append("[GAMA][ORCH][CATALOG] No json_settings entries detected.");
             return;
         }
 
@@ -1337,8 +1337,8 @@ internal static class GamaEditorMiddlewareOrchestrator
         }
 
         /// <summary>
-        /// Récupère les réglages complets (incl. <c>experiment_name</c>, <c>model_file_path</c>)
-        /// pour un <c>model_index</c> du middleware.
+        /// Fetches the complete settings (including <c>experiment_name</c> and <c>model_file_path</c>)
+        /// for a middleware <c>model_index</c>.
         /// </summary>
         public async Task<JObject> TryGetFullSimulationSettingsAsync(int modelIndex, CancellationToken ct)
         {
@@ -1430,7 +1430,7 @@ internal static class GamaEditorMiddlewareOrchestrator
             }
             catch (Exception ex)
             {
-                _log("[GAMA][ORCH] Erreur réception monitor : " + ex.Message);
+                _log("[GAMA][ORCH] Monitor receive error: " + ex.Message);
             }
         }
 
@@ -1465,7 +1465,7 @@ internal static class GamaEditorMiddlewareOrchestrator
 
             if (token is JArray rootArray)
             {
-                _log("[GAMA][ORCH][in] catalogue VU (tableau racine, " + rootArray.Count + " entrées)");
+                _log("[GAMA][ORCH][in] VU catalog (root array, " + rootArray.Count + " entries)");
                 if (_catalogTcs != null)
                 {
                     _catalogTcs.TrySetResult(rootArray);
@@ -1515,13 +1515,13 @@ internal static class GamaEditorMiddlewareOrchestrator
         }
     }
 
-    /// <summary>Met l'expérience en pause via le monitor.</summary>
+    /// <summary>Pauses the experiment through the monitor.</summary>
     public static async Task<bool> PauseExperimentAsync(
         string host,
         int monitorPort,
         CancellationToken ct,
         Action<string> log = null,
-        string reason = "fin capture aperçu")
+        string reason = "preview capture completed")
     {
         string hostNorm = string.IsNullOrWhiteSpace(host) ? "localhost" : host.Trim();
         int port = monitorPort > 0 ? monitorPort : DefaultMonitorPort;
@@ -1543,7 +1543,7 @@ internal static class GamaEditorMiddlewareOrchestrator
 
         if (!await IsTcpPortOpenAsync(hostNorm, port, 3000, ct).ConfigureAwait(false))
         {
-            Append("[GAMA][ORCH] pause_experiment : monitor injoignable sur " + monitorUri);
+            Append("[GAMA][ORCH] pause_experiment: monitor is unreachable at " + monitorUri);
             return false;
         }
 
@@ -1573,11 +1573,11 @@ internal static class GamaEditorMiddlewareOrchestrator
 
             if (pauseConfirmed)
             {
-                Append("[GAMA][ORCH] pause_experiment confirmé : experiment_state=PAUSED");
+                Append("[GAMA][ORCH] pause_experiment confirmed: experiment_state=PAUSED");
             }
             else
             {
-                Append("[GAMA][ORCH] pause_experiment non confirmé : experiment_state=" +
+                Append("[GAMA][ORCH] pause_experiment was not confirmed: experiment_state=" +
                        (string.IsNullOrEmpty(lastState) ? "?" : lastState));
             }
 
@@ -1611,7 +1611,7 @@ internal static class GamaEditorMiddlewareOrchestrator
         return pauseConfirmed;
     }
 
-    /// <summary>Relance l'expérience via le monitor.</summary>
+    /// <summary>Resumes the experiment through the monitor.</summary>
     public static async Task<bool> ResumeExperimentAsync(
         string host,
         int monitorPort,
@@ -1639,7 +1639,7 @@ internal static class GamaEditorMiddlewareOrchestrator
 
         if (!await IsTcpPortOpenAsync(hostNorm, port, 3000, ct).ConfigureAwait(false))
         {
-            Append("[GAMA][ORCH] resume_experiment : monitor injoignable sur " + monitorUri);
+            Append("[GAMA][ORCH] resume_experiment: monitor is unreachable at " + monitorUri);
             return false;
         }
 
@@ -1669,11 +1669,11 @@ internal static class GamaEditorMiddlewareOrchestrator
 
             if (resumeConfirmed)
             {
-                Append("[GAMA][ORCH] resume_experiment confirmé : experiment_state=RUNNING");
+                Append("[GAMA][ORCH] resume_experiment confirmed: experiment_state=RUNNING");
             }
             else
             {
-                Append("[GAMA][ORCH] resume_experiment non confirmé : experiment_state=" +
+                Append("[GAMA][ORCH] resume_experiment was not confirmed: experiment_state=" +
                        (string.IsNullOrEmpty(lastState) ? "?" : lastState));
             }
 
@@ -1740,7 +1740,7 @@ internal static class GamaEditorMiddlewareOrchestrator
 
         if (!await IsTcpPortOpenAsync(hostNorm, port, 3000, ct).ConfigureAwait(false))
         {
-            Append("[GAMA][ORCH] remove_player_headset : monitor injoignable sur " + monitorUri);
+            Append("[GAMA][ORCH] remove_player_headset: monitor is unreachable at " + monitorUri);
             return false;
         }
 

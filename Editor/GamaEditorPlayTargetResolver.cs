@@ -4,7 +4,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
-/// <summary>Résout modelPath + experiment pour Play / capture (Unity, pas l'app GAMA IDE).</summary>
+/// <summary>Resolves modelPath + experiment for Play/capture in Unity, not in the GAMA IDE.</summary>
 internal static class GamaEditorPlayTargetResolver
 {
     private const string PlayModelPathPrefKey = "ProjectSimple.GamaUnity.Play.ModelPath";
@@ -14,7 +14,7 @@ internal static class GamaEditorPlayTargetResolver
     {
         modelPath = string.Empty;
         experimentName = string.Empty;
-        source = "aucune";
+        source = "none";
 
         GamaPanelWindow[] panels = Resources.FindObjectsOfTypeAll<GamaPanelWindow>();
         for (int i = 0; i < panels.Length; i++)
@@ -22,14 +22,14 @@ internal static class GamaEditorPlayTargetResolver
             if (panels[i] != null &&
                 panels[i].TryGetOpenPanelSelection(out modelPath, out experimentName))
             {
-                source = "panneau GAMA ouvert";
+                source = "open GAMA Panel";
                 return true;
             }
         }
 
         if (GamaEditorRuntimeSelectionStore.TryLoad(out modelPath, out experimentName))
         {
-            source = "sélection Unity enregistrée";
+            source = "saved Unity selection";
             return true;
         }
 
@@ -38,7 +38,7 @@ internal static class GamaEditorPlayTargetResolver
             (session.activeGamaSelection ||
              string.Equals(session.modelPath, "GAMA_ACTIVE_SELECTION", StringComparison.OrdinalIgnoreCase)))
         {
-            source = "aperçu GAMA actif (sélection monitor courante)";
+            source = "active GAMA preview (current monitor selection)";
             return false;
         }
 
@@ -49,7 +49,7 @@ internal static class GamaEditorPlayTargetResolver
         {
             modelPath = session.modelPath;
             experimentName = session.experimentName;
-            source = "aperçu statique en scène" + (session.stale ? " (stale)" : string.Empty);
+            source = "static preview in the scene" + (session.stale ? " (stale)" : string.Empty);
             return true;
         }
 
@@ -59,19 +59,19 @@ internal static class GamaEditorPlayTargetResolver
         {
             modelPath = playModel;
             experimentName = playExp;
-            source = "dernier Play réussi";
+            source = "last successful Play session";
             return true;
         }
 
         if (GamaEditorRuntimeSelectionStore.TryLoadFromGeneratedLearningPackage(out modelPath, out experimentName))
         {
-            source = "dernier settings.json (capture middleware)";
+            source = "latest settings.json (middleware capture)";
             return true;
         }
 
         if (TryFromExperimentPathPref(out modelPath, out experimentName))
         {
-            source = "Experiment Path (panneau GAMA)";
+            source = "Experiment Path (GAMA Panel)";
             return true;
         }
 
@@ -124,7 +124,37 @@ internal static class GamaEditorPlayTargetResolver
 
     private static GamaPreviewSession FindPreviewSession()
     {
-        GameObject root = GameObject.Find("[GAMA] Static Experiment Preview");
-        return root != null ? root.GetComponent<GamaPreviewSession>() : null;
+        GamaPreviewSession[] sessions = UnityEngine.Object.FindObjectsByType<GamaPreviewSession>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+        GamaPreviewSession fallback = null;
+        for (int i = 0; i < sessions.Length; i++)
+        {
+            GamaPreviewSession session = sessions[i];
+            if (session == null || session.gameObject == null)
+            {
+                continue;
+            }
+
+            if (!session.stale && session.useThisPreviewForPlay)
+            {
+                return session;
+            }
+
+            if (!session.stale &&
+                string.Equals(
+                    session.gameObject.name,
+                    "[GAMA] Static Experiment Preview",
+                    StringComparison.Ordinal))
+            {
+                fallback = session;
+            }
+            else if (fallback == null)
+            {
+                fallback = session;
+            }
+        }
+
+        return fallback;
     }
 }
