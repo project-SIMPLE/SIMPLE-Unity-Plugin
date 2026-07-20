@@ -4,14 +4,18 @@ using UnityEngine;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 using System.Linq;
+using System.Threading.Tasks;
+using UnityEngine.SceneManagement;
 
 public class ConnectionManager : WebSocketConnector
 {
     private const string PlaySessionIdPrefKey = "ProjectSimple.GamaUnity.Play.PlayerId";
+    public const string MiddlewareDiagnosticsEnabledPrefKey = "ProjectSimple.GamaUnity.Diagnostics.MiddlewareConsole";
 
     private ConnectionState currentState;
     private bool connectionRequested;
     private string lastStalePlayerStateWarning;
+    private bool diagnosticsSentForCurrentSocket;
 
     public bool IsCurrentPlayerAuthenticated { get; private set; }
     public bool HasCurrentPlayerState { get; private set; }
@@ -81,8 +85,9 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
 
     // ############################################# HANDLERS #############################################
 
-    protected override void HandleConnectionOpen()
+    protected override async void HandleConnectionOpen()
     {
+        diagnosticsSentForCurrentSocket = false;
         string id = StaticInformation.getId();
         GamaLog.Dev("[GAMA][CONNECTION][OPEN] id=" + id);
         var jsonId = new Dictionary<string, string> {
@@ -91,7 +96,7 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
             { "heartbeat", "" + HeartbeatInMs}
         };
         string jsonStringId = JsonConvert.SerializeObject(jsonId);
-        SendMessageToServer(jsonStringId);
+        await SendMessageToServerAsync(jsonStringId);
     }
 
     protected override void ManageMessage(string message)
@@ -157,8 +162,10 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
                             {
                             }
 
-                        }  
-                        break;  
+                        }
+
+                        SendUnityDiagnosticsOnce(jsonObj);
+                        break;
 
                     case "json_output":
                         JObject content = (JObject)jsonObj["contents"];
@@ -174,6 +181,113 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
         {
             GamaLog.Warning("[GAMA] Error parsing message: " + ex.Message);
         }
+    }
+
+    private async void SendUnityDiagnosticsOnce(JObject middlewareState)
+    {
+        if (diagnosticsSentForCurrentSocket)
+        {
+            return;
+        }
+
+        diagnosticsSentForCurrentSocket = true;
+        await SendUnityDiagnosticsAsync("connection_summary", middlewareState);
+    }
+
+    private async Task SendUnityDiagnosticsAsync(string trigger, JObject middlewareState)
+    {
+        if (!IsSocketOpen || PlayerPrefs.GetInt(MiddlewareDiagnosticsEnabledPrefKey, 1) == 0)
+        {
+            return;
+        }
+
+        int monitorPort = PlayerPrefs.GetInt("MONITOR_PORT", 8001);
+        int webUiPort = PlayerPrefs.GetInt("WEB_UI_PORT", 8000);
+        int gamaServerPort = PlayerPrefs.GetInt("GAMA_WS_PORT", 1000);
+        Scene activeScene = SceneManager.GetActiveScene();
+        JObject payload = new JObject
+        {
+            ["type"] = "unity_diagnostics",
+            ["intentional_unknown_message"] = true,
+            ["console_note"] = "Read-only diagnostic emitted intentionally by SIMPLE-Unity-Plugin.",
+            ["package"] = "com.project-simple.unity-plugin@1.0.0",
+            ["trigger"] = trigger ?? string.Empty,
+            ["timestamp_utc"] = DateTime.UtcNow.ToString("o"),
+            ["player_id"] = StaticInformation.getId(),
+            ["ports"] = new JObject
+            {
+                ["unity_player_websocket"] = ParsePortForDiagnostics(port, 8080),
+                ["middleware_monitor_websocket"] = monitorPort,
+                ["middleware_web_ui"] = webUiPort,
+                ["gama_server_websocket"] = gamaServerPort,
+                ["active_unity_endpoint"] = "ws://" + host + ":" + port + "/",
+                ["roles"] = new JObject
+                {
+                    ["unity_player_websocket"] = "Unity runtime/headset messages",
+                    ["middleware_monitor_websocket"] = "middleware control and experiment state",
+                    ["middleware_web_ui"] = "browser interface",
+                    ["gama_server_websocket"] = "direct GAMA Server endpoint"
+                }
+            },
+            ["unity"] = new JObject
+            {
+                ["version"] = Application.unityVersion,
+                ["product"] = Application.productName,
+                ["platform"] = Application.platform.ToString(),
+                ["scene"] = activeScene.IsValid() ? activeScene.name : string.Empty,
+                ["game_state"] = ResolveUnityGameState(),
+                ["is_editor"] = Application.isEditor
+            },
+            ["connection"] = new JObject
+            {
+                ["socket_state"] = GetSocketStateForLog(),
+                ["unity_connection_state"] = currentState.ToString(),
+                ["has_player_state"] = HasCurrentPlayerState,
+                ["authenticated"] = IsCurrentPlayerAuthenticated,
+                ["heartbeat_ms"] = HeartbeatInMs,
+                ["middleware_mode"] = UseMiddlewareDM,
+                ["fixed_properties"] = fixedProperties,
+                ["desktop_mode"] = DesktopMode
+            },
+            ["configuration"] = new JObject
+            {
+                ["playerprefs_ip"] = PlayerPrefs.GetString("IP", "localhost"),
+                ["playerprefs_port"] = PlayerPrefs.GetString("PORT", "8080"),
+                ["monitor_port"] = monitorPort,
+                ["selected_model"] = PlayerPrefs.GetString("GAMA_MODEL_PATH", string.Empty),
+                ["selected_experiment"] = PlayerPrefs.GetString("GAMA_EXPERIMENT_NAME", string.Empty)
+            },
+            ["gama_experiment"] = new JObject
+            {
+                ["state_from_monitor"] = PlayerPrefs.GetString("GAMA_EXPERIMENT_STATE", string.Empty),
+                ["experiment_id"] = PlayerPrefs.GetString("GAMA_EXPERIMENT_ID", string.Empty)
+            }
+        };
+
+        if (middlewareState != null)
+        {
+            payload["middleware_state"] = new JObject
+            {
+                ["connected"] = middlewareState["connected"]?.DeepClone(),
+                ["in_game"] = middlewareState["in_game"]?.DeepClone(),
+                ["date_connection"] = middlewareState["date_connection"]?.DeepClone(),
+                ["reported_player_id"] = (middlewareState["id_player"] ?? middlewareState["id"])?.DeepClone()
+            };
+        }
+
+        await SendMessageToServerAsync(payload.ToString(Formatting.None));
+    }
+
+    private static int ParsePortForDiagnostics(string rawPort, int fallback)
+    {
+        return int.TryParse(rawPort, out int parsed) && parsed > 0 && parsed <= 65535 ? parsed : fallback;
+    }
+
+    private static string ResolveUnityGameState()
+    {
+        return SimulationManager.Instance != null
+            ? SimulationManager.Instance.GetCurrentState().ToString()
+            : "NO_SIMULATION_MANAGER";
     }
 
     private void AdoptMiddlewarePlayerIdIfNeeded(string serverPlayerId)

@@ -431,6 +431,25 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         EditorGUILayout.Space(12f);
+        EditorGUILayout.LabelField("Middleware Console Diagnostics", EditorStyles.boldLabel);
+        bool automaticMiddlewareDiagnostics = PlayerPrefs.GetInt(ConnectionManager.MiddlewareDiagnosticsEnabledPrefKey, 1) != 0;
+        EditorGUI.BeginChangeCheck();
+        automaticMiddlewareDiagnostics = EditorGUILayout.ToggleLeft(
+            "Send automatic Play Mode diagnostics to the middleware console",
+            automaticMiddlewareDiagnostics,
+            EditorStyles.boldLabel);
+        if (EditorGUI.EndChangeCheck())
+        {
+            PlayerPrefs.SetInt(ConnectionManager.MiddlewareDiagnosticsEnabledPrefKey, automaticMiddlewareDiagnostics ? 1 : 0);
+            PlayerPrefs.Save();
+        }
+
+        EditorGUILayout.HelpBox(
+            "When enabled, Unity sends one read-only unity_diagnostics JSON per WebSocket session, after the middleware returns the first player state. " +
+            "The current middleware prints it in its Windows console as an intentional unknown-message warning.",
+            MessageType.None);
+
+        EditorGUILayout.Space(12f);
         EditorGUILayout.LabelField("Common Issues", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
             "No preview is generated: make sure GAMA and simple.webplatform are running, open the target experiment in GAMA, then try Generate Preview from GAMA again.",

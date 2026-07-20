@@ -441,6 +441,12 @@ public static class GamaPreviewPlayModeGuard
             out string modelPath,
             out string experimentName,
             out string source);
+        PlayerPrefs.SetInt("MONITOR_PORT", monitorPort);
+        PlayerPrefs.SetString("GAMA_MODEL_PATH", modelPath ?? string.Empty);
+        PlayerPrefs.SetString("GAMA_EXPERIMENT_NAME", experimentName ?? string.Empty);
+        PlayerPrefs.SetString("GAMA_EXPERIMENT_STATE", string.Empty);
+        PlayerPrefs.SetString("GAMA_EXPERIMENT_ID", string.Empty);
+        PlayerPrefs.Save();
 
         GamaLog.Info("[GAMA] Preparing GAMA experiment before Play Mode.");
 
@@ -489,6 +495,9 @@ public static class GamaPreviewPlayModeGuard
 
                 if (result != null && result.Success)
                 {
+                    PlayerPrefs.SetString("GAMA_EXPERIMENT_STATE", result.FinalExperimentState ?? string.Empty);
+                    PlayerPrefs.SetString("GAMA_EXPERIMENT_ID", result.ExperimentId ?? string.Empty);
+                    PlayerPrefs.Save();
                     if (hasTarget)
                     {
                         EditorPrefs.SetString(PlayModelPathPrefKey, modelPath);
