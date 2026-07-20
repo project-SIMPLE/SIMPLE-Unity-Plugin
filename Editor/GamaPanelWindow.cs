@@ -50,6 +50,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private const string AutoUpdatePreviewPrefKey = "ProjectSimple.GamaUnity.Panel.AutoUpdatePreview";
     private const string GeneratedRulePrefix = "[Workspace Import]";
     private const string StaticPreviewRootName = "[GAMA] Static Experiment Preview";
+    private const string StaticPreviewBuildingRootName = "[GAMA] Static Experiment Preview (Building)";
 
     private readonly string[] tabs =
     {
@@ -125,6 +126,8 @@ public sealed class GamaPanelWindow : EditorWindow
     private System.Threading.Tasks.Task<GamaEditorMiddlewareOrchestrator.CatalogDiagnosisResult> catalogDiagnosisTask;
     private string catalogDiagnosisStatus = string.Empty;
     private bool captureFlowActive;
+    private GameObject captureReplacementApprovedRoot;
+    private bool capturePrepareCleanScene;
     private string pendingPreviewPlayerCleanupId = string.Empty;
     private string lastPreviewCapturePlayerId = string.Empty;
     private string lastPreviewMonitorExperimentId = string.Empty;
@@ -371,6 +374,8 @@ public sealed class GamaPanelWindow : EditorWindow
             captureRuntimeStatus = "Capture cancelled: " + reason;
             pendingCaptureAbortUserMessage = null;
             captureFlowActive = false;
+            captureReplacementApprovedRoot = null;
+            capturePrepareCleanScene = false;
         }
 
         string idToFree = ResolveCapturePlayerIdToFree();
@@ -448,6 +453,29 @@ public sealed class GamaPanelWindow : EditorWindow
             "When enabled, Unity sends one read-only unity_diagnostics JSON per WebSocket session, after the middleware returns the first player state. " +
             "The current middleware prints it in its Windows console as an intentional unknown-message warning.",
             MessageType.None);
+
+        EditorGUILayout.Space(12f);
+        EditorGUILayout.LabelField("Preview Safety", EditorStyles.boldLabel);
+        bool askToSavePlayPreview = GamaEditorPreviewSafetyPreferences.AskToSavePlayPreviewOnExit;
+        EditorGUI.BeginChangeCheck();
+        askToSavePlayPreview = EditorGUILayout.ToggleLeft(
+            "Ask to save the runtime view when leaving Play Mode",
+            askToSavePlayPreview,
+            EditorStyles.boldLabel);
+        if (EditorGUI.EndChangeCheck())
+        {
+            GamaEditorPreviewSafetyPreferences.AskToSavePlayPreviewOnExit = askToSavePlayPreview;
+        }
+
+        EditorGUILayout.HelpBox(
+            "Choosing Never in the Play Mode popup disables only that save question for this Unity project. " +
+            "Preview overwrite confirmations remain enabled.",
+            askToSavePlayPreview ? MessageType.None : MessageType.Warning);
+        if (!askToSavePlayPreview &&
+            GUILayout.Button("Ask Again on Play Mode Exit", GUILayout.Height(24f), GUILayout.Width(220f)))
+        {
+            GamaEditorPreviewSafetyPreferences.ResetProjectChoices();
+        }
 
         EditorGUILayout.Space(12f);
         EditorGUILayout.LabelField("Common Issues", EditorStyles.boldLabel);
@@ -917,7 +945,6 @@ public sealed class GamaPanelWindow : EditorWindow
         {
             if (GUILayout.Button("Generate Preview from GAMA", GUILayout.Height(34f)))
             {
-                PrepareCleanSceneBeforeGamaPreview();
                 captureManagedFromUnity = true;
                 captureUseExternalMiddleware = true;
                 captureUseLocalMiddleware = false;
@@ -928,7 +955,10 @@ public sealed class GamaPanelWindow : EditorWindow
                 EditorPrefs.SetBool(GamaCaptureUseLocalMiddlewarePrefKey, false);
                 EditorPrefs.SetBool(GamaCaptureSkipRemoteLoadPrefKey, false);
                 EditorPrefs.SetString(GamaCapturePortPrefKey, capturePort);
-                StartCaptureFlow(launchGama: false, managedFromUnity: true);
+                StartCaptureFlow(
+                    launchGama: false,
+                    managedFromUnity: true,
+                    prepareCleanScene: true);
             }
         }
 
@@ -1812,7 +1842,10 @@ public sealed class GamaPanelWindow : EditorWindow
         return 24 * 60 * 60 * 1000;
     }
 
-    private void StartCaptureFlow(bool launchGama, bool managedFromUnity = false)
+    private void StartCaptureFlow(
+        bool launchGama,
+        bool managedFromUnity = false,
+        bool prepareCleanScene = false)
     {
         pendingPreviewPlayerCleanupId = string.Empty;
         lastPreviewCapturePlayerId = string.Empty;
@@ -1829,6 +1862,17 @@ public sealed class GamaPanelWindow : EditorWindow
         if (captureFlowActive || captureTask != null)
         {
             EditorUtility.DisplayDialog("Capture", "A capture is already in progress.", "OK");
+            return;
+        }
+
+        GameObject replacementApprovedRoot = null;
+        if (gamaHeadlessRunPreviewAfter &&
+            !GamaEditorPreviewSafety.TryApproveCurrentReplacement(
+                null,
+                out replacementApprovedRoot))
+        {
+            captureRuntimeStatus = "Preview generation cancelled. The existing preview was kept.";
+            Repaint();
             return;
         }
 
@@ -2153,6 +2197,8 @@ public sealed class GamaPanelWindow : EditorWindow
         float worldPhaseSec = Mathf.Clamp(captureWorldPhaseSeconds, 5f, 120f);
         float stableSec = Mathf.Clamp(capturePreviewStableSeconds, 1f, 30f);
         int handshakeHeartbeatMs = selectedGamaPreviewMode ? GetGamaPreviewHeartbeatMs() : 5000;
+        captureReplacementApprovedRoot = replacementApprovedRoot;
+        capturePrepareCleanScene = prepareCleanScene;
 
         if (useDirectGama)
         {
@@ -2230,6 +2276,8 @@ public sealed class GamaPanelWindow : EditorWindow
         if (captureTask == null)
         {
             captureFlowActive = false;
+            captureReplacementApprovedRoot = null;
+            capturePrepareCleanScene = false;
         }
 
         Repaint();
@@ -2744,6 +2792,10 @@ public sealed class GamaPanelWindow : EditorWindow
     private void OnCaptureFinished(System.Threading.Tasks.Task<GamaEditorFirstTickCapture.CaptureResult> finishedTask)
     {
         captureFlowActive = false;
+        GameObject replacementApprovedRoot = captureReplacementApprovedRoot;
+        captureReplacementApprovedRoot = null;
+        bool prepareCleanScene = capturePrepareCleanScene;
+        capturePrepareCleanScene = false;
         string userAbortReason = pendingCaptureAbortUserMessage;
         pendingCaptureAbortUserMessage = null;
 
@@ -2837,11 +2889,33 @@ public sealed class GamaPanelWindow : EditorWindow
         experimentStatus = captureRuntimeStatus;
         GamaLog.Dev("[GAMA] " + captureRuntimeStatus + "\n" + result.LogTrail);
 
-        ApplySpeciesRenderOverridesToSimulationManager();
-
         if (gamaHeadlessRunPreviewAfter)
         {
-            GenerateStaticPreview();
+            if (!GamaEditorPreviewSafety.TryApproveCurrentReplacement(
+                    replacementApprovedRoot,
+                    out GameObject existingPreviewRoot))
+            {
+                captureRuntimeStatus = "Preview generation cancelled. The existing preview was kept.";
+                experimentStatus = captureRuntimeStatus;
+                Repaint();
+                return;
+            }
+
+            if (prepareCleanScene &&
+                !PrepareCleanSceneBeforeGamaPreview(existingPreviewRoot, out string setupError))
+            {
+                captureRuntimeStatus = setupError;
+                experimentStatus = setupError;
+                Repaint();
+                return;
+            }
+
+            ApplySpeciesRenderOverridesToSimulationManager();
+            GenerateStaticPreview(existingPreviewRoot);
+        }
+        else
+        {
+            ApplySpeciesRenderOverridesToSimulationManager();
         }
 
         Repaint();
@@ -2984,21 +3058,26 @@ public sealed class GamaPanelWindow : EditorWindow
         }
     }
 
-    private void PrepareCleanSceneBeforeGamaPreview()
+    private bool PrepareCleanSceneBeforeGamaPreview(
+        GameObject previewRootToPreserve,
+        out string error)
     {
-        ClearStaticPreviewBeforeNewPreview();
+        error = null;
 
         try
         {
-            GAMAMenu.SetupScene();
-            GamaLog.Dev("[GAMA][PREVIEW] Scene reset with Setup Scene before generating preview.");
+            GAMAMenu.SetupScenePreservingRoot(previewRootToPreserve);
+            GamaLog.Dev(
+                "[GAMA][PREVIEW] Scene reset while preserving the current preview until replacement succeeds.");
+            return true;
         }
         catch (Exception ex)
         {
             GamaLog.DevWarning("[GAMA][PREVIEW] Setup Scene before preview failed: " + ex);
+            error = "Preview capture succeeded, but the scene could not be prepared. " +
+                    "The existing preview was kept. " + ex.GetBaseException().Message;
+            return false;
         }
-
-        ClearStaticPreviewBeforeNewPreview();
     }
 
     private void ResetPreviewTransformOffsetsBeforeNewPreview()
@@ -4422,28 +4501,54 @@ public sealed class GamaPanelWindow : EditorWindow
         return true;
     }
 
-    private void GenerateStaticPreview()
+    private bool GenerateStaticPreview(GameObject replacementApprovedRoot = null)
     {
+        if (!GamaEditorPreviewSafety.TryApproveCurrentReplacement(
+                replacementApprovedRoot,
+                out GameObject existingRoot))
+        {
+            experimentStatus = "Preview generation cancelled. The existing preview was kept.";
+            captureRuntimeStatus = experimentStatus;
+            return false;
+        }
+
+        int undoGroup = -1;
         try
         {
-            GenerateStaticPreviewInternal();
+            Undo.IncrementCurrentGroup();
+            undoGroup = Undo.GetCurrentGroup();
+            Undo.SetCurrentGroupName("GAMA Static Experiment Preview");
+            return GenerateStaticPreviewInternal(existingRoot);
         }
         catch (Exception ex)
         {
+            GamaEditorPreviewSafety.ClearBuildingPreview();
             GamaLog.Error("[GAMA][PREVIEW][BUILD] Exception: " + ex);
             captureRuntimeStatus = "Capture OK but preview build failed: " + ex.Message;
             experimentStatus = captureRuntimeStatus;
+            return false;
+        }
+        finally
+        {
+            if (undoGroup >= 0)
+            {
+                try
+                {
+                    Undo.CollapseUndoOperations(undoGroup);
+                }
+                catch
+                {
+                    // The build result has already been handled.
+                }
+            }
         }
     }
 
-    private void GenerateStaticPreviewInternal()
+    private bool GenerateStaticPreviewInternal(GameObject existingRoot)
     {
-        ClearStaticPreview(false, false, false);
+        GamaEditorPreviewSafety.ClearBuildingPreview();
 
-        int undoGroup = Undo.GetCurrentGroup();
-        Undo.SetCurrentGroupName("GAMA Static Experiment Preview");
-
-        GameObject root = new GameObject(StaticPreviewRootName);
+        GameObject root = new GameObject(StaticPreviewBuildingRootName);
         Undo.RegisterCreatedObjectUndo(root, "Create GAMA static preview");
 
         bool jsonOk;
@@ -4453,27 +4558,27 @@ public sealed class GamaPanelWindow : EditorWindow
             if (jsonOk)
             {
                 ConfigurePreviewSession(root);
-                GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
-                Selection.activeGameObject = root;
-                SceneView.FrameLastActiveSceneView();
-                Undo.CollapseUndoOperations(undoGroup);
-                EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
-                string speciesSummary = BuildPreviewSpeciesSummary(root);
-                UpdateAgentOverridesFromPreview(root);
-                experimentStatus = string.IsNullOrWhiteSpace(speciesSummary)
-                    ? jsonStatus
-                    : jsonStatus + " species=" + speciesSummary;
+                GamaEditorPreviewSafety.CommitReplacement(existingRoot, root);
+                experimentStatus = jsonStatus ?? "JSON preview generated.";
                 captureRuntimeStatus = "Static preview built: " + experimentStatus;
-                GamaLog.Info("[GAMA] " + captureRuntimeStatus);
-                return;
+                FinalizeCommittedStaticPreview(root, () =>
+                {
+                    string speciesSummary = BuildPreviewSpeciesSummary(root);
+                    UpdateAgentOverridesFromPreview(root);
+                    experimentStatus = string.IsNullOrWhiteSpace(speciesSummary)
+                        ? jsonStatus
+                        : jsonStatus + " species=" + speciesSummary;
+                    captureRuntimeStatus = "Static preview built: " + experimentStatus;
+                    GamaLog.Info("[GAMA] " + captureRuntimeStatus);
+                });
+                return true;
             }
 
             Undo.DestroyObjectImmediate(root);
-            Undo.CollapseUndoOperations(undoGroup);
             experimentStatus = jsonStatus ?? "JSON Error.";
             captureRuntimeStatus = "Capture successful, but preview build failed: " + experimentStatus;
             GamaLog.Error("[GAMA][PREVIEW][BUILD] " + captureRuntimeStatus);
-            return;
+            return false;
         }
 
         GameObject environment = GamaSceneUtility.GetOrCreateChild(root, "Environment");
@@ -4522,15 +4627,58 @@ public sealed class GamaPanelWindow : EditorWindow
             }
         }
 
-        Selection.activeGameObject = root;
-        SceneView.FrameLastActiveSceneView();
         ConfigurePreviewSession(root);
-        GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
-        Undo.CollapseUndoOperations(undoGroup);
-        EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+        GamaEditorPreviewSafety.CommitReplacement(existingRoot, root);
         experimentStatus = "Static preview generated: " + resolvedPrefabCount + " prefab instance(s), " + fallbackCount + " fallback instance(s).";
+        captureRuntimeStatus = experimentStatus;
         string label = analysis != null && !string.IsNullOrWhiteSpace(analysis.Name) ? analysis.Name : "GAMA active selection";
-        GamaLog.Info("[GAMA] Static experiment preview generated for " + label + ".");
+        FinalizeCommittedStaticPreview(root, () =>
+        {
+            GamaLog.Info("[GAMA] Static experiment preview generated for " + label + ".");
+        });
+        return true;
+    }
+
+    private void FinalizeCommittedStaticPreview(
+        GameObject root,
+        Action refreshSuccessState)
+    {
+        try
+        {
+            GamaPreviewSession session = root != null
+                ? root.GetComponent<GamaPreviewSession>()
+                : null;
+            if (session != null && session.speciesOverrides != null)
+            {
+                GamaSpeciesAppearanceEditorCoordinator.SetActiveContext(
+                    new GamaSpeciesAppearanceContext(
+                        session.speciesOverrides,
+                        session.modelPath,
+                        session.experimentName));
+            }
+
+            GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
+            Selection.activeGameObject = root;
+            SceneView.FrameLastActiveSceneView();
+            refreshSuccessState?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            GamaLog.DevWarning(
+                "[GAMA][PREVIEW] The new preview was generated, but the Editor refresh was incomplete: " +
+                ex.GetBaseException().Message);
+        }
+        finally
+        {
+            try
+            {
+                EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+            }
+            catch
+            {
+                // The preview replacement already succeeded.
+            }
+        }
     }
 
     private static string BuildPreviewSpeciesSummary(GameObject root)
@@ -4681,12 +4829,6 @@ public sealed class GamaPanelWindow : EditorWindow
         session.speciesOverrides = ResolveSpeciesRenderOverridesAsset();
         PropagateSessionToSpeciesWizards(root, session);
         EditorUtility.SetDirty(session);
-        GamaSpeciesAppearanceEditorCoordinator.SetActiveContext(
-            new GamaSpeciesAppearanceContext(
-                session.speciesOverrides,
-                session.modelPath,
-                session.experimentName));
-
         GamaLog.Dev(
             "[GAMA][PREVIEW] session model=" + session.modelPath +
             " exp=" + session.experimentName +

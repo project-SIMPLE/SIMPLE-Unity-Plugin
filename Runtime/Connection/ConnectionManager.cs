@@ -26,6 +26,10 @@ public class ConnectionManager : WebSocketConnector
     // called when a "json_simulation" message is received
     public event Action<String, String> OnServerMessageReceived;
 
+    // Editor tooling can observe runtime simulation messages without depending on
+    // a particular SimulationManager instance. Used to preserve the last Play view.
+    public static event Action<String, String> OnAnyServerMessageReceived;
+
     // called when a "json_state" message is received 
     public event Action<JObject> OnConnectionStateReceived;
 
@@ -170,7 +174,21 @@ private String AgentToSendInfo = "simulation[0].unity_linker[0]";
                     case "json_output":
                         JObject content = (JObject)jsonObj["contents"];
                         String firstKey = content.Properties().Select(pp => pp.Name).FirstOrDefault();
-                        OnServerMessageReceived?.Invoke(firstKey, content.ToString());
+                        string serializedContent = content.ToString();
+                        try
+                        {
+                            // Record the raw message independently: a SimulationManager
+                            // parsing error must not make the Play snapshot miss a chunk.
+                            OnAnyServerMessageReceived?.Invoke(firstKey, serializedContent);
+                        }
+                        catch (Exception observerException)
+                        {
+                            GamaLog.DevWarning(
+                                "[GAMA][PREVIEW][PLAY-SNAPSHOT] Runtime message observer failed: " +
+                                observerException.GetBaseException().Message);
+                        }
+
+                        OnServerMessageReceived?.Invoke(firstKey, serializedContent);
                         break;
 
                     default:
