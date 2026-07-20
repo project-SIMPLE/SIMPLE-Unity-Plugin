@@ -1,0 +1,277 @@
+name: Bug report
+description: Report a reproducible issue with the SIMPLE Unity Plugin
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug.
+
+        Please fill in as much information as possible. This plugin depends on Unity, GAMA and simple.webplatform, so environment and reproduction details are important.
+
+  - type: dropdown
+    id: bug_area
+    attributes:
+      label: Bug area
+      description: Which part of the workflow is affected?
+      options:
+        - Package installation
+        - Setup Scene
+        - GAMA Panel
+        - Middleware connection
+        - Play Mode runtime
+        - Static preview generation
+        - Species settings
+        - Prefab override
+        - Color override
+        - Dynamic colors from GAMA attributes
+        - Scale / position / rotation offset
+        - Runtime agents hierarchy
+        - WebSocket / JSON messages
+        - Documentation / tutorial
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How serious is the issue?
+      options:
+        - Blocker - cannot use the plugin
+        - Major - important workflow broken
+        - Minor - workaround exists
+        - Visual issue only
+        - Documentation issue
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Reproducibility
+      description: How often does the issue happen?
+      options:
+        - Always
+        - Often
+        - Sometimes
+        - Once
+        - I do not know
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: workflow_step
+    attributes:
+      label: Workflow step where the issue happens
+      description: Check all steps that are involved.
+      options:
+        - label: I installed the package from Git URL
+        - label: I installed the package from a local folder
+        - label: I opened GAMA > GAMA Panel
+        - label: I clicked Setup Scene
+        - label: I started simple.webplatform manually
+        - label: I started GAMA
+        - label: I opened or selected a GAMA experiment
+        - label: I converted the experiment to a vr_xp experiment
+        - label: I pressed Play in Unity
+        - label: I generated a static preview from GAMA
+        - label: I modified species settings
+        - label: I configured dynamic colors from GAMA attributes
+        - label: I applied settings and restarted Play Mode
+
+  - type: input
+    id: unity_version
+    attributes:
+      label: Unity version
+      description: Example - Unity 6000.3.2f1
+      placeholder: "Unity 6000.x.x"
+    validations:
+      required: true
+
+  - type: input
+    id: plugin_version
+    attributes:
+      label: SIMPLE Unity Plugin version / branch / commit
+      description: Paste the Git URL, branch name, local path or commit hash if known.
+      placeholder: "main / develop / feature/... / commit hash / local path"
+    validations:
+      required: true
+
+  - type: input
+    id: gama_version
+    attributes:
+      label: GAMA version
+      placeholder: "GAMA version"
+    validations:
+      required: false
+
+  - type: input
+    id: webplatform_version
+    attributes:
+      label: simple.webplatform branch / commit
+      description: The middleware is expected to be started separately.
+      placeholder: "dev / fix-... / commit hash"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: install_method
+    attributes:
+      label: Package installation method
+      placeholder: "Git URL / local disk / package cache / other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: model_info
+    attributes:
+      label: GAMA model and experiment
+      description: Give the model name, experiment name, and whether it is a vr_xp experiment.
+      placeholder: |
+        Model:
+        Experiment:
+        Is it a vr_xp experiment?
+        Exported species:
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+      placeholder: "Example: Unity should connect to the middleware and create runtime agents grouped by species."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+      placeholder: "Example: Unity enters Play Mode but no agents are created."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Write precise steps so another tester can reproduce the issue.
+      placeholder: |
+        1. Open Unity project
+        2. Install package from ...
+        3. Open GAMA > GAMA Panel
+        4. Click Setup Scene
+        5. Start simple.webplatform with ...
+        6. Open GAMA model ...
+        7. Press Play
+        8. Observe ...
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: stack_status
+    attributes:
+      label: Stack status when the issue happened
+      description: Check what was running and connected.
+      options:
+        - label: Unity was open
+        - label: Unity Console had no compile errors
+        - label: simple.webplatform was running
+        - label: GAMA was running
+        - label: GAMA experiment was open or selected
+        - label: GAMA experiment was already running
+        - label: Unity was connected to ws://localhost:8080/
+        - label: Monitor WebSocket ws://localhost:8001/ was reachable
+        - label: GAMA Server ws://localhost:1000/ was reachable
+        - label: Runtime agents appeared under [GAMA] Runtime Live Agents
+        - label: Static preview appeared in Edit Mode
+
+  - type: textarea
+    id: ports
+    attributes:
+      label: Ports and endpoints
+      description: Fill in the values used during the test.
+      placeholder: |
+        Unity runtime / headset WebSocket:
+        Monitor WebSocket:
+        GAMA Server:
+        Web application:
+        Custom IP address if not localhost:
+    validations:
+      required: false
+
+  - type: textarea
+    id: species_settings
+    attributes:
+      label: Species settings involved
+      description: Fill this if the bug concerns visuals, prefabs, colors, scale, visibility or dynamic attributes.
+      placeholder: |
+        Species affected:
+        Prefab override:
+        Color override:
+        Scale multiplier:
+        Position offset:
+        Rotation offset:
+        Visibility:
+        Dynamic color enabled:
+        Attribute name:
+        Continuous or discrete mode:
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and error messages
+      description: Paste relevant Unity Console logs, middleware console logs, GAMA errors, or JSON messages.
+      render: shell
+      placeholder: |
+        Paste logs here.
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or videos
+      description: Drag and drop screenshots, screen recordings, or GIFs here.
+      placeholder: "Attach files here."
+    validations:
+      required: false
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+      description: Did you find a temporary workaround?
+      placeholder: "Example: restarting Unity fixes the issue temporarily."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Reporter checklist
+      options:
+        - label: I checked that the issue happens with the latest version of the tested branch.
+        - label: I included the Unity version.
+        - label: I included the GAMA model or experiment name.
+        - label: I included clear reproduction steps.
+        - label: I included logs or screenshots if available.
