@@ -18,6 +18,18 @@ public static class GamaPreviewPlayModeGuard
     private const string PlayExperimentPrefKey = "ProjectSimple.GamaUnity.Play.Experiment";
     private const string PlaySessionIdPrefKey = "ProjectSimple.GamaUnity.Play.PlayerId";
     private const string StaticPreviewRootName = "[GAMA] Static Experiment Preview";
+    private const string CorrespondingPreviewStateKey =
+        "ProjectSimple.GamaUnity.PreviewSafety.CorrespondingPreviewBeforePlay";
+    private const string PlayExitHandledStateKey =
+        "ProjectSimple.GamaUnity.PreviewSafety.PlayExitHandled";
+    private const string PlayUsesMonitorSelectionStateKey =
+        "ProjectSimple.GamaUnity.PreviewSafety.PlayUsesMonitorSelection";
+    private const string CurrentPlayModelStateKey =
+        "ProjectSimple.GamaUnity.PreviewSafety.CurrentPlayModel";
+    private const string CurrentPlayExperimentStateKey =
+        "ProjectSimple.GamaUnity.PreviewSafety.CurrentPlayExperiment";
+    private const string CurrentPlayMonitorIdStateKey =
+        "ProjectSimple.GamaUnity.PreviewSafety.CurrentPlayMonitorId";
 
     static GamaPreviewPlayModeGuard()
     {
@@ -29,6 +41,10 @@ public static class GamaPreviewPlayModeGuard
     {
         if (state == PlayModeStateChange.ExitingEditMode)
         {
+            GamaEditorPlayExitPreviewCapture.ClearPendingSnapshot();
+            GamaEditorPlayRuntimeRecorder.BeginPlaySession();
+            ClearPlayPreviewTransitionState();
+
             ClearPreviewReuseAuthorization();
             GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
             EnsureStableUnityPlayId();
@@ -57,9 +73,11 @@ public static class GamaPreviewPlayModeGuard
 
             PlayPreparationResult preparation = TryPrepareGamaForPlay();
             AuthorizePreviewReuse(preparation);
+            RecordCurrentPlayPreviewContext(preparation);
         }
         else if (state == PlayModeStateChange.ExitingPlayMode)
         {
+            CaptureEditablePreviewBeforePlayModeExit();
             string runtimePlayerId = StaticInformation.getId();
             PrepareSimulationManagersForEditorPlayExit();
             RestorePersistedAppearanceBeforeLeavingPlay();
@@ -70,6 +88,7 @@ public static class GamaPreviewPlayModeGuard
         }
         else if (state == PlayModeStateChange.EnteredEditMode)
         {
+            GamaEditorPlayRuntimeRecorder.EndPlaySession();
             ClearPreviewReuseAuthorization();
             GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
 
@@ -88,7 +107,105 @@ public static class GamaPreviewPlayModeGuard
             }
             SessionState.EraseBool(SessionStateKey);
             GamaEditorPreviewOverrideApplier.ScheduleApplyOverridesToCurrentPreview();
+            GamaEditorPlayExitPreviewCapture.ScheduleRestoreAfterPlayModeExit();
+            ClearPlayPreviewTransitionState();
         }
+    }
+
+    private static void RecordCurrentPlayPreviewContext(PlayPreparationResult preparation)
+    {
+        bool usesMonitorSelection = !preparation.Success ||
+                                    !preparation.HasStrictTarget ||
+                                    preparation.UsedMonitorFallback;
+        SessionState.SetBool(PlayUsesMonitorSelectionStateKey, usesMonitorSelection);
+        SessionState.SetString(
+            CurrentPlayModelStateKey,
+            usesMonitorSelection ? string.Empty : preparation.ModelPath);
+        SessionState.SetString(
+            CurrentPlayExperimentStateKey,
+            usesMonitorSelection ? string.Empty : preparation.ExperimentName);
+        SessionState.SetString(CurrentPlayMonitorIdStateKey, preparation.ExperimentId);
+
+        bool correspondingPreview = false;
+        if (GamaEditorPreviewSafety.TryFindEditablePreview(out _, out GamaPreviewSession session) &&
+            session != null)
+        {
+            correspondingPreview = session.reuseAuthorizedForPlay;
+        }
+
+        SessionState.SetBool(CorrespondingPreviewStateKey, correspondingPreview);
+    }
+
+    private static void CaptureEditablePreviewBeforePlayModeExit()
+    {
+        if (SessionState.GetBool(PlayExitHandledStateKey, false))
+        {
+            return;
+        }
+        SessionState.SetBool(PlayExitHandledStateKey, true);
+
+        if (!GamaEditorPlayRuntimeRecorder.TryGetSnapshot(
+                out GamaEditorPlayRuntimeSnapshot runtimeSnapshot))
+        {
+            return;
+        }
+
+        bool correspondingPreview = SessionState.GetBool(CorrespondingPreviewStateKey, false);
+        if (!GamaEditorPreviewSafety.TryApprovePlayExitSave(
+                true,
+                correspondingPreview))
+        {
+            return;
+        }
+
+        bool activeGamaSelection = SessionState.GetBool(
+            PlayUsesMonitorSelectionStateKey,
+            true);
+        string modelPath = SessionState.GetString(CurrentPlayModelStateKey, string.Empty);
+        string experimentName = SessionState.GetString(CurrentPlayExperimentStateKey, string.Empty);
+        if (string.IsNullOrWhiteSpace(modelPath) || string.IsNullOrWhiteSpace(experimentName))
+        {
+            activeGamaSelection = true;
+            modelPath = string.Empty;
+            experimentName = string.Empty;
+        }
+
+        int monitorPort = PlayerPrefs.GetInt(
+            "MONITOR_PORT",
+            GamaEditorMiddlewareOrchestrator.DefaultMonitorPort);
+        string middlewarePortText = PlayerPrefs.GetString("PORT", "8080");
+        int middlewarePort = int.TryParse(middlewarePortText, out int parsedPort)
+            ? parsedPort
+            : 8080;
+        string monitorExperimentId = SessionState.GetString(
+            CurrentPlayMonitorIdStateKey,
+            PlayerPrefs.GetString("GAMA_EXPERIMENT_ID", string.Empty));
+
+        GamaEditorPlayPreviewIdentity identity = new GamaEditorPlayPreviewIdentity(
+            activeGamaSelection,
+            modelPath,
+            experimentName,
+            monitorExperimentId,
+            StaticInformation.getId(),
+            monitorPort,
+            middlewarePort);
+        if (!GamaEditorPlayExitPreviewCapture.TryStorePendingSnapshot(
+                runtimeSnapshot,
+                identity,
+                out string captureError))
+        {
+            GamaLog.Warning("[GAMA][PREVIEW] " + captureError);
+        }
+    }
+
+    private static void ClearPlayPreviewTransitionState()
+    {
+        SessionState.EraseBool(CorrespondingPreviewStateKey);
+        SessionState.EraseBool(PlayExitHandledStateKey);
+        SessionState.EraseBool(PlayUsesMonitorSelectionStateKey);
+        SessionState.EraseString(CurrentPlayModelStateKey);
+        SessionState.EraseString(CurrentPlayExperimentStateKey);
+        SessionState.EraseString(CurrentPlayMonitorIdStateKey);
     }
 
     private static void OnPauseStateChanged(PauseState state)

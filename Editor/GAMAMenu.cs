@@ -35,21 +35,26 @@ public class GAMAMenu : ScriptableObject
         SetupSceneDesktop();
     }
 
+    internal static void SetupScenePreservingRoot(GameObject rootToPreserve)
+    {
+        SetupSceneCore(false, false, rootToPreserve);
+    }
+
     public static void SetupSceneDesktop()
     {
-        SetupSceneCore(false, false);
+        SetupSceneCore(false, false, null);
     }
 
     // [MenuItem("GAMA/Setup Scene (VR Simulator)")] // Hidden for demo — accessible via GAMA Panel > Setup Scene
     public static void SetupSceneVrSimulator()
     {
-        SetupSceneCore(true, true);
+        SetupSceneCore(true, true, null);
     }
 
     // [MenuItem("GAMA/Setup Scene (Headset Ready)")] // Hidden for demo — accessible via GAMA Panel > Setup Scene
     public static void SetupSceneHeadsetReady()
     {
-        SetupSceneCore(false, true);
+        SetupSceneCore(false, true, null);
     }
 
     public static void ConfigureVrProjectSettings()
@@ -60,7 +65,10 @@ public class GAMAMenu : ScriptableObject
         GamaLog.Dev("[GAMA] VR project settings configured.");
     }
 
-    private static void SetupSceneCore(bool configureEditorSimulator, bool configureVrProjectSettings)
+    private static void SetupSceneCore(
+        bool configureEditorSimulator,
+        bool configureVrProjectSettings,
+        GameObject rootToPreserve)
     {
         EnsureRequiredTags();
         if (configureVrProjectSettings)
@@ -72,7 +80,7 @@ public class GAMAMenu : ScriptableObject
             EnsureInputSystemEnabled();
         }
 
-        int removedRootObjects = ClearActiveSceneObjects(configureEditorSimulator);
+        int removedRootObjects = ClearActiveSceneObjects(configureEditorSimulator, rootToPreserve);
 
         ProjectSimple.GamaUnity.Runtime.GamaInitializer.InitializeGama();
         if (configureEditorSimulator)
@@ -517,7 +525,9 @@ public class GAMAMenu : ScriptableObject
         return null;
     }
 
-    private static int ClearActiveSceneObjects(bool preserveSimulatorRoots)
+    private static int ClearActiveSceneObjects(
+        bool preserveSimulatorRoots,
+        GameObject rootToPreserve)
     {
         Scene scene = SceneManager.GetActiveScene();
         if (!scene.IsValid())
@@ -537,7 +547,8 @@ public class GAMAMenu : ScriptableObject
                 continue;
             }
 
-            if (ShouldPreserveRootObjectDuringSetup(roots[i], preserveSimulatorRoots))
+            if (roots[i] == rootToPreserve ||
+                ShouldPreserveRootObjectDuringSetup(roots[i], preserveSimulatorRoots))
             {
                 continue;
             }
