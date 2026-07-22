@@ -104,7 +104,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private bool captureSkipRemoteLoad;
     private bool captureManagedFromUnity;
     private bool captureUseExternalMiddleware = true;
-    private bool autoLaunchGamaOnPlay = true;
+    private bool validateActiveGamaOnPlay = true;
     private int captureMonitorPort = GamaEditorMiddlewareOrchestrator.DefaultMonitorPort;
     private string captureMode = "batch";
     private string middlewareScriptPath = string.Empty;
@@ -245,7 +245,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         captureManagedFromUnity = EditorPrefs.GetBool(GamaCaptureManagedFromUnityPrefKey, true);
         captureUseExternalMiddleware = EditorPrefs.GetBool(GamaCaptureExternalMiddlewarePrefKey, true);
-        autoLaunchGamaOnPlay = EditorPrefs.GetBool("ProjectSimple.GamaUnity.Play.AutoLaunchMonitor", true);
+        validateActiveGamaOnPlay = EditorPrefs.GetBool("ProjectSimple.GamaUnity.Play.AutoLaunchMonitor", true);
         captureUseLocalMiddleware = EditorPrefs.GetBool(GamaCaptureUseLocalMiddlewarePrefKey, false);
         captureSkipRemoteLoad = EditorPrefs.GetBool(GamaCaptureSkipRemoteLoadPrefKey, false);
         captureMonitorPort = EditorPrefs.GetInt(GamaCaptureMonitorPortPrefKey, GamaEditorMiddlewareOrchestrator.DefaultMonitorPort);
@@ -1042,9 +1042,14 @@ public sealed class GamaPanelWindow : EditorWindow
 
         if (captureManagedFromUnity)
         {
-            autoLaunchGamaOnPlay = EditorGUILayout.ToggleLeft(
-                "At Play Runtime: launch GAMA experiment via monitor (8001)",
-                autoLaunchGamaOnPlay);
+            validateActiveGamaOnPlay = EditorGUILayout.ToggleLeft(
+                "At Play Runtime: validate the active GAMA experiment via monitor (8001)",
+                validateActiveGamaOnPlay);
+            EditorGUILayout.HelpBox(
+                "Entering Play Mode only attaches to the experiment already active in GAMA. " +
+                "It never selects a remembered model or sends send_simulation, launch_experiment, or resume_experiment. " +
+                "Automatic scene preparation remains enabled for Play and preview generation.",
+                MessageType.Info);
             captureMonitorPort = EditorGUILayout.IntField("Monitor Port (web UI)", captureMonitorPort);
         }
 
@@ -1200,7 +1205,7 @@ public sealed class GamaPanelWindow : EditorWindow
             EditorPrefs.SetBool(GamaCaptureSkipRemoteLoadPrefKey, captureSkipRemoteLoad);
             EditorPrefs.SetBool(GamaCaptureManagedFromUnityPrefKey, captureManagedFromUnity);
             EditorPrefs.SetBool(GamaCaptureExternalMiddlewarePrefKey, captureUseExternalMiddleware);
-            EditorPrefs.SetBool("ProjectSimple.GamaUnity.Play.AutoLaunchMonitor", autoLaunchGamaOnPlay);
+            EditorPrefs.SetBool("ProjectSimple.GamaUnity.Play.AutoLaunchMonitor", validateActiveGamaOnPlay);
             EditorPrefs.SetInt(GamaCaptureMonitorPortPrefKey, captureMonitorPort);
             if (captureManagedFromUnity)
             {

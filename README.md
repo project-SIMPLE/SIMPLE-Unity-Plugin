@@ -92,6 +92,17 @@ The runtime client connects to the webplatform headset WebSocket endpoint, not d
 9. Adjust species settings and dynamic visual rules.
 10. Apply the preview settings, then press **Play** again.
 
+Entering Unity Play Mode never selects a remembered `.gaml` file and never asks
+the middleware to load, replace, launch, or resume a GAMA experiment. Start the
+intended experiment explicitly in GAMA first; Unity only attaches to the active
+monitor state. Explicit preview and headless-launch buttons in the GAMA Panel
+remain available when that behavior is requested by the user.
+
+This does not disable scene preparation: the package still ensures the required
+player, ground, connection manager, and simulation manager on every Play, and
+the preview workflow still prepares a clean connectable scene when generating a
+new preview.
+
 For preview generation, the experiment does **not** need to be already running in GAMA. It only needs to be open or selected. Unity reproduces a Play-like middleware initialization flow through port `8080` to generate the static preview.
 
 ---

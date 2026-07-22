@@ -9,13 +9,11 @@ public static class GamaPreviewPlayModeGuard
 {
     private const string SessionStateKey = "GamaPreviewWasActiveBeforePlay";
     private const string AutoHidePreviewOnPlayPrefKey = "ProjectSimple.GamaUnity.Panel.AutoHidePreviewOnPlay";
-    private const string AutoLaunchGamaOnPlayPrefKey = "ProjectSimple.GamaUnity.Play.AutoLaunchMonitor";
+    private const string ValidateActiveGamaOnPlayPrefKey = "ProjectSimple.GamaUnity.Play.AutoLaunchMonitor";
     private const string PauseGamaOnPlayExitPrefKey = "ProjectSimple.GamaUnity.Play.PauseOnExit";
     private const string GamaCaptureHostPrefKey = "ProjectSimple.GamaUnity.Panel.GamaCaptureHost";
     private const string GamaCapturePortPrefKey = "ProjectSimple.GamaUnity.Panel.GamaCapturePort";
     private const string GamaCaptureMonitorPortPrefKey = "ProjectSimple.GamaUnity.Panel.GamaCaptureMonitorPort";
-    private const string PlayModelPathPrefKey = "ProjectSimple.GamaUnity.Play.ModelPath";
-    private const string PlayExperimentPrefKey = "ProjectSimple.GamaUnity.Play.Experiment";
     private const string PlaySessionIdPrefKey = "ProjectSimple.GamaUnity.Play.PlayerId";
     private const string StaticPreviewRootName = "[GAMA] Static Experiment Preview";
     private const string CorrespondingPreviewStateKey =
@@ -71,7 +69,7 @@ public static class GamaPreviewPlayModeGuard
                 }
             }
 
-            PlayPreparationResult preparation = TryPrepareGamaForPlay();
+            PlayPreparationResult preparation = TryAttachToCurrentGamaForPlay();
             AuthorizePreviewReuse(preparation);
             RecordCurrentPlayPreviewContext(preparation);
         }
@@ -526,12 +524,13 @@ public static class GamaPreviewPlayModeGuard
         }
     }
 
-    private static PlayPreparationResult TryPrepareGamaForPlay()
+    private static PlayPreparationResult TryAttachToCurrentGamaForPlay()
     {
-        if (!EditorPrefs.GetBool(AutoLaunchGamaOnPlayPrefKey, true))
+        if (!EditorPrefs.GetBool(ValidateActiveGamaOnPlayPrefKey, true))
         {
-            GamaLog.Dev("[GAMA][PLAY] Auto-launch disabled; Play will only connect to the existing middleware state.");
-            return default;        }
+            GamaLog.Dev("[GAMA][PLAY] Active-experiment validation disabled; the runtime will connect without an Editor monitor check.");
+            return default;
+        }
 
         string host = EditorPrefs.GetString(GamaCaptureHostPrefKey, PlayerPrefs.GetString("IP", "localhost"));
         if (string.IsNullOrWhiteSpace(host))
@@ -554,98 +553,61 @@ public static class GamaPreviewPlayModeGuard
             GamaCaptureMonitorPortPrefKey,
             GamaEditorMiddlewareOrchestrator.DefaultMonitorPort);
 
-        bool hasTarget = GamaEditorPlayTargetResolver.TryResolve(
-            out string modelPath,
-            out string experimentName,
-            out string source);
         PlayerPrefs.SetInt("MONITOR_PORT", monitorPort);
-        PlayerPrefs.SetString("GAMA_MODEL_PATH", modelPath ?? string.Empty);
-        PlayerPrefs.SetString("GAMA_EXPERIMENT_NAME", experimentName ?? string.Empty);
+        // Play Mode never reuses a model path or experiment name remembered by an
+        // earlier preview/workspace action. The monitor's active experiment is the
+        // sole source of truth for this automatic path.
+        PlayerPrefs.SetString("GAMA_MODEL_PATH", string.Empty);
+        PlayerPrefs.SetString("GAMA_EXPERIMENT_NAME", string.Empty);
         PlayerPrefs.SetString("GAMA_EXPERIMENT_STATE", string.Empty);
         PlayerPrefs.SetString("GAMA_EXPERIMENT_ID", string.Empty);
         PlayerPrefs.Save();
 
-        GamaLog.Info("[GAMA] Preparing GAMA experiment before Play Mode.");
+        GamaLog.Info("[GAMA] Checking the experiment already active in GAMA before Play Mode.");
 
         try
         {
-            using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(130)))
+            using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
             {
                 CleanupEditorPreviewPlayersBeforePlay(host, playerPort, monitorPort, cts.Token);
-                bool usedMonitorFallback = !hasTarget;
-
-                GamaEditorMiddlewareOrchestrator.ManagedExperimentResult result = hasTarget
-                    ? GamaEditorMiddlewareOrchestrator.StartMiddlewareManagedExperimentAsync(
-                            host,
-                            monitorPort,
-                            experimentName,
-                            modelPath,
-                            cts.Token,
-                            GamaLog.Dev)
-                        .GetAwaiter()
-                        .GetResult()
-                    : GamaEditorMiddlewareOrchestrator.LaunchCurrentMonitorExperimentAsync(
+                GamaEditorMiddlewareOrchestrator.ManagedExperimentResult result =
+                    GamaEditorMiddlewareOrchestrator.AttachToCurrentMonitorExperimentAsync(
                             host,
                             monitorPort,
                             cts.Token,
                             GamaLog.Dev)
                         .GetAwaiter()
                         .GetResult();
-
-                if (hasTarget && result != null && !result.Success && ShouldAttachToCurrentMonitorFallback(result.Error))
-                {
-                    usedMonitorFallback = true;
-                    GamaLog.DevWarning(
-                        "[GAMA][PLAY] Strict middleware catalog launch failed; attaching to current monitor experiment instead. " +
-                        "The Unity selection remains model=" + (modelPath ?? string.Empty) +
-                        " experiment=" + (experimentName ?? string.Empty) +
-                        ". Error: " + (result.Error ?? "unknown"));
-
-                    result = GamaEditorMiddlewareOrchestrator.LaunchCurrentMonitorExperimentAsync(
-                            host,
-                            monitorPort,
-                            cts.Token,
-                            GamaLog.Dev)
-                        .GetAwaiter()
-                        .GetResult();
-                }
 
                 if (result != null && result.Success)
                 {
                     PlayerPrefs.SetString("GAMA_EXPERIMENT_STATE", result.FinalExperimentState ?? string.Empty);
                     PlayerPrefs.SetString("GAMA_EXPERIMENT_ID", result.ExperimentId ?? string.Empty);
                     PlayerPrefs.Save();
-                    if (hasTarget)
-                    {
-                        EditorPrefs.SetString(PlayModelPathPrefKey, modelPath);
-                        EditorPrefs.SetString(PlayExperimentPrefKey, experimentName);
-                    }
 
-                    GamaLog.Info("[GAMA] GAMA experiment ready before Play Mode.");
+                    GamaLog.Info("[GAMA] Attached to the experiment already active in GAMA.");
                     return new PlayPreparationResult(
                         true,
-                        hasTarget,
-                        usedMonitorFallback,
-                        modelPath,
-                        experimentName,
-                        result.ExperimentId);                }
+                        false,
+                        true,
+                        string.Empty,
+                        string.Empty,
+                        result.ExperimentId);
+                }
 
                 string error = result != null && !string.IsNullOrWhiteSpace(result.Error)
                     ? result.Error
                     : "unknown reason";
-                if (hasTarget)
-                {
-                    GamaLog.Warning("[GAMA][PLAY] GAMA auto-launch failed before Play: " + error);
-                }
-                else
-                {
-                    GamaLog.Dev("[GAMA][PLAY] No Unity .gaml target for auto-launch; continuing Play attached to current GAMA/middleware state. " + error);
-                }
+                GamaLog.Warning(
+                    "[GAMA][PLAY] No active experiment was attached. Unity did not select, launch, replace, or resume a GAMA experiment. " +
+                    error);
             }
         }
         catch (Exception ex)
         {
-            GamaLog.Warning("[GAMA][PLAY] GAMA auto-launch exception before Play: " + ex.Message);
+            GamaLog.Warning(
+                "[GAMA][PLAY] Active-experiment monitor check failed. No GAMA launch command was sent: " +
+                ex.Message);
         }
 
         return default;
@@ -752,24 +714,6 @@ public static class GamaPreviewPlayModeGuard
                 managers[i].PrepareForEditorPlayExit();
             }
         }
-    }
-
-    private static bool ShouldAttachToCurrentMonitorFallback(string error)
-    {
-        if (string.IsNullOrWhiteSpace(error))
-        {
-            return false;
-        }
-
-        return error.IndexOf("middleware catalog", StringComparison.OrdinalIgnoreCase) >= 0 ||
-               error.IndexOf("catalog", StringComparison.OrdinalIgnoreCase) >= 0 ||
-               error.IndexOf("not found", StringComparison.OrdinalIgnoreCase) >= 0 ||
-               error.IndexOf("no strict match", StringComparison.OrdinalIgnoreCase) >= 0 ||
-               error.IndexOf("missing from the middleware catalog", StringComparison.OrdinalIgnoreCase) >= 0 ||
-               // Retain compatibility with errors produced by earlier package versions.
-               error.IndexOf("introuvable", StringComparison.OrdinalIgnoreCase) >= 0 ||
-               error.IndexOf("Aucun match", StringComparison.OrdinalIgnoreCase) >= 0 ||
-               error.IndexOf("absent du catalogue", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static void CleanupEditorPreviewPlayersBeforePlay(
