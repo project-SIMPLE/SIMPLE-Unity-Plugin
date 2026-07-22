@@ -44,30 +44,27 @@ public sealed class GamaPanelWindow : EditorWindow
     private const string GamaCaptureMonitorPortPrefKey = "ProjectSimple.GamaUnity.Panel.GamaCaptureMonitorPort";
     private const string GamaMiddlewareScriptPrefKey = "ProjectSimple.GamaUnity.Panel.GamaMiddlewareScript";
     private const string SelectedCodeExampleIndexPrefKey = "ProjectSimple.GamaUnity.Panel.SelectedCodeExampleIndex";
-    private const string WorkspaceTabAdvancedPrefKey = "ProjectSimple.GamaUnity.Panel.WorkspaceTabAdvancedExpanded";
+    private const string LocalToolsExpandedPrefKey = "ProjectSimple.GamaUnity.Panel.LocalToolsExpanded";
     private const string AutoHidePreviewOnPlayPrefKey = "ProjectSimple.GamaUnity.Panel.AutoHidePreviewOnPlay";
     private const string ApplyPreviewSettingsToPlayPrefKey = "ProjectSimple.GamaUnity.Panel.ApplyPreviewSettingsToPlay";
     private const string AutoUpdatePreviewPrefKey = "ProjectSimple.GamaUnity.Panel.AutoUpdatePreview";
     private const string GeneratedRulePrefix = "[Workspace Import]";
     private const string StaticPreviewRootName = "[GAMA] Static Experiment Preview";
+    private const string StaticPreviewBuildingRootName = "[GAMA] Static Experiment Preview (Building)";
 
     private readonly string[] tabs =
     {
         "Setup Scene",
         "GAMA Preview",
-        "Troubleshooting",
-        "Workspace Explorer (alpha)"
+        "Troubleshooting"
     };
 
     private const int TabSetupScene = 0;
     private const int TabImportExperiment = 1;
     private const int TabTroubleshooting = 2;
-    private const int TabWorkspace = 3;
 
     private int selectedTab;
-    private readonly GamaWorkspaceExplorerPanel workspaceExplorerPanel = new GamaWorkspaceExplorerPanel();
-    private bool workspaceExplorerHostReady;
-    private bool workspaceTabAdvancedExpanded;
+    private bool localToolsExpanded;
     private string pendingCaptureAbortUserMessage;
     private string ghostPlayerIdToPurge = string.Empty;
     private string prefabSourceFolder = string.Empty;
@@ -103,7 +100,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private bool captureSkipRemoteLoad;
     private bool captureManagedFromUnity;
     private bool captureUseExternalMiddleware = true;
-    private bool autoLaunchGamaOnPlay = true;
+    private bool validateActiveGamaOnPlay = true;
     private int captureMonitorPort = GamaEditorMiddlewareOrchestrator.DefaultMonitorPort;
     private string captureMode = "batch";
     private string middlewareScriptPath = string.Empty;
@@ -125,6 +122,8 @@ public sealed class GamaPanelWindow : EditorWindow
     private System.Threading.Tasks.Task<GamaEditorMiddlewareOrchestrator.CatalogDiagnosisResult> catalogDiagnosisTask;
     private string catalogDiagnosisStatus = string.Empty;
     private bool captureFlowActive;
+    private GameObject captureReplacementApprovedRoot;
+    private bool capturePrepareCleanScene;
     private string pendingPreviewPlayerCleanupId = string.Empty;
     private string lastPreviewCapturePlayerId = string.Empty;
     private string lastPreviewMonitorExperimentId = string.Empty;
@@ -138,8 +137,6 @@ public sealed class GamaPanelWindow : EditorWindow
     private Vector2 experimentScroll;
     private Vector2 agentsScroll;
     private Vector2 troubleshootingScroll;
-    private Vector2 workspaceScroll;
-    private Vector2 workspaceExperimentListScroll;
     private Vector2 setupSceneScroll;
     private List<GamaCodeExampleSceneInfo> codeExampleScenes = new List<GamaCodeExampleSceneInfo>();
     private int selectedCodeExampleIndex;
@@ -171,7 +168,7 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         GamaPanelWindow window = GetWindow<GamaPanelWindow>("GAMA Panel");
         window.minSize = new Vector2(760f, 480f);
-        window.selectedTab = Mathf.Clamp(tab, TabSetupScene, TabWorkspace);
+        window.selectedTab = Mathf.Clamp(tab, TabSetupScene, TabTroubleshooting);
         window.Show();
     }
 
@@ -242,7 +239,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         captureManagedFromUnity = EditorPrefs.GetBool(GamaCaptureManagedFromUnityPrefKey, true);
         captureUseExternalMiddleware = EditorPrefs.GetBool(GamaCaptureExternalMiddlewarePrefKey, true);
-        autoLaunchGamaOnPlay = EditorPrefs.GetBool("ProjectSimple.GamaUnity.Play.AutoLaunchMonitor", true);
+        validateActiveGamaOnPlay = EditorPrefs.GetBool("ProjectSimple.GamaUnity.Play.AutoLaunchMonitor", true);
         captureUseLocalMiddleware = EditorPrefs.GetBool(GamaCaptureUseLocalMiddlewarePrefKey, false);
         captureSkipRemoteLoad = EditorPrefs.GetBool(GamaCaptureSkipRemoteLoadPrefKey, false);
         captureMonitorPort = EditorPrefs.GetInt(GamaCaptureMonitorPortPrefKey, GamaEditorMiddlewareOrchestrator.DefaultMonitorPort);
@@ -273,7 +270,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         middlewareScriptPath = EditorPrefs.GetString(GamaMiddlewareScriptPrefKey, middlewareScriptPath);
         selectedCodeExampleIndex = EditorPrefs.GetInt(SelectedCodeExampleIndexPrefKey, selectedCodeExampleIndex);
-        workspaceTabAdvancedExpanded = EditorPrefs.GetBool(WorkspaceTabAdvancedPrefKey, false);
+        localToolsExpanded = EditorPrefs.GetBool(LocalToolsExpandedPrefKey, false);
         RefreshCodeExampleScenes();
 
         GameObject previewRoot = GameObject.Find(StaticPreviewRootName);
@@ -290,11 +287,6 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private void Update()
     {
-        if (workspaceExplorerHostReady)
-        {
-            workspaceExplorerPanel.Tick(this);
-        }
-
         if (captureTask != null)
         {
             if (captureTask.IsCompleted)
@@ -371,6 +363,8 @@ public sealed class GamaPanelWindow : EditorWindow
             captureRuntimeStatus = "Capture cancelled: " + reason;
             pendingCaptureAbortUserMessage = null;
             captureFlowActive = false;
+            captureReplacementApprovedRoot = null;
+            capturePrepareCleanScene = false;
         }
 
         string idToFree = ResolveCapturePlayerIdToFree();
@@ -399,7 +393,7 @@ public sealed class GamaPanelWindow : EditorWindow
                 DrawTroubleshootingTab();
                 break;
             default:
-                DrawWorkspaceTab();
+                DrawSetupSceneTab();
                 break;
         }
     }
@@ -450,6 +444,29 @@ public sealed class GamaPanelWindow : EditorWindow
             MessageType.None);
 
         EditorGUILayout.Space(12f);
+        EditorGUILayout.LabelField("Preview Safety", EditorStyles.boldLabel);
+        bool askToSavePlayPreview = GamaEditorPreviewSafetyPreferences.AskToSavePlayPreviewOnExit;
+        EditorGUI.BeginChangeCheck();
+        askToSavePlayPreview = EditorGUILayout.ToggleLeft(
+            "Ask to save the runtime view when leaving Play Mode",
+            askToSavePlayPreview,
+            EditorStyles.boldLabel);
+        if (EditorGUI.EndChangeCheck())
+        {
+            GamaEditorPreviewSafetyPreferences.AskToSavePlayPreviewOnExit = askToSavePlayPreview;
+        }
+
+        EditorGUILayout.HelpBox(
+            "Choosing Never in the Play Mode popup disables only that save question for this Unity project. " +
+            "Preview overwrite confirmations remain enabled.",
+            askToSavePlayPreview ? MessageType.None : MessageType.Warning);
+        if (!askToSavePlayPreview &&
+            GUILayout.Button("Ask Again on Play Mode Exit", GUILayout.Height(24f), GUILayout.Width(220f)))
+        {
+            GamaEditorPreviewSafetyPreferences.ResetProjectChoices();
+        }
+
+        EditorGUILayout.Space(12f);
         EditorGUILayout.LabelField("Common Issues", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
             "No preview is generated: make sure GAMA and simple.webplatform are running, open the target experiment in GAMA, then try Generate Preview from GAMA again.",
@@ -465,57 +482,6 @@ public sealed class GamaPanelWindow : EditorWindow
         if (GUILayout.Button("Open Unity Console", GUILayout.Height(28f), GUILayout.Width(180f)))
         {
             EditorApplication.ExecuteMenuItem("Window/General/Console");
-        }
-
-        EditorGUILayout.EndScrollView();
-    }
-
-    private void EnsureWorkspaceExplorerHostReady()
-    {
-        if (workspaceExplorerHostReady)
-        {
-            return;
-        }
-
-        workspaceExplorerPanel.OnHostEnable();
-        workspaceExplorerHostReady = true;
-    }
-
-    private void DrawWorkspaceTab()
-    {
-        workspaceScroll = EditorGUILayout.BeginScrollView(workspaceScroll);
-        EnsureWorkspaceExplorerHostReady();
-        workspaceExplorerPanel.DrawCompactWorkspaceUi();
-
-        EditorGUILayout.Space(10f);
-        EditorGUI.BeginChangeCheck();
-        workspaceTabAdvancedExpanded = EditorGUILayout.Foldout(
-            workspaceTabAdvancedExpanded,
-            "Advanced Settings (scan: ports / auto-detection, .gaml exploration, prefabs, headless...)",
-            true);
-        if (EditorGUI.EndChangeCheck())
-        {
-            EditorPrefs.SetBool(WorkspaceTabAdvancedPrefKey, workspaceTabAdvancedExpanded);
-        }
-
-        if (workspaceTabAdvancedExpanded)
-        {
-            EditorGUI.indentLevel++;
-            EditorGUILayout.LabelField("Offline Scan", EditorStyles.boldLabel);
-            workspaceExplorerPanel.DrawAdvancedScannerOptions();
-            EditorGUILayout.Space(10f);
-            DrawWorkspaceConfigurationSection();
-            EditorGUILayout.Space(8f);
-            EditorGUILayout.LabelField("Explorer in Separate Window", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox(
-                "Opens the same scan view in a separate window.",
-                MessageType.Info);
-            if (GUILayout.Button("Open Explorer in a Window", GUILayout.Height(24f)))
-            {
-                GamaWorkspaceExplorerWindow.ShowDetachedWindow();
-            }
-
-            EditorGUI.indentLevel--;
         }
 
         EditorGUILayout.EndScrollView();
@@ -651,29 +617,14 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorGUI.indentLevel--;
     }
 
-    private void DrawWorkspaceConfigurationSection()
+    private void DrawLocalToolsSection()
     {
-        EditorGUILayout.LabelField("GAMA Workspace & Tools", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("Local Paths & Tools", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "Enter a workspace folder or .gaml file, then click Explore to analyze a model and prepare the GAMA Preview tab. 'Open in GAMA Preview' opens that tab with the selected experiment. Also here: external prefabs and headless export.",
+            "Optional paths used by prefab import, JSON export, and explicit headless capture. " +
+            "These settings are independent from the local workspace scanner.",
             MessageType.Info);
 
-        DrawExperimentPathInput("Workspace or .gaml file");
-        EditorGUILayout.BeginHorizontal();
-        using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(experimentPath)))
-        {
-            if (GUILayout.Button("Explore", GUILayout.Width(120f)))
-            {
-                ExploreExperimentPathFromWorkspace();
-            }
-        }
-
-        GUILayout.Label(experimentStatus, EditorStyles.miniLabel, GUILayout.ExpandWidth(true));
-        EditorGUILayout.EndHorizontal();
-
-        DrawWorkspaceExperimentList();
-
-        EditorGUILayout.Space(12f);
         DrawPrefabSourcePathRow();
 
         EditorGUILayout.Space(8f);
@@ -834,11 +785,6 @@ public sealed class GamaPanelWindow : EditorWindow
             }
         }
 
-        if (GUILayout.Button("Workspace Explorer (alpha)", GUILayout.Width(190f)))
-        {
-            selectedTab = TabWorkspace;
-        }
-
         GUILayout.FlexibleSpace();
         EditorGUILayout.EndHorizontal();
     }
@@ -917,7 +863,6 @@ public sealed class GamaPanelWindow : EditorWindow
         {
             if (GUILayout.Button("Generate Preview from GAMA", GUILayout.Height(34f)))
             {
-                PrepareCleanSceneBeforeGamaPreview();
                 captureManagedFromUnity = true;
                 captureUseExternalMiddleware = true;
                 captureUseLocalMiddleware = false;
@@ -928,7 +873,10 @@ public sealed class GamaPanelWindow : EditorWindow
                 EditorPrefs.SetBool(GamaCaptureUseLocalMiddlewarePrefKey, false);
                 EditorPrefs.SetBool(GamaCaptureSkipRemoteLoadPrefKey, false);
                 EditorPrefs.SetString(GamaCapturePortPrefKey, capturePort);
-                StartCaptureFlow(launchGama: false, managedFromUnity: true);
+                StartCaptureFlow(
+                    launchGama: false,
+                    managedFromUnity: true,
+                    prepareCleanScene: true);
             }
         }
 
@@ -958,8 +906,8 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorGUI.indentLevel++;
         EditorGUILayout.LabelField("Experiment Source", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "Recommended workflow: 'Workspace Explorer (alpha)' tab → folder path or .gaml → Explore → 'Open in GAMA Preview' on the desired row. " +
-            "You can also enter the path here and click Explore. Without middleware / cumulative preview, use the grid preview and agent settings (scale, color, visibility) as before.",
+            "Choose a .gaml file or workspace folder here, then click Explore and select the experiment. " +
+            "Without middleware / cumulative preview, use the grid preview and agent settings (scale, color, visibility) as before.",
             MessageType.Info);
 
         DrawExperimentPathInput();
@@ -971,6 +919,23 @@ public sealed class GamaPanelWindow : EditorWindow
         if (experimentOptions.Count > 0)
         {
             DrawExperimentSelection();
+        }
+
+        EditorGUI.BeginChangeCheck();
+        localToolsExpanded = EditorGUILayout.Foldout(
+            localToolsExpanded,
+            "Local Paths & Tools (prefabs, JSON export, headless capture)",
+            true);
+        if (EditorGUI.EndChangeCheck())
+        {
+            EditorPrefs.SetBool(LocalToolsExpandedPrefKey, localToolsExpanded);
+        }
+
+        if (localToolsExpanded)
+        {
+            EditorGUI.indentLevel++;
+            DrawLocalToolsSection();
+            EditorGUI.indentLevel--;
         }
 
         if (analysis == null && experimentOptions.Count > 0)
@@ -1012,9 +977,14 @@ public sealed class GamaPanelWindow : EditorWindow
 
         if (captureManagedFromUnity)
         {
-            autoLaunchGamaOnPlay = EditorGUILayout.ToggleLeft(
-                "At Play Runtime: launch GAMA experiment via monitor (8001)",
-                autoLaunchGamaOnPlay);
+            validateActiveGamaOnPlay = EditorGUILayout.ToggleLeft(
+                "At Play Runtime: validate the active GAMA experiment via monitor (8001)",
+                validateActiveGamaOnPlay);
+            EditorGUILayout.HelpBox(
+                "Entering Play Mode only attaches to the experiment already active in GAMA. " +
+                "It never selects a remembered model or sends send_simulation, launch_experiment, or resume_experiment. " +
+                "Automatic scene preparation remains enabled for Play and preview generation.",
+                MessageType.Info);
             captureMonitorPort = EditorGUILayout.IntField("Monitor Port (web UI)", captureMonitorPort);
         }
 
@@ -1053,7 +1023,7 @@ public sealed class GamaPanelWindow : EditorWindow
         {
             string gamlHint = analysis != null && !string.IsNullOrEmpty(analysis.SourcePath)
                 ? analysis.SourcePath
-                : "(import from Workspace Explorer or click Explore here)";
+                : "(select a .gaml file or folder above, then click Explore)";
             EditorGUILayout.TextField(".gaml file used", gamlHint);
         }
 
@@ -1170,7 +1140,7 @@ public sealed class GamaPanelWindow : EditorWindow
             EditorPrefs.SetBool(GamaCaptureSkipRemoteLoadPrefKey, captureSkipRemoteLoad);
             EditorPrefs.SetBool(GamaCaptureManagedFromUnityPrefKey, captureManagedFromUnity);
             EditorPrefs.SetBool(GamaCaptureExternalMiddlewarePrefKey, captureUseExternalMiddleware);
-            EditorPrefs.SetBool("ProjectSimple.GamaUnity.Play.AutoLaunchMonitor", autoLaunchGamaOnPlay);
+            EditorPrefs.SetBool("ProjectSimple.GamaUnity.Play.AutoLaunchMonitor", validateActiveGamaOnPlay);
             EditorPrefs.SetInt(GamaCaptureMonitorPortPrefKey, captureMonitorPort);
             if (captureManagedFromUnity)
             {
@@ -1812,7 +1782,10 @@ public sealed class GamaPanelWindow : EditorWindow
         return 24 * 60 * 60 * 1000;
     }
 
-    private void StartCaptureFlow(bool launchGama, bool managedFromUnity = false)
+    private void StartCaptureFlow(
+        bool launchGama,
+        bool managedFromUnity = false,
+        bool prepareCleanScene = false)
     {
         pendingPreviewPlayerCleanupId = string.Empty;
         lastPreviewCapturePlayerId = string.Empty;
@@ -1829,6 +1802,17 @@ public sealed class GamaPanelWindow : EditorWindow
         if (captureFlowActive || captureTask != null)
         {
             EditorUtility.DisplayDialog("Capture", "A capture is already in progress.", "OK");
+            return;
+        }
+
+        GameObject replacementApprovedRoot = null;
+        if (gamaHeadlessRunPreviewAfter &&
+            !GamaEditorPreviewSafety.TryApproveCurrentReplacement(
+                null,
+                out replacementApprovedRoot))
+        {
+            captureRuntimeStatus = "Preview generation cancelled. The existing preview was kept.";
+            Repaint();
             return;
         }
 
@@ -1938,7 +1922,10 @@ public sealed class GamaPanelWindow : EditorWindow
             !selectedGamaPreviewMode &&
             string.IsNullOrWhiteSpace(runtimeModelPath))
         {
-            EditorUtility.DisplayDialog("Capture", "First explore a valid experiment from the Workspace tab.", "OK");
+            EditorUtility.DisplayDialog(
+                "Capture",
+                "First choose a valid .gaml file or folder in GAMA Preview > Advanced Preview Settings, then click Explore.",
+                "OK");
             captureFlowActive = false;
             return;
         }
@@ -2071,7 +2058,7 @@ public sealed class GamaPanelWindow : EditorWindow
             {
                 EditorUtility.DisplayDialog(
                     "Capture",
-                    "Please specify the path to gama-headless.bat in the Workspace tab (or choose 'custom' mode).",
+                    "Please specify the path to gama-headless.bat in GAMA Preview > Advanced Preview Settings > Local Paths & Tools (or choose 'custom' mode).",
                     "OK");
                 AbortCaptureIfRunning("Missing gama-headless.bat");
                 return;
@@ -2153,6 +2140,8 @@ public sealed class GamaPanelWindow : EditorWindow
         float worldPhaseSec = Mathf.Clamp(captureWorldPhaseSeconds, 5f, 120f);
         float stableSec = Mathf.Clamp(capturePreviewStableSeconds, 1f, 30f);
         int handshakeHeartbeatMs = selectedGamaPreviewMode ? GetGamaPreviewHeartbeatMs() : 5000;
+        captureReplacementApprovedRoot = replacementApprovedRoot;
+        capturePrepareCleanScene = prepareCleanScene;
 
         if (useDirectGama)
         {
@@ -2230,6 +2219,8 @@ public sealed class GamaPanelWindow : EditorWindow
         if (captureTask == null)
         {
             captureFlowActive = false;
+            captureReplacementApprovedRoot = null;
+            capturePrepareCleanScene = false;
         }
 
         Repaint();
@@ -2744,6 +2735,10 @@ public sealed class GamaPanelWindow : EditorWindow
     private void OnCaptureFinished(System.Threading.Tasks.Task<GamaEditorFirstTickCapture.CaptureResult> finishedTask)
     {
         captureFlowActive = false;
+        GameObject replacementApprovedRoot = captureReplacementApprovedRoot;
+        captureReplacementApprovedRoot = null;
+        bool prepareCleanScene = capturePrepareCleanScene;
+        capturePrepareCleanScene = false;
         string userAbortReason = pendingCaptureAbortUserMessage;
         pendingCaptureAbortUserMessage = null;
 
@@ -2837,11 +2832,33 @@ public sealed class GamaPanelWindow : EditorWindow
         experimentStatus = captureRuntimeStatus;
         GamaLog.Dev("[GAMA] " + captureRuntimeStatus + "\n" + result.LogTrail);
 
-        ApplySpeciesRenderOverridesToSimulationManager();
-
         if (gamaHeadlessRunPreviewAfter)
         {
-            GenerateStaticPreview();
+            if (!GamaEditorPreviewSafety.TryApproveCurrentReplacement(
+                    replacementApprovedRoot,
+                    out GameObject existingPreviewRoot))
+            {
+                captureRuntimeStatus = "Preview generation cancelled. The existing preview was kept.";
+                experimentStatus = captureRuntimeStatus;
+                Repaint();
+                return;
+            }
+
+            if (prepareCleanScene &&
+                !PrepareCleanSceneBeforeGamaPreview(existingPreviewRoot, out string setupError))
+            {
+                captureRuntimeStatus = setupError;
+                experimentStatus = setupError;
+                Repaint();
+                return;
+            }
+
+            ApplySpeciesRenderOverridesToSimulationManager();
+            GenerateStaticPreview(existingPreviewRoot);
+        }
+        else
+        {
+            ApplySpeciesRenderOverridesToSimulationManager();
         }
 
         Repaint();
@@ -2984,21 +3001,26 @@ public sealed class GamaPanelWindow : EditorWindow
         }
     }
 
-    private void PrepareCleanSceneBeforeGamaPreview()
+    private bool PrepareCleanSceneBeforeGamaPreview(
+        GameObject previewRootToPreserve,
+        out string error)
     {
-        ClearStaticPreviewBeforeNewPreview();
+        error = null;
 
         try
         {
-            GAMAMenu.SetupScene();
-            GamaLog.Dev("[GAMA][PREVIEW] Scene reset with Setup Scene before generating preview.");
+            GAMAMenu.SetupScenePreservingRoot(previewRootToPreserve);
+            GamaLog.Dev(
+                "[GAMA][PREVIEW] Scene reset while preserving the current preview until replacement succeeds.");
+            return true;
         }
         catch (Exception ex)
         {
             GamaLog.DevWarning("[GAMA][PREVIEW] Setup Scene before preview failed: " + ex);
+            error = "Preview capture succeeded, but the scene could not be prepared. " +
+                    "The existing preview was kept. " + ex.GetBaseException().Message;
+            return false;
         }
-
-        ClearStaticPreviewBeforeNewPreview();
     }
 
     private void ResetPreviewTransformOffsetsBeforeNewPreview()
@@ -3952,48 +3974,6 @@ public sealed class GamaPanelWindow : EditorWindow
         }
     }
 
-    private void DrawWorkspaceExperimentList()
-    {
-        if (experimentOptions.Count == 0)
-        {
-            return;
-        }
-
-        EditorGUILayout.Space(10f);
-        EditorGUILayout.LabelField("Detected Experiments", EditorStyles.boldLabel);
-        workspaceExperimentListScroll = EditorGUILayout.BeginScrollView(workspaceExperimentListScroll, GUILayout.MinHeight(Mathf.Clamp(28f + experimentOptions.Count * 36f, 80f, 280f)));
-        for (int i = 0; i < experimentOptions.Count; i++)
-        {
-            GamaPanelExperimentOption option = experimentOptions[i];
-            EditorGUILayout.BeginHorizontal("box");
-            EditorGUILayout.LabelField(option.DisplayName, GUILayout.ExpandWidth(true));
-            if (GUILayout.Button("Open in GAMA Preview", GUILayout.Width(170f), GUILayout.Height(22f)))
-            {
-                GoToImportExperimentWithIndex(i);
-            }
-
-            EditorGUILayout.EndHorizontal();
-        }
-
-        EditorGUILayout.EndScrollView();
-    }
-
-    private void GoToImportExperimentWithIndex(int index)
-    {
-        if (index < 0 || index >= experimentOptions.Count)
-        {
-            return;
-        }
-
-        selectedExperimentIndex = index;
-        AnalyzeSelectedExperiment();
-        SaveSelectedExperimentAsRuntimeTarget();
-        InvalidateCaptureSelectionCache();
-        experimentStatus = "Experiment imported: " + experimentOptions[index].DisplayName + ". Adjust agents / scene, run cumulative preview or generate static preview.";
-        selectedTab = TabImportExperiment;
-        Repaint();
-    }
-
     private void SaveSelectedExperimentAsRuntimeTarget()
     {
         if (selectedExperimentIndex < 0 || selectedExperimentIndex >= experimentOptions.Count)
@@ -4042,18 +4022,6 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         return true;
-    }
-
-    private void ExploreExperimentPathFromWorkspace()
-    {
-        if (!TryPopulateExperimentOptions(out string errorMessage))
-        {
-            experimentStatus = errorMessage;
-            return;
-        }
-
-        experimentStatus = "Found " + experimentOptions.Count.ToString(CultureInfo.InvariantCulture) +
-            " experiment(s). Click 'Open in GAMA Preview' to open the GAMA Preview tab.";
     }
 
     private void ExploreExperimentPath()
@@ -4422,28 +4390,54 @@ public sealed class GamaPanelWindow : EditorWindow
         return true;
     }
 
-    private void GenerateStaticPreview()
+    private bool GenerateStaticPreview(GameObject replacementApprovedRoot = null)
     {
+        if (!GamaEditorPreviewSafety.TryApproveCurrentReplacement(
+                replacementApprovedRoot,
+                out GameObject existingRoot))
+        {
+            experimentStatus = "Preview generation cancelled. The existing preview was kept.";
+            captureRuntimeStatus = experimentStatus;
+            return false;
+        }
+
+        int undoGroup = -1;
         try
         {
-            GenerateStaticPreviewInternal();
+            Undo.IncrementCurrentGroup();
+            undoGroup = Undo.GetCurrentGroup();
+            Undo.SetCurrentGroupName("GAMA Static Experiment Preview");
+            return GenerateStaticPreviewInternal(existingRoot);
         }
         catch (Exception ex)
         {
+            GamaEditorPreviewSafety.ClearBuildingPreview();
             GamaLog.Error("[GAMA][PREVIEW][BUILD] Exception: " + ex);
             captureRuntimeStatus = "Capture OK but preview build failed: " + ex.Message;
             experimentStatus = captureRuntimeStatus;
+            return false;
+        }
+        finally
+        {
+            if (undoGroup >= 0)
+            {
+                try
+                {
+                    Undo.CollapseUndoOperations(undoGroup);
+                }
+                catch
+                {
+                    // The build result has already been handled.
+                }
+            }
         }
     }
 
-    private void GenerateStaticPreviewInternal()
+    private bool GenerateStaticPreviewInternal(GameObject existingRoot)
     {
-        ClearStaticPreview(false, false, false);
+        GamaEditorPreviewSafety.ClearBuildingPreview();
 
-        int undoGroup = Undo.GetCurrentGroup();
-        Undo.SetCurrentGroupName("GAMA Static Experiment Preview");
-
-        GameObject root = new GameObject(StaticPreviewRootName);
+        GameObject root = new GameObject(StaticPreviewBuildingRootName);
         Undo.RegisterCreatedObjectUndo(root, "Create GAMA static preview");
 
         bool jsonOk;
@@ -4453,27 +4447,27 @@ public sealed class GamaPanelWindow : EditorWindow
             if (jsonOk)
             {
                 ConfigurePreviewSession(root);
-                GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
-                Selection.activeGameObject = root;
-                SceneView.FrameLastActiveSceneView();
-                Undo.CollapseUndoOperations(undoGroup);
-                EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
-                string speciesSummary = BuildPreviewSpeciesSummary(root);
-                UpdateAgentOverridesFromPreview(root);
-                experimentStatus = string.IsNullOrWhiteSpace(speciesSummary)
-                    ? jsonStatus
-                    : jsonStatus + " species=" + speciesSummary;
+                GamaEditorPreviewSafety.CommitReplacement(existingRoot, root);
+                experimentStatus = jsonStatus ?? "JSON preview generated.";
                 captureRuntimeStatus = "Static preview built: " + experimentStatus;
-                GamaLog.Info("[GAMA] " + captureRuntimeStatus);
-                return;
+                FinalizeCommittedStaticPreview(root, () =>
+                {
+                    string speciesSummary = BuildPreviewSpeciesSummary(root);
+                    UpdateAgentOverridesFromPreview(root);
+                    experimentStatus = string.IsNullOrWhiteSpace(speciesSummary)
+                        ? jsonStatus
+                        : jsonStatus + " species=" + speciesSummary;
+                    captureRuntimeStatus = "Static preview built: " + experimentStatus;
+                    GamaLog.Info("[GAMA] " + captureRuntimeStatus);
+                });
+                return true;
             }
 
             Undo.DestroyObjectImmediate(root);
-            Undo.CollapseUndoOperations(undoGroup);
             experimentStatus = jsonStatus ?? "JSON Error.";
             captureRuntimeStatus = "Capture successful, but preview build failed: " + experimentStatus;
             GamaLog.Error("[GAMA][PREVIEW][BUILD] " + captureRuntimeStatus);
-            return;
+            return false;
         }
 
         GameObject environment = GamaSceneUtility.GetOrCreateChild(root, "Environment");
@@ -4522,15 +4516,58 @@ public sealed class GamaPanelWindow : EditorWindow
             }
         }
 
-        Selection.activeGameObject = root;
-        SceneView.FrameLastActiveSceneView();
         ConfigurePreviewSession(root);
-        GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
-        Undo.CollapseUndoOperations(undoGroup);
-        EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+        GamaEditorPreviewSafety.CommitReplacement(existingRoot, root);
         experimentStatus = "Static preview generated: " + resolvedPrefabCount + " prefab instance(s), " + fallbackCount + " fallback instance(s).";
+        captureRuntimeStatus = experimentStatus;
         string label = analysis != null && !string.IsNullOrWhiteSpace(analysis.Name) ? analysis.Name : "GAMA active selection";
-        GamaLog.Info("[GAMA] Static experiment preview generated for " + label + ".");
+        FinalizeCommittedStaticPreview(root, () =>
+        {
+            GamaLog.Info("[GAMA] Static experiment preview generated for " + label + ".");
+        });
+        return true;
+    }
+
+    private void FinalizeCommittedStaticPreview(
+        GameObject root,
+        Action refreshSuccessState)
+    {
+        try
+        {
+            GamaPreviewSession session = root != null
+                ? root.GetComponent<GamaPreviewSession>()
+                : null;
+            if (session != null && session.speciesOverrides != null)
+            {
+                GamaSpeciesAppearanceEditorCoordinator.SetActiveContext(
+                    new GamaSpeciesAppearanceContext(
+                        session.speciesOverrides,
+                        session.modelPath,
+                        session.experimentName));
+            }
+
+            GamaEditorPreviewOverrideApplier.ApplyOverridesToCurrentPreview();
+            Selection.activeGameObject = root;
+            SceneView.FrameLastActiveSceneView();
+            refreshSuccessState?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            GamaLog.DevWarning(
+                "[GAMA][PREVIEW] The new preview was generated, but the Editor refresh was incomplete: " +
+                ex.GetBaseException().Message);
+        }
+        finally
+        {
+            try
+            {
+                EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+            }
+            catch
+            {
+                // The preview replacement already succeeded.
+            }
+        }
     }
 
     private static string BuildPreviewSpeciesSummary(GameObject root)
@@ -4681,12 +4718,6 @@ public sealed class GamaPanelWindow : EditorWindow
         session.speciesOverrides = ResolveSpeciesRenderOverridesAsset();
         PropagateSessionToSpeciesWizards(root, session);
         EditorUtility.SetDirty(session);
-        GamaSpeciesAppearanceEditorCoordinator.SetActiveContext(
-            new GamaSpeciesAppearanceContext(
-                session.speciesOverrides,
-                session.modelPath,
-                session.experimentName));
-
         GamaLog.Dev(
             "[GAMA][PREVIEW] session model=" + session.modelPath +
             " exp=" + session.experimentName +

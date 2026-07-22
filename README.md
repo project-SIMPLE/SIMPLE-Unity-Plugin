@@ -92,6 +92,17 @@ The runtime client connects to the webplatform headset WebSocket endpoint, not d
 9. Adjust species settings and dynamic visual rules.
 10. Apply the preview settings, then press **Play** again.
 
+Entering Unity Play Mode never selects a remembered `.gaml` file and never asks
+the middleware to load, replace, launch, or resume a GAMA experiment. Start the
+intended experiment explicitly in GAMA first; Unity only attaches to the active
+monitor state. Explicit preview and headless-launch buttons in the GAMA Panel
+remain available when that behavior is requested by the user.
+
+This does not disable scene preparation: the package still ensures the required
+player, ground, connection manager, and simulation manager on every Play, and
+the preview workflow still prepares a clean connectable scene when generating a
+new preview.
+
 For preview generation, the experiment does **not** need to be already running in GAMA. It only needs to be open or selected. Unity reproduces a Play-like middleware initialization flow through port `8080` to generate the static preview.
 
 ---
@@ -177,8 +188,6 @@ It includes:
   common-issue guidance, and
   quick access to the Unity Console. Verbose mode is disabled by default;
   essential warnings, errors, and actionable UI messages remain available.
-
-- **Workspace Explorer:** Allows browsing local GAMA workspaces and experiments.
 
 - **Species Settings:** Lets users adjust visual settings per species.
 
@@ -358,29 +367,6 @@ External scripts should not be imported by default.
 
 ---
 
-## Workspace Explorer
-
-The Workspace Explorer allows users to inspect a local GAMA workspace without requiring middleware connectivity.
-
-It can:
-
-- choose a workspace folder path;
-- scan `.gaml` files;
-- discover declared `experiment` blocks;
-- list experiments with a heuristic capability label:
-  - `VR`
-  - `Non-VR`
-  - `VR + Non-VR`
-  - `Unknown`
-
-Notes:
-
-- capability detection is heuristic and depends on keywords or metadata present in experiment blocks;
-- invalid paths, missing metadata, and permission issues are handled without crashing the editor;
-- Workspace Explorer is useful for browsing experiments, but the main preview workflow is based on the experiment currently opened or selected in GAMA.
-
----
-
 ## Package Contents
 
 - `Runtime/`  
@@ -389,8 +375,8 @@ Notes:
 - `Runtime/ThirdParty/NativeWebSocket/`  
   Vendored NativeWebSocket transport used by the runtime client.
 
-- `Editor/`  
-  GAMA Panel, workspace explorer, setup tools, preview tools, inspector tooling, and editor-only utilities.
+- `Editor/`
+  GAMA Panel, setup tools, preview tools, inspector tooling, and editor-only utilities.
 
 - `Samples~/`  
   Importable Unity scenes and templates.

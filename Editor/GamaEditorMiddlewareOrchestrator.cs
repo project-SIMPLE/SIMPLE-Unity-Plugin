@@ -642,7 +642,7 @@ internal static class GamaEditorMiddlewareOrchestrator
     /// local .gaml path to match against the middleware catalog. This must not force
     /// launch_experiment, because GAMA may otherwise ask to close the current experiment.
     /// </summary>
-    public static async Task<ManagedExperimentResult> LaunchCurrentMonitorExperimentAsync(
+    public static async Task<ManagedExperimentResult> AttachToCurrentMonitorExperimentAsync(
         string host,
         int monitorPort,
         CancellationToken ct,
@@ -711,11 +711,14 @@ internal static class GamaEditorMiddlewareOrchestrator
             Append("[GAMA][ORCH][PLAY] -> get_simulation_informations");
             await session.SendAsync(new JObject { ["type"] = "get_simulation_informations" }, ct).ConfigureAwait(false);
 
-            DateTime initialStateDeadline = DateTime.UtcNow.AddSeconds(8);
-            while (DateTime.UtcNow < initialStateDeadline && !ct.IsCancellationRequested)
+            // The first state can be NONE while the middleware is still adopting an
+            // experiment that was opened directly in GAMA. Wait briefly for a real
+            // state, but never select, launch, replace, or resume an experiment here.
+            DateTime adoptionDeadline = DateTime.UtcNow.AddSeconds(5);
+            while (DateTime.UtcNow < adoptionDeadline && !ct.IsCancellationRequested)
             {
                 string state = session.LastExperimentState ?? string.Empty;
-                if (!string.IsNullOrEmpty(state))
+                if (IsAttachableExperimentState(state))
                 {
                     break;
                 }
@@ -724,57 +727,20 @@ internal static class GamaEditorMiddlewareOrchestrator
             }
 
             string expState = session.LastExperimentState ?? string.Empty;
-            if (string.IsNullOrEmpty(expState) ||
-                string.Equals(expState, "NONE", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(expState, "NOTREADY", StringComparison.OrdinalIgnoreCase))
-            {
-                Append("[GAMA][ORCH][PLAY] No active experiment detected (state=" +
-                       (string.IsNullOrEmpty(expState) ? "?" : expState) +
-                       "), launching current monitor selection.");
-                await session.SendAsync(new JObject { ["type"] = "launch_experiment" }, ct).ConfigureAwait(false);
-
-                DateTime launchDeadline = DateTime.UtcNow.AddSeconds(90);
-                while (DateTime.UtcNow < launchDeadline && !ct.IsCancellationRequested)
-                {
-                    expState = session.LastExperimentState ?? expState;
-                    if (!string.IsNullOrEmpty(expState) &&
-                        !string.Equals(expState, "NONE", StringComparison.OrdinalIgnoreCase) &&
-                        !string.Equals(expState, "NOTREADY", StringComparison.OrdinalIgnoreCase))
-                    {
-                        break;
-                    }
-
-                    await Task.Delay(200, ct).ConfigureAwait(false);
-                }
-            }
-
             if (string.Equals(expState, "PAUSED", StringComparison.OrdinalIgnoreCase))
             {
-                Append("[GAMA][ORCH][PLAY] → resume_experiment (state is PAUSED)");
-                await session.SendAsync(new JObject { ["type"] = "resume_experiment" }, ct).ConfigureAwait(false);
-                DateTime resumeDeadline = DateTime.UtcNow.AddSeconds(45);
-                while (DateTime.UtcNow < resumeDeadline && !ct.IsCancellationRequested)
-                {
-                    expState = session.LastExperimentState ?? expState;
-                    if (string.Equals(expState, "RUNNING", StringComparison.OrdinalIgnoreCase))
-                    {
-                        break;
-                    }
-
-                    await Task.Delay(200, ct).ConfigureAwait(false);
-                }
+                Append("[GAMA][ORCH][PLAY] Active experiment is PAUSED; the runtime player will own the normal resume sequence.");
             }
 
             result.FinalExperimentState = session.LastExperimentState ?? expState;
             result.ExperimentId = session.LastExperimentId ?? string.Empty;
-            result.Success = !string.IsNullOrEmpty(result.FinalExperimentState) &&
-                             !string.Equals(result.FinalExperimentState, "NONE", StringComparison.OrdinalIgnoreCase) &&
-                             !string.Equals(result.FinalExperimentState, "NOTREADY", StringComparison.OrdinalIgnoreCase);
+            result.Success = IsAttachableExperimentState(result.FinalExperimentState);
             if (!result.Success)
             {
                 result.Error = "No active GAMA experiment was detected by the monitor (state=" +
                                  (string.IsNullOrEmpty(result.FinalExperimentState) ? "?" : result.FinalExperimentState) +
-                                 ") after attempting to launch the monitor's current selection.";
+                                 "). Unity Play did not send send_simulation, launch_experiment, or resume_experiment. " +
+                                 "Open and start the intended experiment in GAMA, then enter Play Mode again.";
             }
             else
             {
@@ -798,7 +764,7 @@ internal static class GamaEditorMiddlewareOrchestrator
                 {
                     using (CancellationTokenSource closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(2)))
                     {
-                        await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "play launch done", closeCts.Token)
+                        await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "play attach done", closeCts.Token)
                             .ConfigureAwait(false);
                     }
                 }
@@ -811,6 +777,13 @@ internal static class GamaEditorMiddlewareOrchestrator
 
         result.LogTrail = trail.ToString();
         return result;
+    }
+
+    private static bool IsAttachableExperimentState(string state)
+    {
+        return !string.IsNullOrWhiteSpace(state) &&
+               !string.Equals(state, "NONE", StringComparison.OrdinalIgnoreCase) &&
+               !string.Equals(state, "NOTREADY", StringComparison.OrdinalIgnoreCase);
     }
 
     private struct JsonSettingsLookupResult
