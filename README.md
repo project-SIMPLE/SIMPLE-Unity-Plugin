@@ -189,6 +189,8 @@ It includes:
   quick access to the Unity Console. Verbose mode is disabled by default;
   essential warnings, errors, and actionable UI messages remain available.
 
+- **Workspace Explorer:** Allows browsing local GAMA workspaces and experiments.
+
 - **Species Settings:** Lets users adjust visual settings per species.
 
 - **Advanced Sections**  
@@ -367,6 +369,29 @@ External scripts should not be imported by default.
 
 ---
 
+## Workspace Explorer
+
+The Workspace Explorer allows users to inspect a local GAMA workspace without requiring middleware connectivity.
+
+It can:
+
+- choose a workspace folder path;
+- scan `.gaml` files;
+- discover declared `experiment` blocks;
+- list experiments with a heuristic capability label:
+  - `VR`
+  - `Non-VR`
+  - `VR + Non-VR`
+  - `Unknown`
+
+Notes:
+
+- capability detection is heuristic and depends on keywords or metadata present in experiment blocks;
+- invalid paths, missing metadata, and permission issues are handled without crashing the editor;
+- Workspace Explorer is useful for browsing experiments, but the main preview workflow is based on the experiment currently opened or selected in GAMA.
+
+---
+
 ## Package Contents
 
 - `Runtime/`  
@@ -375,8 +400,8 @@ External scripts should not be imported by default.
 - `Runtime/ThirdParty/NativeWebSocket/`  
   Vendored NativeWebSocket transport used by the runtime client.
 
-- `Editor/`
-  GAMA Panel, setup tools, preview tools, inspector tooling, and editor-only utilities.
+- `Editor/`  
+  GAMA Panel, workspace explorer, setup tools, preview tools, inspector tooling, and editor-only utilities.
 
 - `Samples~/`  
   Importable Unity scenes and templates.

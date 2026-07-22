@@ -44,7 +44,7 @@ public sealed class GamaPanelWindow : EditorWindow
     private const string GamaCaptureMonitorPortPrefKey = "ProjectSimple.GamaUnity.Panel.GamaCaptureMonitorPort";
     private const string GamaMiddlewareScriptPrefKey = "ProjectSimple.GamaUnity.Panel.GamaMiddlewareScript";
     private const string SelectedCodeExampleIndexPrefKey = "ProjectSimple.GamaUnity.Panel.SelectedCodeExampleIndex";
-    private const string LocalToolsExpandedPrefKey = "ProjectSimple.GamaUnity.Panel.LocalToolsExpanded";
+    private const string WorkspaceTabAdvancedPrefKey = "ProjectSimple.GamaUnity.Panel.WorkspaceTabAdvancedExpanded";
     private const string AutoHidePreviewOnPlayPrefKey = "ProjectSimple.GamaUnity.Panel.AutoHidePreviewOnPlay";
     private const string ApplyPreviewSettingsToPlayPrefKey = "ProjectSimple.GamaUnity.Panel.ApplyPreviewSettingsToPlay";
     private const string AutoUpdatePreviewPrefKey = "ProjectSimple.GamaUnity.Panel.AutoUpdatePreview";
@@ -56,15 +56,19 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         "Setup Scene",
         "GAMA Preview",
-        "Troubleshooting"
+        "Troubleshooting",
+        "Workspace Explorer (alpha)"
     };
 
     private const int TabSetupScene = 0;
     private const int TabImportExperiment = 1;
     private const int TabTroubleshooting = 2;
+    private const int TabWorkspace = 3;
 
     private int selectedTab;
-    private bool localToolsExpanded;
+    private readonly GamaWorkspaceExplorerPanel workspaceExplorerPanel = new GamaWorkspaceExplorerPanel();
+    private bool workspaceExplorerHostReady;
+    private bool workspaceTabAdvancedExpanded;
     private string pendingCaptureAbortUserMessage;
     private string ghostPlayerIdToPurge = string.Empty;
     private string prefabSourceFolder = string.Empty;
@@ -137,6 +141,8 @@ public sealed class GamaPanelWindow : EditorWindow
     private Vector2 experimentScroll;
     private Vector2 agentsScroll;
     private Vector2 troubleshootingScroll;
+    private Vector2 workspaceScroll;
+    private Vector2 workspaceExperimentListScroll;
     private Vector2 setupSceneScroll;
     private List<GamaCodeExampleSceneInfo> codeExampleScenes = new List<GamaCodeExampleSceneInfo>();
     private int selectedCodeExampleIndex;
@@ -168,7 +174,7 @@ public sealed class GamaPanelWindow : EditorWindow
     {
         GamaPanelWindow window = GetWindow<GamaPanelWindow>("GAMA Panel");
         window.minSize = new Vector2(760f, 480f);
-        window.selectedTab = Mathf.Clamp(tab, TabSetupScene, TabTroubleshooting);
+        window.selectedTab = Mathf.Clamp(tab, TabSetupScene, TabWorkspace);
         window.Show();
     }
 
@@ -270,7 +276,7 @@ public sealed class GamaPanelWindow : EditorWindow
         }
         middlewareScriptPath = EditorPrefs.GetString(GamaMiddlewareScriptPrefKey, middlewareScriptPath);
         selectedCodeExampleIndex = EditorPrefs.GetInt(SelectedCodeExampleIndexPrefKey, selectedCodeExampleIndex);
-        localToolsExpanded = EditorPrefs.GetBool(LocalToolsExpandedPrefKey, false);
+        workspaceTabAdvancedExpanded = EditorPrefs.GetBool(WorkspaceTabAdvancedPrefKey, false);
         RefreshCodeExampleScenes();
 
         GameObject previewRoot = GameObject.Find(StaticPreviewRootName);
@@ -287,6 +293,11 @@ public sealed class GamaPanelWindow : EditorWindow
 
     private void Update()
     {
+        if (workspaceExplorerHostReady)
+        {
+            workspaceExplorerPanel.Tick(this);
+        }
+
         if (captureTask != null)
         {
             if (captureTask.IsCompleted)
@@ -393,7 +404,7 @@ public sealed class GamaPanelWindow : EditorWindow
                 DrawTroubleshootingTab();
                 break;
             default:
-                DrawSetupSceneTab();
+                DrawWorkspaceTab();
                 break;
         }
     }
@@ -482,6 +493,57 @@ public sealed class GamaPanelWindow : EditorWindow
         if (GUILayout.Button("Open Unity Console", GUILayout.Height(28f), GUILayout.Width(180f)))
         {
             EditorApplication.ExecuteMenuItem("Window/General/Console");
+        }
+
+        EditorGUILayout.EndScrollView();
+    }
+
+    private void EnsureWorkspaceExplorerHostReady()
+    {
+        if (workspaceExplorerHostReady)
+        {
+            return;
+        }
+
+        workspaceExplorerPanel.OnHostEnable();
+        workspaceExplorerHostReady = true;
+    }
+
+    private void DrawWorkspaceTab()
+    {
+        workspaceScroll = EditorGUILayout.BeginScrollView(workspaceScroll);
+        EnsureWorkspaceExplorerHostReady();
+        workspaceExplorerPanel.DrawCompactWorkspaceUi();
+
+        EditorGUILayout.Space(10f);
+        EditorGUI.BeginChangeCheck();
+        workspaceTabAdvancedExpanded = EditorGUILayout.Foldout(
+            workspaceTabAdvancedExpanded,
+            "Advanced Settings (scan: ports / auto-detection, .gaml exploration, prefabs, headless...)",
+            true);
+        if (EditorGUI.EndChangeCheck())
+        {
+            EditorPrefs.SetBool(WorkspaceTabAdvancedPrefKey, workspaceTabAdvancedExpanded);
+        }
+
+        if (workspaceTabAdvancedExpanded)
+        {
+            EditorGUI.indentLevel++;
+            EditorGUILayout.LabelField("Offline Scan", EditorStyles.boldLabel);
+            workspaceExplorerPanel.DrawAdvancedScannerOptions();
+            EditorGUILayout.Space(10f);
+            DrawWorkspaceConfigurationSection();
+            EditorGUILayout.Space(8f);
+            EditorGUILayout.LabelField("Explorer in Separate Window", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "Opens the same scan view in a separate window.",
+                MessageType.Info);
+            if (GUILayout.Button("Open Explorer in a Window", GUILayout.Height(24f)))
+            {
+                GamaWorkspaceExplorerWindow.ShowDetachedWindow();
+            }
+
+            EditorGUI.indentLevel--;
         }
 
         EditorGUILayout.EndScrollView();
@@ -617,14 +679,29 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorGUI.indentLevel--;
     }
 
-    private void DrawLocalToolsSection()
+    private void DrawWorkspaceConfigurationSection()
     {
-        EditorGUILayout.LabelField("Local Paths & Tools", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("GAMA Workspace & Tools", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "Optional paths used by prefab import, JSON export, and explicit headless capture. " +
-            "These settings are independent from the local workspace scanner.",
+            "Enter a workspace folder or .gaml file, then click Explore to analyze a model and prepare the GAMA Preview tab. 'Open in GAMA Preview' opens that tab with the selected experiment. Also here: external prefabs and headless export.",
             MessageType.Info);
 
+        DrawExperimentPathInput("Workspace or .gaml file");
+        EditorGUILayout.BeginHorizontal();
+        using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(experimentPath)))
+        {
+            if (GUILayout.Button("Explore", GUILayout.Width(120f)))
+            {
+                ExploreExperimentPathFromWorkspace();
+            }
+        }
+
+        GUILayout.Label(experimentStatus, EditorStyles.miniLabel, GUILayout.ExpandWidth(true));
+        EditorGUILayout.EndHorizontal();
+
+        DrawWorkspaceExperimentList();
+
+        EditorGUILayout.Space(12f);
         DrawPrefabSourcePathRow();
 
         EditorGUILayout.Space(8f);
@@ -785,6 +862,11 @@ public sealed class GamaPanelWindow : EditorWindow
             }
         }
 
+        if (GUILayout.Button("Workspace Explorer (alpha)", GUILayout.Width(190f)))
+        {
+            selectedTab = TabWorkspace;
+        }
+
         GUILayout.FlexibleSpace();
         EditorGUILayout.EndHorizontal();
     }
@@ -906,8 +988,8 @@ public sealed class GamaPanelWindow : EditorWindow
         EditorGUI.indentLevel++;
         EditorGUILayout.LabelField("Experiment Source", EditorStyles.boldLabel);
         EditorGUILayout.HelpBox(
-            "Choose a .gaml file or workspace folder here, then click Explore and select the experiment. " +
-            "Without middleware / cumulative preview, use the grid preview and agent settings (scale, color, visibility) as before.",
+            "Recommended workflow: 'Workspace Explorer (alpha)' tab → folder path or .gaml → Explore → 'Open in GAMA Preview' on the desired row. " +
+            "You can also enter the path here and click Explore. Without middleware / cumulative preview, use the grid preview and agent settings (scale, color, visibility) as before.",
             MessageType.Info);
 
         DrawExperimentPathInput();
@@ -919,23 +1001,6 @@ public sealed class GamaPanelWindow : EditorWindow
         if (experimentOptions.Count > 0)
         {
             DrawExperimentSelection();
-        }
-
-        EditorGUI.BeginChangeCheck();
-        localToolsExpanded = EditorGUILayout.Foldout(
-            localToolsExpanded,
-            "Local Paths & Tools (prefabs, JSON export, headless capture)",
-            true);
-        if (EditorGUI.EndChangeCheck())
-        {
-            EditorPrefs.SetBool(LocalToolsExpandedPrefKey, localToolsExpanded);
-        }
-
-        if (localToolsExpanded)
-        {
-            EditorGUI.indentLevel++;
-            DrawLocalToolsSection();
-            EditorGUI.indentLevel--;
         }
 
         if (analysis == null && experimentOptions.Count > 0)
@@ -1023,7 +1088,7 @@ public sealed class GamaPanelWindow : EditorWindow
         {
             string gamlHint = analysis != null && !string.IsNullOrEmpty(analysis.SourcePath)
                 ? analysis.SourcePath
-                : "(select a .gaml file or folder above, then click Explore)";
+                : "(import from Workspace Explorer or click Explore here)";
             EditorGUILayout.TextField(".gaml file used", gamlHint);
         }
 
@@ -1922,10 +1987,7 @@ public sealed class GamaPanelWindow : EditorWindow
             !selectedGamaPreviewMode &&
             string.IsNullOrWhiteSpace(runtimeModelPath))
         {
-            EditorUtility.DisplayDialog(
-                "Capture",
-                "First choose a valid .gaml file or folder in GAMA Preview > Advanced Preview Settings, then click Explore.",
-                "OK");
+            EditorUtility.DisplayDialog("Capture", "First explore a valid experiment from the Workspace tab.", "OK");
             captureFlowActive = false;
             return;
         }
@@ -2058,7 +2120,7 @@ public sealed class GamaPanelWindow : EditorWindow
             {
                 EditorUtility.DisplayDialog(
                     "Capture",
-                    "Please specify the path to gama-headless.bat in GAMA Preview > Advanced Preview Settings > Local Paths & Tools (or choose 'custom' mode).",
+                    "Please specify the path to gama-headless.bat in the Workspace tab (or choose 'custom' mode).",
                     "OK");
                 AbortCaptureIfRunning("Missing gama-headless.bat");
                 return;
@@ -3974,6 +4036,48 @@ public sealed class GamaPanelWindow : EditorWindow
         }
     }
 
+    private void DrawWorkspaceExperimentList()
+    {
+        if (experimentOptions.Count == 0)
+        {
+            return;
+        }
+
+        EditorGUILayout.Space(10f);
+        EditorGUILayout.LabelField("Detected Experiments", EditorStyles.boldLabel);
+        workspaceExperimentListScroll = EditorGUILayout.BeginScrollView(workspaceExperimentListScroll, GUILayout.MinHeight(Mathf.Clamp(28f + experimentOptions.Count * 36f, 80f, 280f)));
+        for (int i = 0; i < experimentOptions.Count; i++)
+        {
+            GamaPanelExperimentOption option = experimentOptions[i];
+            EditorGUILayout.BeginHorizontal("box");
+            EditorGUILayout.LabelField(option.DisplayName, GUILayout.ExpandWidth(true));
+            if (GUILayout.Button("Open in GAMA Preview", GUILayout.Width(170f), GUILayout.Height(22f)))
+            {
+                GoToImportExperimentWithIndex(i);
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        EditorGUILayout.EndScrollView();
+    }
+
+    private void GoToImportExperimentWithIndex(int index)
+    {
+        if (index < 0 || index >= experimentOptions.Count)
+        {
+            return;
+        }
+
+        selectedExperimentIndex = index;
+        AnalyzeSelectedExperiment();
+        SaveSelectedExperimentAsRuntimeTarget();
+        InvalidateCaptureSelectionCache();
+        experimentStatus = "Experiment imported: " + experimentOptions[index].DisplayName + ". Adjust agents / scene, run cumulative preview or generate static preview.";
+        selectedTab = TabImportExperiment;
+        Repaint();
+    }
+
     private void SaveSelectedExperimentAsRuntimeTarget()
     {
         if (selectedExperimentIndex < 0 || selectedExperimentIndex >= experimentOptions.Count)
@@ -4022,6 +4126,18 @@ public sealed class GamaPanelWindow : EditorWindow
         }
 
         return true;
+    }
+
+    private void ExploreExperimentPathFromWorkspace()
+    {
+        if (!TryPopulateExperimentOptions(out string errorMessage))
+        {
+            experimentStatus = errorMessage;
+            return;
+        }
+
+        experimentStatus = "Found " + experimentOptions.Count.ToString(CultureInfo.InvariantCulture) +
+            " experiment(s). Click 'Open in GAMA Preview' to open the GAMA Preview tab.";
     }
 
     private void ExploreExperimentPath()
