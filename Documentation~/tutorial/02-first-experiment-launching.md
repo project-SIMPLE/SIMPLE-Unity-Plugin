@@ -66,6 +66,11 @@ For more details, this step is explained [in this tutorial](https://doc.project-
 
 ![Unity Play Mode button](../images/tutorial/02-unity-play-mode-button-cropped.png)
 
+Unity only attaches to the experiment that is already active in GAMA. Pressing
+Play does not select a saved model, replace the current experiment, or send a
+launch command. If the wrong experiment is open, stop and select the intended
+one directly in GAMA before trying again.
+
 Runtime agents are created under:
 
 ```text
