@@ -20,7 +20,9 @@ In the **Inspector** window, find the GAMA agent or species settings. Unity shou
 the species detected from the running GAMA experiment.
 
 > [!TIP]
-> **Can't find the Inspector?** If the Inspector window is not visible in your Unity layout, you can open it via the top menu: **Window > General > Inspector**, or by pressing `Ctrl + 3` (Windows) / `Cmd + 3` (macOS).
+> **Can't find the Inspector?** If the Inspector window is not visible in your Unity layout, you can open it via the top menu:
+>
+> **Window > General > Inspector**, or by pressing `Ctrl + 3` (Windows) / `Cmd + 3` (macOS).
 >
 > <img width="1013" height="557" alt="Open Inspector Menu" src="https://github.com/user-attachments/assets/523641bb-b849-44dc-a32c-6e4e1643b94c" />
 
@@ -37,8 +39,6 @@ This lets you quickly verify that Unity can override the visual appearance of a 
 For example, the prey and predator species can be given different prefabs,
 colors, and scales so the running experiment becomes readable from Unity.
 
-![Play Mode personalization example](../images/tutorial/03-play-mode-personalization-example.png)
-
 ![Species Attributes](../images/tutorial/inspector-attributes.png)
 
 Using the Inspector, you can change the following attributes directly:
@@ -53,17 +53,7 @@ Using the Inspector, you can change the following attributes directly:
    
    ![Select Prefab Window](../images/tutorial/select-prefab-window.png)
    
-   > [!NOTE]
-   > **Missing Prefabs?**
-   > If you don't see these prefabs in the list, you can import them at any time by going to the top Unity menu: **GAMA > Import Default Prefabs**.
-   > 
-   > ![Import Prefabs Menu](../images/tutorial/gama-menu-import-prefabs.png)
-   > 
-   > Click **Import** when the prompt appears, and Unity will copy them into your project.
-   > 
-   > ![Import Prefabs Prompt](../images/tutorial/import-prefabs-prompt.png)
-   > 
-   > ![Import Success](../images/tutorial/import-prefabs-success.png)
+  
 2. **Color**: Quickly change the species color to separate them visually.
 3. **Scale Multiplier**: Make agents bigger or smaller so they are easier to see.
 4. **Position & Rotation Offset**: Adjust the 3D position and rotation of the instantiated prefab relative to the GAMA agent's center.
@@ -76,7 +66,22 @@ For example, you can quickly try exaggerated prefabs, colors, or scales to check
 that the override pipeline works, even if the result is not meant to be a final
 visual design.
 
-![Quick personalization example](../images/tutorial/03-quick-personalization-example.png)
+![Play Mode personalization example](../images/tutorial/03-play-mode-personalization-example.png)
+
+
+ > **Missing Prefabs?**
+   > 
+   > If you don't see these prefabs in the list, you can import them at any time by going to the top Unity menu:
+   > 
+   > **GAMA > Import Default Prefabs**.
+   > 
+   > ![Import Prefabs Menu](../images/tutorial/gama-menu-import-prefabs.png)
+   > 
+   > Click **Import** when the prompt appears, and Unity will copy them into your project.
+   > 
+   > ![Import Prefabs Prompt](../images/tutorial/import-prefabs-prompt.png)
+   > 
+   > ![Import Success](../images/tutorial/import-prefabs-success.png)
 
 ## 3.4 Why This Is Not The Best Workflow
 
