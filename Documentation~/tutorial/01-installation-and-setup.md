@@ -28,15 +28,13 @@ After the project opens, you should be on the Unity home/editor screen.
 
 ![Open Package Manager from Unity](../images/tutorial/Capture%20d'%C3%A9cran%202026-0dfgedfgdfg6-18%20161333.png)
 
-![Package Manager add button](../images/tutorial/01-package-manager-add-button.png)
+2. Click the **+** button.
 
+<img width="281" height="297" alt="01-package-manager-add-button" src="https://github.com/user-attachments/assets/0e5360b2-1312-4d41-a5ec-32eec09ae94c" />
 
-3. Click the **+** button.
+3. Select **Add package from git URL...**.
 
-
-5. Select **Add package from git URL...**.
-
-6. Enter:
+4. Enter:
 
 ```text
 https://github.com/project-SIMPLE/SIMPLE-Unity-Plugin.git
@@ -49,7 +47,7 @@ https://github.com/project-SIMPLE/SIMPLE-Unity-Plugin.git#branch-name
 ```
 ![Add package from Git URL](../images/tutorial/01-package-manager-git-url.png)
 
-7. After installation, the package should appear in the Package Manager.
+5. After installation, the package should appear in the Package Manager.
 
 ![Package installed](../images/tutorial/01-package-installed.png)
 
@@ -80,9 +78,8 @@ You can verify that the scene contains:
    - a `Connection Manager`;
    - a `Game Manager`;
    - required scene roots for preview and runtime objects.
-   - 
-![Scene ready for middleware](../images/tutorial/01-scene-ready-for-middleware.png)
-
+     
+<img width="756" height="347" alt="Capture d&#39;écran 2026-06-18 161318" src="https://github.com/user-attachments/assets/70400ebe-86b5-446f-be3d-46d86ee09619" />
 
 ## Result
 
