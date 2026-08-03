@@ -19,6 +19,8 @@ and tune the scene before running the live simulation again.
 
 You need:
 
-- Unity 6000.3.2f1;
-- GAMA;
-- `simple.webplatform` on branch **dev** using : `git clone -b dev --single-branch https://github.com/project-SIMPLE/simple.webplatform.git`;
+- **Unity 6** (6000.0 or newer). Unity 6000.3 LTS is recommended; this tutorial has been validated with Unity 6000.3.2f1;
+- **GAMA 2025.06**;
+- **simple.webplatform** on branch **dev** using :
+
+`git clone -b dev --single-branch https://github.com/project-SIMPLE/simple.webplatform.git`;
