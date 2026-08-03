@@ -7,6 +7,13 @@ scene for GAMA communication.
 
 Start by creating a new Unity project.
 
+> [!NOTE]
+> This package requires Unity 6000.0 or later. Unity 6.3 LTS is recommended.
+> This tutorial and its screenshots were created and validated with Unity 6000.3.2f1.
+> Other stable Unity 6 versions may also work, but they have not all been validated yet.
+> If you already have a recent stable Unity 6 version installed, you may try it before installing another Editor version.
+> Alpha and beta versions are not recommended for this tutorial.
+
 ![Create a new Unity project](../images/tutorial/01-create-new-unity-project.png)
 
 Check the choosen Unity version and Create project (you don't have to choose a perticular kind of project).
