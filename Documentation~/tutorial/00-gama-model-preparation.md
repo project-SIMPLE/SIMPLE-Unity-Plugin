@@ -19,7 +19,8 @@ _Example of the experiment that will be used throughout this tutorial_
 ## 0.2 Middleware Requirements
 
 Use the branch dev with : 
-git clone -b dev --single-branch https://github.com/project-SIMPLE/simple.webplatform.git
+
+`git clone -b dev --single-branch https://github.com/project-SIMPLE/simple.webplatform.git`
 
 Open the Websocket connection thanks to [this tutorial](https://github.com/project-SIMPLE/simple.webplatform).
 
