@@ -28,6 +28,23 @@ public static class GamaPreviewPlayModeGuard
         "ProjectSimple.GamaUnity.PreviewSafety.CurrentPlayExperiment";
     private const string CurrentPlayMonitorIdStateKey =
         "ProjectSimple.GamaUnity.PreviewSafety.CurrentPlayMonitorId";
+    private const string PreparedSpeciesOverridesAssetPathStateKey =
+        "ProjectSimple.GamaUnity.Play.PreparedSpeciesOverridesAssetPath";
+    private const string PreparedSpeciesOverridesModelPathStateKey =
+        "ProjectSimple.GamaUnity.Play.PreparedSpeciesOverridesModelPath";
+    private const string PreparedSpeciesOverridesExperimentStateKey =
+        "ProjectSimple.GamaUnity.Play.PreparedSpeciesOverridesExperiment";
+    private const double PreparedSpeciesOverrideContextRetryTimeoutSeconds = 5.0d;
+
+    private static double preparedSpeciesOverrideContextRetryDeadline;
+
+    private enum PreparedSpeciesOverrideContextAssignmentResult
+    {
+        Assigned,
+        MissingSessionContext,
+        MissingAsset,
+        MissingManager
+    }
 
     static GamaPreviewPlayModeGuard()
     {
@@ -39,6 +56,8 @@ public static class GamaPreviewPlayModeGuard
     {
         if (state == PlayModeStateChange.ExitingEditMode)
         {
+            CancelPreparedSpeciesOverrideContextRetry();
+            ClearPreparedSpeciesOverrideContext();
             GamaEditorPlayExitPreviewCapture.ClearPendingSnapshot();
             GamaEditorPlayRuntimeRecorder.BeginPlaySession();
             ClearPlayPreviewTransitionState();
@@ -53,7 +72,7 @@ public static class GamaPreviewPlayModeGuard
             }
 
             GamaLog.Dev("[GAMA][PLAY] Unity Play player id: " + StaticInformation.getId());
-            AssignSpeciesOverrideContextForPlay();
+            PrepareSpeciesOverrideContextForPlay();
 
             GameObject root = FindPreviewRoot();
             if (root != null)
@@ -73,8 +92,22 @@ public static class GamaPreviewPlayModeGuard
             AuthorizePreviewReuse(preparation);
             RecordCurrentPlayPreviewContext(preparation);
         }
+        else if (state == PlayModeStateChange.EnteredPlayMode)
+        {
+            PreparedSpeciesOverrideContextAssignmentResult assignmentResult =
+                TryAssignPreparedSpeciesOverrideContextFromSession();
+            if (assignmentResult == PreparedSpeciesOverrideContextAssignmentResult.MissingManager)
+            {
+                SchedulePreparedSpeciesOverrideContextRetry();
+            }
+            else if (assignmentResult != PreparedSpeciesOverrideContextAssignmentResult.Assigned)
+            {
+                LogPreparedSpeciesOverrideContextAssignmentFailure(assignmentResult);
+            }
+        }
         else if (state == PlayModeStateChange.ExitingPlayMode)
         {
+            CancelPreparedSpeciesOverrideContextRetry();
             CaptureEditablePreviewBeforePlayModeExit();
             string runtimePlayerId = StaticInformation.getId();
             PrepareSimulationManagersForEditorPlayExit();
@@ -86,6 +119,7 @@ public static class GamaPreviewPlayModeGuard
         }
         else if (state == PlayModeStateChange.EnteredEditMode)
         {
+            CancelPreparedSpeciesOverrideContextRetry();
             GamaEditorPlayRuntimeRecorder.EndPlaySession();
             ClearPreviewReuseAuthorization();
             GamaRuntimePreviewOverrideApplier.ClearRuntimeSessionOverrides();
@@ -107,6 +141,7 @@ public static class GamaPreviewPlayModeGuard
             GamaEditorPreviewOverrideApplier.ScheduleApplyOverridesToCurrentPreview();
             GamaEditorPlayExitPreviewCapture.ScheduleRestoreAfterPlayModeExit();
             ClearPlayPreviewTransitionState();
+            ClearPreparedSpeciesOverrideContext();
         }
     }
 
@@ -405,13 +440,197 @@ public static class GamaPreviewPlayModeGuard
         PlayerPrefs.Save();
     }
 
-    private static void AssignSpeciesOverrideContextForPlay()
+    private static void PrepareSpeciesOverrideContextForPlay()
     {
-        if (GamaSpeciesAppearanceEditorCoordinator.TryResolveActiveContext(
+        if (!TryResolveSpeciesOverrideContextForPlay(
+                GamaSpeciesRenderOverridesEditorStore.GetOrCreateDefaultAsset,
                 out GamaSpeciesAppearanceContext context))
         {
-            GamaSpeciesAppearanceEditorCoordinator.SetActiveContext(context);
+            GamaLog.Warning(
+                "[GAMA][RUNTIME][OVERRIDE] Could not prepare the shared species overrides asset before Play Mode.");
+            return;
         }
+
+        GamaSpeciesAppearanceEditorCoordinator.SetActiveContext(context);
+
+        string assetPath = AssetDatabase.GetAssetPath(context.Asset);
+        if (string.IsNullOrWhiteSpace(assetPath))
+        {
+            GamaLog.Warning(
+                "[GAMA][RUNTIME][OVERRIDE] The active species overrides asset is not persistent and cannot be restored after a Domain Reload.");
+            return;
+        }
+
+        SessionState.SetString(PreparedSpeciesOverridesAssetPathStateKey, assetPath);
+        SessionState.SetString(PreparedSpeciesOverridesModelPathStateKey, context.ModelPath);
+        SessionState.SetString(PreparedSpeciesOverridesExperimentStateKey, context.ExperimentName);
+        GamaLog.Dev(
+            "[GAMA][RUNTIME][OVERRIDE] Prepared Play Mode species context asset=" + assetPath +
+            " model=" + context.ModelPath +
+            " experiment=" + context.ExperimentName);
+    }
+
+    internal static bool TryResolveSpeciesOverrideContextForPlay(
+        Func<GamaSpeciesRenderOverrides> fallbackAssetResolver,
+        out GamaSpeciesAppearanceContext context)
+    {
+        if (GamaSpeciesAppearanceEditorCoordinator.TryResolveActiveContext(out context))
+        {
+            return true;
+        }
+
+        GamaSpeciesRenderOverrides fallbackAsset = fallbackAssetResolver != null
+            ? fallbackAssetResolver()
+            : null;
+        context = new GamaSpeciesAppearanceContext(
+            fallbackAsset,
+            string.Empty,
+            string.Empty);
+        return context.IsValid;
+    }
+
+    internal static bool TryAssignPreparedSpeciesOverrideContext(
+        GamaSpeciesRenderOverrides asset,
+        string modelPath,
+        string experimentName)
+    {
+        if (asset == null)
+        {
+            return false;
+        }
+
+        SimulationManager[] managers = UnityEngine.Object.FindObjectsByType<SimulationManager>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+        bool managerAvailable = false;
+        for (int i = 0; i < managers.Length; i++)
+        {
+            if (managers[i] != null)
+            {
+                managerAvailable = true;
+                break;
+            }
+        }
+
+        if (!managerAvailable)
+        {
+            return false;
+        }
+
+        GamaSpeciesAppearanceEditorCoordinator.SetActiveContext(
+            new GamaSpeciesAppearanceContext(asset, modelPath, experimentName));
+        GamaRuntimePreviewOverrideApplier.RefreshNow();
+        return true;
+    }
+
+    private static PreparedSpeciesOverrideContextAssignmentResult
+        TryAssignPreparedSpeciesOverrideContextFromSession()
+    {
+        string assetPath = SessionState.GetString(
+            PreparedSpeciesOverridesAssetPathStateKey,
+            string.Empty);
+        if (string.IsNullOrWhiteSpace(assetPath))
+        {
+            return PreparedSpeciesOverrideContextAssignmentResult.MissingSessionContext;
+        }
+
+        GamaSpeciesRenderOverrides asset =
+            AssetDatabase.LoadAssetAtPath<GamaSpeciesRenderOverrides>(assetPath);
+        if (asset == null)
+        {
+            return PreparedSpeciesOverrideContextAssignmentResult.MissingAsset;
+        }
+
+        string modelPath = SessionState.GetString(
+            PreparedSpeciesOverridesModelPathStateKey,
+            string.Empty);
+        string experimentName = SessionState.GetString(
+            PreparedSpeciesOverridesExperimentStateKey,
+            string.Empty);
+        bool assigned = TryAssignPreparedSpeciesOverrideContext(
+            asset,
+            modelPath,
+            experimentName);
+        if (assigned)
+        {
+            GamaLog.Dev(
+                "[GAMA][RUNTIME][OVERRIDE] Assigned the prepared species context to the Play Mode SimulationManager.");
+            return PreparedSpeciesOverrideContextAssignmentResult.Assigned;
+        }
+
+        return PreparedSpeciesOverrideContextAssignmentResult.MissingManager;
+    }
+
+    private static void SchedulePreparedSpeciesOverrideContextRetry()
+    {
+        CancelPreparedSpeciesOverrideContextRetry();
+        preparedSpeciesOverrideContextRetryDeadline =
+            EditorApplication.timeSinceStartup + PreparedSpeciesOverrideContextRetryTimeoutSeconds;
+        EditorApplication.update += RetryPreparedSpeciesOverrideContextAssignment;
+    }
+
+    private static void RetryPreparedSpeciesOverrideContextAssignment()
+    {
+        if (!EditorApplication.isPlaying)
+        {
+            CancelPreparedSpeciesOverrideContextRetry();
+            return;
+        }
+
+        PreparedSpeciesOverrideContextAssignmentResult assignmentResult =
+            TryAssignPreparedSpeciesOverrideContextFromSession();
+        if (assignmentResult == PreparedSpeciesOverrideContextAssignmentResult.Assigned)
+        {
+            CancelPreparedSpeciesOverrideContextRetry();
+            return;
+        }
+
+        if (assignmentResult == PreparedSpeciesOverrideContextAssignmentResult.MissingManager &&
+            EditorApplication.timeSinceStartup < preparedSpeciesOverrideContextRetryDeadline)
+        {
+            return;
+        }
+
+        CancelPreparedSpeciesOverrideContextRetry();
+        LogPreparedSpeciesOverrideContextAssignmentFailure(assignmentResult);
+    }
+
+    private static void CancelPreparedSpeciesOverrideContextRetry()
+    {
+        EditorApplication.update -= RetryPreparedSpeciesOverrideContextAssignment;
+        preparedSpeciesOverrideContextRetryDeadline = 0d;
+    }
+
+    private static void LogPreparedSpeciesOverrideContextAssignmentFailure(
+        PreparedSpeciesOverrideContextAssignmentResult assignmentResult)
+    {
+        switch (assignmentResult)
+        {
+            case PreparedSpeciesOverrideContextAssignmentResult.MissingSessionContext:
+                GamaLog.Warning(
+                    "[GAMA][RUNTIME][OVERRIDE] No prepared species context was available when Play Mode started.");
+                break;
+            case PreparedSpeciesOverrideContextAssignmentResult.MissingAsset:
+                string assetPath = SessionState.GetString(
+                    PreparedSpeciesOverridesAssetPathStateKey,
+                    string.Empty);
+                GamaLog.Warning(
+                    "[GAMA][RUNTIME][OVERRIDE] Could not load the prepared species overrides asset at " +
+                    assetPath + ".");
+                break;
+            case PreparedSpeciesOverrideContextAssignmentResult.MissingManager:
+                GamaLog.Warning(
+                    "[GAMA][RUNTIME][OVERRIDE] Could not assign the prepared species context because no Play Mode SimulationManager became available within " +
+                    PreparedSpeciesOverrideContextRetryTimeoutSeconds + " seconds.");
+                break;
+        }
+    }
+
+    private static void ClearPreparedSpeciesOverrideContext()
+    {
+        SessionState.EraseString(PreparedSpeciesOverridesAssetPathStateKey);
+        SessionState.EraseString(PreparedSpeciesOverridesModelPathStateKey);
+        SessionState.EraseString(PreparedSpeciesOverridesExperimentStateKey);
     }
 
     private static void RestorePersistedAppearanceBeforeLeavingPlay()
