@@ -107,6 +107,8 @@ public static class GamaPreviewPlayModeGuard
         }
         else if (state == PlayModeStateChange.ExitingPlayMode)
         {
+            StopPausedSocketPump();
+            StopResumeReconnectWatch();
             CancelPreparedSpeciesOverrideContextRetry();
             CaptureEditablePreviewBeforePlayModeExit();
             string runtimePlayerId = StaticInformation.getId();
@@ -241,18 +243,152 @@ public static class GamaPreviewPlayModeGuard
         SessionState.EraseString(CurrentPlayMonitorIdStateKey);
     }
 
+    private static bool pausedSocketPumpRegistered;
+
     private static void OnPauseStateChanged(PauseState state)
     {
         if (state == PauseState.Paused && EditorApplication.isPlaying)
         {
+            StartPausedSocketPump();
             TryPauseGamaFromUnity("Unity Play paused");
         }
         else if (state == PauseState.Unpaused && EditorApplication.isPlaying)
         {
             TryResumeGamaFromUnity("Unity Play resumed");
+            StopPausedSocketPump();
+            StartResumeReconnectWatch();
         }
     }
 
+    private static void StartPausedSocketPump()
+    {
+        if (pausedSocketPumpRegistered)
+        {
+            return;
+        }
+
+        EditorApplication.update -= PumpPausedSocketMessages;
+        EditorApplication.update += PumpPausedSocketMessages;
+        pausedSocketPumpRegistered = true;
+
+        // Process anything already waiting in the queue immediately.
+        PumpPausedSocketMessages();
+
+        GamaLog.Dev("[GAMA][PLAY] Runtime WebSocket pump kept alive during Unity Pause.");
+    }
+
+    private static void StopPausedSocketPump()
+    {
+        EditorApplication.update -= PumpPausedSocketMessages;
+        pausedSocketPumpRegistered = false;
+    }
+
+    private static void PumpPausedSocketMessages()
+    {
+        if (!EditorApplication.isPlaying || !EditorApplication.isPaused)
+        {
+            return;
+        }
+
+        ConnectionManager manager = ConnectionManager.Instance;
+        if (manager != null)
+        {
+            manager.PumpSocketMessages();
+        }
+    }
+
+    private static bool resumeReconnectWatchRegistered;
+    private static double resumeReconnectWatchDeadline;
+    private static double nextResumeReconnectAttemptTime;
+    private static int resumeReconnectAttempts;
+
+    private static void StartResumeReconnectWatch()
+    {
+        StopResumeReconnectWatch();
+
+        resumeReconnectAttempts = 0;
+        nextResumeReconnectAttemptTime =
+            EditorApplication.timeSinceStartup + 0.25d;
+        resumeReconnectWatchDeadline =
+            EditorApplication.timeSinceStartup + 15.0d;
+
+        EditorApplication.update += PumpResumeReconnect;
+        resumeReconnectWatchRegistered = true;
+
+        GamaLog.Dev(
+            "[GAMA][PLAY] Watching runtime websocket after Unity Resume.");
+    }
+
+    private static void StopResumeReconnectWatch()
+    {
+        EditorApplication.update -= PumpResumeReconnect;
+        resumeReconnectWatchRegistered = false;
+        resumeReconnectWatchDeadline = 0d;
+        nextResumeReconnectAttemptTime = 0d;
+        resumeReconnectAttempts = 0;
+    }
+
+    private static void PumpResumeReconnect()
+    {
+        if (!EditorApplication.isPlaying)
+        {
+            StopResumeReconnectWatch();
+            return;
+        }
+
+        if (EditorApplication.isPaused)
+        {
+            return;
+        }
+
+        ConnectionManager manager = ConnectionManager.Instance;
+        if (manager == null)
+        {
+            return;
+        }
+
+        // Flush queued close/open/state callbacks.
+        manager.PumpSocketMessages();
+
+        if (manager.IsSocketOpen &&
+            manager.IsConnectionState(ConnectionState.AUTHENTICATED))
+        {
+            GamaLog.Dev(
+                "[GAMA][PLAY] Runtime websocket restored after Unity Resume.");
+
+            StopResumeReconnectWatch();
+            return;
+        }
+
+        double now = EditorApplication.timeSinceStartup;
+
+        if (now >= resumeReconnectWatchDeadline)
+        {
+            GamaLog.Warning(
+                "[GAMA][PLAY] Runtime websocket was not restored within 15 seconds after Unity Resume.");
+
+            StopResumeReconnectWatch();
+            return;
+        }
+
+        if (now < nextResumeReconnectAttemptTime)
+        {
+            return;
+        }
+
+        if (manager.IsConnectionState(ConnectionState.DISCONNECTED) &&
+            !manager.IsSocketOpen)
+        {
+            resumeReconnectAttempts++;
+            nextResumeReconnectAttemptTime = now + 1.0d;
+
+            GamaLog.Dev(
+                "[GAMA][PLAY] Runtime websocket reconnect after Resume, attempt " +
+                resumeReconnectAttempts + ".");
+
+            manager.Reconnect();
+        }
+    }
     private static void TryPauseGamaFromUnity(string reason, int attempts = 1)
     {
         if (!EditorPrefs.GetBool(PauseGamaOnPlayExitPrefKey, true))

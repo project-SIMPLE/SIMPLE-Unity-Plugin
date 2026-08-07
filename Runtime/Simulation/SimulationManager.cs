@@ -4805,7 +4805,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
         else if (state == ConnectionState.DISCONNECTED)
         {
-            RevokePreviewReuseForConnectionChange();
+            RevokePreviewReuseForConnectionChange(false);
             GamaLog.Info("[GAMA] Disconnected from simple.webplatform.");            runtimePlayerBootstrapConfirmed = false;
             runtimePlayerBootstrapAttempts = 0;
             nextRuntimePlayerBootstrapTime = 0f;
@@ -4814,7 +4814,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         }
     }
 
-    private void RevokePreviewReuseForConnectionChange()
+    private void RevokePreviewReuseForConnectionChange(bool destroyRuntimeObjects = true)
     {
         GamaPreviewSession[] sessions = UnityEngine.Object.FindObjectsByType<GamaPreviewSession>(
             FindObjectsInactive.Include,
@@ -4827,7 +4827,10 @@ public abstract partial class SimulationManager : MonoBehaviour
             }
         }
 
-        PrepareForEditorPlayExit();
+        if (destroyRuntimeObjects)
+        {
+            PrepareForEditorPlayExit();
+        }
 
         // Reuse is a one-shot authorization made before this Play session. A
         // reconnect or experiment restart must build fresh runtime objects until

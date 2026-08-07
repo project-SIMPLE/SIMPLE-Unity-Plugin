@@ -130,12 +130,23 @@ public abstract class WebSocketConnector : MonoBehaviour
 
     void Update()
     {
-    #if !UNITY_WEBGL || UNITY_EDITOR
+        PumpSocketMessages();
+    }
+
+    /// <summary>
+    /// Dispatches queued WebSocket messages on the Unity main thread.
+    /// In the Editor this can also be called from EditorApplication.update
+    /// while Play Mode itself is paused, so middleware heartbeat ping/pong
+    /// continues to work.
+    /// </summary>
+    public void PumpSocketMessages()
+    {
+#if !UNITY_WEBGL || UNITY_EDITOR
         if (socket != null)
         {
             socket.DispatchMessageQueue();
         }
-    #endif
+#endif
     }
 
 
