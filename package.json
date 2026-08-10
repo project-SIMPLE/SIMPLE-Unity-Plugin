@@ -36,7 +36,7 @@
     {
       "displayName": "Scene Templates",
       "description": "Reusable FPS and sky-view starter scenes.",
-      "path": "Samples~/Templates"
+      "path": "Samples~/Scene Templates"
     }
   ]
 }
