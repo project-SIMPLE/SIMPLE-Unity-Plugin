@@ -392,7 +392,7 @@ public class GamaPreviewReuseIdentityRegistryTests
                 "geometry:wolf-shape",
                 out GameObject firstTake),
             Is.True);
-        int originalInstanceId = firstTake.GetInstanceID();
+        GamaUnityObjectId originalInstanceId = firstTake.GetGamaObjectId();
 
         GameObject runtimeRoot = new GameObject("runtime-root");
         Mesh runtimeMesh = new Mesh { name = "runtime-only-mesh" };
@@ -439,7 +439,7 @@ public class GamaPreviewReuseIdentityRegistryTests
                     "geometry:wolf-shape",
                     out GameObject secondTake),
                 Is.True);
-            Assert.That(secondTake.GetInstanceID(), Is.EqualTo(originalInstanceId));
+            Assert.That(secondTake.GetGamaObjectId(), Is.EqualTo(originalInstanceId));
             registry.RestoreAll();
             registry.RestoreAll();
             Assert.That(registry.ClaimedCount, Is.Zero);

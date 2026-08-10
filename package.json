@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "displayName": "SIMPLE Unity Plugin",
   "description": "Unity runtime tools for SIMPLE VR scenes connected through the simple.webplatform middleware.",
-  "unity": "6000.0",
+  "unity": "6000.3",
+  "unityRelease": "2f1",
   "dependencies": {
     "com.unity.burst": "1.8.4",
     "com.unity.collections": "2.4.0",

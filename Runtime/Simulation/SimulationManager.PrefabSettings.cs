@@ -561,7 +561,7 @@ public class GamaPrefabPropertyBinding
             if (previewOverride.prefabOverride != null)
             {
                 prefab = previewOverride.prefabOverride;
-                signature = "property:" + propertyId + ":" + prefab.GetInstanceID();
+                signature = "property:" + propertyId + ":" + prefab.GetGamaObjectId();
                 return true;
             }
 
@@ -587,7 +587,7 @@ public class GamaPrefabPropertyBinding
         if (unityPrefab != null)
         {
             prefab = unityPrefab;
-            signature = "property:" + propertyId + ":" + unityPrefab.GetInstanceID();
+            signature = "property:" + propertyId + ":" + unityPrefab.GetGamaObjectId();
             return true;
         }
 

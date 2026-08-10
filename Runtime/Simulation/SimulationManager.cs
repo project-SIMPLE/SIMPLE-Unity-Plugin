@@ -214,9 +214,9 @@ public abstract partial class SimulationManager : MonoBehaviour
     private readonly Plane[] prefabStreamingPlanes = new Plane[6];
     private readonly List<string> prefabStreamingKeys = new List<string>();
     private readonly Dictionary<string, Stack<GameObject>> prefabPools = new Dictionary<string, Stack<GameObject>>(StringComparer.OrdinalIgnoreCase);
-    /// <summary>Per-instance hysteresis when culling prefabs farther than render distance (key = GetInstanceID).</summary>
-    private readonly Dictionary<int, bool> prefabDistanceCulled = new Dictionary<int, bool>();
-    private readonly HashSet<int> gpuInstancingTouchedMaterials = new HashSet<int>();
+    /// <summary>Per-instance hysteresis when culling prefabs farther than render distance.</summary>
+    private readonly Dictionary<GamaUnityObjectId, bool> prefabDistanceCulled = new Dictionary<GamaUnityObjectId, bool>();
+    private readonly HashSet<GamaUnityObjectId> gpuInstancingTouchedMaterials = new HashSet<GamaUnityObjectId>();
     private float prefabViewTimer;
     private int prefabStreamingCursor;
     private Transform prefabPoolRoot;
@@ -2819,7 +2819,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         RemoveManagedRuntimeListeners(instance);
         if (instance != null)
         {
-            prefabDistanceCulled.Remove(instance.GetInstanceID());
+            prefabDistanceCulled.Remove(instance.GetGamaObjectId());
         }
 
         adoptedPreviewKeysByRuntimeKey.Remove(key);
@@ -3047,7 +3047,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             return;
         }
 
-        int id = instance.GetInstanceID();
+        GamaUnityObjectId id = instance.GetGamaObjectId();
         prefabDistanceCulled.Remove(id);
 
         if (!enablePrefabPooling)
@@ -3173,7 +3173,7 @@ public abstract partial class SimulationManager : MonoBehaviour
                     continue;
                 }
 
-                int mid = mat.GetInstanceID();
+                GamaUnityObjectId mid = mat.GetGamaObjectId();
                 if (!gpuInstancingTouchedMaterials.Add(mid))
                 {
                     continue;
@@ -3257,7 +3257,7 @@ public abstract partial class SimulationManager : MonoBehaviour
             inFrustum = GeometryUtility.TestPlanesAABB(prefabStreamingPlanes, bounds);
             if (!inFrustum)
             {
-                prefabDistanceCulled.Remove(obj.GetInstanceID());
+                prefabDistanceCulled.Remove(obj.GetGamaObjectId());
                 return false;
             }
         }
@@ -3272,7 +3272,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         Vector3 closest = bounds.ClosestPoint(camPos);
         float distance = Vector3.Distance(closest, camPos);
 
-        int id = obj.GetInstanceID();
+        GamaUnityObjectId id = obj.GetGamaObjectId();
         bool wasCulledDistance;
         bool hasState = prefabDistanceCulled.TryGetValue(id, out wasCulledDistance);
 
@@ -3634,7 +3634,7 @@ public abstract partial class SimulationManager : MonoBehaviour
         {
             visualOverride = obj.transform.Find("VisualOverride");
             string visualSignature = visualState.PrefabOverride != null
-                ? "object:" + visualState.PrefabOverride.GetInstanceID()
+                ? "object:" + visualState.PrefabOverride.GetGamaObjectId()
                 : "resources:" + visualState.PrefabResourcePath;
             bool needsNewInstantiate = false;
             if (visualOverride != null)

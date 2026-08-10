@@ -42,7 +42,7 @@ public readonly struct GamaSpeciesAppearanceContext : IEquatable<GamaSpeciesAppe
     {
         unchecked
         {
-            int hash = Asset != null ? Asset.GetInstanceID() : 0;
+            int hash = Asset != null ? Asset.GetGamaObjectId().GetHashCode() : 0;
             hash = hash * 397 ^ GamaSpeciesRenderOverrides.NormalizeModelPath(ModelPath).GetHashCode();
             hash = hash * 397 ^ GamaSpeciesRenderOverrides.NormalizeKey(ExperimentName).GetHashCode();
             return hash;
@@ -462,7 +462,7 @@ public static class GamaSpeciesAppearanceStateStore
 
     private static string BuildContextKey(GamaSpeciesAppearanceContext context)
     {
-        int assetId = context.Asset != null ? context.Asset.GetInstanceID() : 0;
+        GamaUnityObjectId assetId = context.Asset != null ? context.Asset.GetGamaObjectId() : default;
         return assetId + "|" +
                GamaSpeciesRenderOverrides.NormalizeModelPath(context.ModelPath) + "|" +
                GamaSpeciesRenderOverrides.NormalizeKey(context.ExperimentName);

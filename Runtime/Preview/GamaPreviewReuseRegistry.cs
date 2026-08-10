@@ -133,8 +133,8 @@ public sealed class GamaPreviewReuseRegistry : IDisposable
         public RendererSnapshot[] Renderers;
         public MeshFilterSnapshot[] MeshFilters;
         public SkinnedMeshSnapshot[] SkinnedMeshes;
-        public HashSet<int> OriginalGameObjectIds;
-        public HashSet<int> OriginalComponentIds;
+        public HashSet<GamaUnityObjectId> OriginalGameObjectIds;
+        public HashSet<GamaUnityObjectId> OriginalComponentIds;
         public bool Claimed;
 
         public GameObject Instance
@@ -147,19 +147,19 @@ public sealed class GamaPreviewReuseRegistry : IDisposable
             Transform markerTransform = marker.transform;
             Transform[] transforms = marker.GetComponentsInChildren<Transform>(true);
             ActiveStateSnapshot[] activeStates = new ActiveStateSnapshot[transforms.Length];
-            HashSet<int> originalGameObjectIds = new HashSet<int>();
-            HashSet<int> originalComponentIds = new HashSet<int>();
+            HashSet<GamaUnityObjectId> originalGameObjectIds = new HashSet<GamaUnityObjectId>();
+            HashSet<GamaUnityObjectId> originalComponentIds = new HashSet<GamaUnityObjectId>();
             for (int i = 0; i < transforms.Length; i++)
             {
                 GameObject gameObject = transforms[i].gameObject;
-                originalGameObjectIds.Add(gameObject.GetInstanceID());
+                originalGameObjectIds.Add(gameObject.GetGamaObjectId());
                 Component[] components = gameObject.GetComponents<Component>();
                 for (int componentIndex = 0; componentIndex < components.Length; componentIndex++)
                 {
                     Component component = components[componentIndex];
                     if (component != null)
                     {
-                        originalComponentIds.Add(component.GetInstanceID());
+                        originalComponentIds.Add(component.GetGamaObjectId());
                     }
                 }
                 activeStates[i] = new ActiveStateSnapshot
@@ -343,8 +343,8 @@ public sealed class GamaPreviewReuseRegistry : IDisposable
 
         private static void RemoveRuntimeOnlyComponents(
             GameObject instance,
-            HashSet<int> originalGameObjectIds,
-            HashSet<int> originalComponentIds)
+            HashSet<GamaUnityObjectId> originalGameObjectIds,
+            HashSet<GamaUnityObjectId> originalComponentIds)
         {
             if (instance == null || originalGameObjectIds == null || originalComponentIds == null)
             {
@@ -355,7 +355,7 @@ public sealed class GamaPreviewReuseRegistry : IDisposable
             for (int i = 0; i < transforms.Length; i++)
             {
                 GameObject gameObject = transforms[i].gameObject;
-                if (!originalGameObjectIds.Contains(gameObject.GetInstanceID()))
+                if (!originalGameObjectIds.Contains(gameObject.GetGamaObjectId()))
                 {
                     continue;
                 }
@@ -366,7 +366,7 @@ public sealed class GamaPreviewReuseRegistry : IDisposable
                     Component component = components[componentIndex];
                     if (component == null ||
                         component is Transform ||
-                        originalComponentIds.Contains(component.GetInstanceID()))
+                        originalComponentIds.Contains(component.GetGamaObjectId()))
                     {
                         continue;
                     }
@@ -379,7 +379,7 @@ public sealed class GamaPreviewReuseRegistry : IDisposable
 
         private static void RemoveRuntimeOnlyChildren(
             GameObject instance,
-            HashSet<int> originalGameObjectIds)
+            HashSet<GamaUnityObjectId> originalGameObjectIds)
         {
             if (instance == null || originalGameObjectIds == null)
             {
@@ -392,14 +392,14 @@ public sealed class GamaPreviewReuseRegistry : IDisposable
                 Transform transform = transforms[i];
                 if (transform == null ||
                     transform == instance.transform ||
-                    originalGameObjectIds.Contains(transform.gameObject.GetInstanceID()))
+                    originalGameObjectIds.Contains(transform.gameObject.GetGamaObjectId()))
                 {
                     continue;
                 }
 
                 Transform parent = transform.parent;
                 if (parent != null &&
-                    !originalGameObjectIds.Contains(parent.gameObject.GetInstanceID()))
+                    !originalGameObjectIds.Contains(parent.gameObject.GetGamaObjectId()))
                 {
                     // The highest runtime-only ancestor owns this whole subtree.
                     continue;
@@ -454,8 +454,8 @@ public sealed class GamaPreviewReuseRegistry : IDisposable
     }
 
     private static readonly object ClaimsLock = new object();
-    private static readonly Dictionary<int, ClaimRecord> GlobalClaims =
-        new Dictionary<int, ClaimRecord>();
+    private static readonly Dictionary<GamaUnityObjectId, ClaimRecord> GlobalClaims =
+        new Dictionary<GamaUnityObjectId, ClaimRecord>();
 
     private readonly Dictionary<string, Candidate> candidatesByAgentKey =
         new Dictionary<string, Candidate>(StringComparer.Ordinal);
@@ -705,7 +705,7 @@ public sealed class GamaPreviewReuseRegistry : IDisposable
 
     private bool TryAcquireGlobalClaim(GameObject instance)
     {
-        int instanceId = instance.GetInstanceID();
+        GamaUnityObjectId instanceId = instance.GetGamaObjectId();
         lock (ClaimsLock)
         {
             if (GlobalClaims.TryGetValue(instanceId, out ClaimRecord existing))
@@ -757,7 +757,7 @@ public sealed class GamaPreviewReuseRegistry : IDisposable
             return;
         }
 
-        int instanceId = instance.GetInstanceID();
+        GamaUnityObjectId instanceId = instance.GetGamaObjectId();
         lock (ClaimsLock)
         {
             if (!GlobalClaims.TryGetValue(instanceId, out ClaimRecord existing))

@@ -184,7 +184,7 @@ internal static class GamaPrefabSelectionUtility
         }
 
         string path = AssetDatabase.GetAssetPath(prefab);
-        string key = string.IsNullOrWhiteSpace(path) ? prefab.GetInstanceID().ToString() : path;
+        string key = string.IsNullOrWhiteSpace(path) ? prefab.GetGamaObjectId().ToString() : path;
         if (!seenPaths.Add(key))
         {
             return;
