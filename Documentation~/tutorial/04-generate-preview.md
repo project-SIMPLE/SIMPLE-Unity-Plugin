@@ -36,7 +36,7 @@ applied to Play Mode runtime agents:
 ![Captured preview species settings](../images/tutorial/03-preview-captured-species-settings.png)
 
 
-1. **Info**: details about the captured static preview data.
+1. **Info**: button to generate the preview
 2. **Prefab**: replace the default GAMA geometry with a Unity prefab.
 3. **Color**: force a stable color for the species.
 4. **Scale**: change the visual size without changing the logical scale.
