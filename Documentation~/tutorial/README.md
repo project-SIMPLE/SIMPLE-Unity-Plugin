@@ -21,6 +21,6 @@ You need:
 
 - **Unity 6** (6000.0 or newer). Unity 6000.3 LTS is recommended; this tutorial has been validated with Unity 6000.3.2f1;
 - **GAMA 2025.06**;
-- **simple.webplatform** on branch **dev** using :
+- **simple.webplatform** using :
 
-`git clone -b dev --single-branch https://github.com/project-SIMPLE/simple.webplatform.git`;
+`git clone https://github.com/project-SIMPLE/simple.webplatform.git`;
